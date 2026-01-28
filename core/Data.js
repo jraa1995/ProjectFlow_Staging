@@ -232,6 +232,77 @@ const RowIndexCache = {
   }
 };
 
+const UserCache = {
+  CACHE_KEY: 'USER_MAP_CACHE',
+  CACHE_TTL: 300,
+  _memoryCache: null,
+  _memoryCacheTime: 0,
+
+  getMap() {
+    const now = Date.now();
+    if (this._memoryCache && (now - this._memoryCacheTime) < 60000) {
+      return this._memoryCache;
+    }
+    try {
+      const cache = CacheService.getScriptCache();
+      const cached = cache.get(this.CACHE_KEY);
+      if (cached) {
+        this._memoryCache = JSON.parse(cached);
+        this._memoryCacheTime = now;
+        return this._memoryCache;
+      }
+    } catch (e) {
+      console.warn('UserCache.getMap failed:', e.message);
+    }
+    return null;
+  },
+
+  buildAndCache() {
+    const sheet = getUsersSheet();
+    const data = sheet.getDataRange().getValues();
+    const columns = CONFIG.USER_COLUMNS;
+    const userMap = {};
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row[0]) continue;
+      const user = rowToObject(row, columns);
+      if (user.email) {
+        userMap[user.email.toLowerCase()] = user;
+      }
+    }
+    try {
+      const cache = CacheService.getScriptCache();
+      cache.put(this.CACHE_KEY, JSON.stringify(userMap), this.CACHE_TTL);
+    } catch (e) {
+      console.warn('UserCache.buildAndCache failed:', e.message);
+    }
+    this._memoryCache = userMap;
+    this._memoryCacheTime = Date.now();
+    return userMap;
+  },
+
+  get(email) {
+    if (!email) return null;
+    const emailLower = email.toLowerCase();
+    let userMap = this.getMap();
+    if (!userMap) {
+      userMap = this.buildAndCache();
+    }
+    return userMap[emailLower] || null;
+  },
+
+  invalidate() {
+    try {
+      const cache = CacheService.getScriptCache();
+      cache.remove(this.CACHE_KEY);
+      this._memoryCache = null;
+      this._memoryCacheTime = 0;
+    } catch (e) {
+      console.warn('UserCache.invalidate failed:', e.message);
+    }
+  }
+};
+
 function findRowWithCache(sheet, sheetName, id, idColumnIndex) {
   let rowIndex = RowIndexCache.get(sheetName, id);
   if (rowIndex) {
@@ -605,8 +676,17 @@ function getAllTasks(filters = {}, options = {}) {
 }
 
 function getTaskById(taskId) {
-  const tasks = getAllTasks();
-  return tasks.find(t => t.id === taskId) || null;
+  if (!taskId) return null;
+  const sheet = getTasksSheet();
+  const columns = CONFIG.TASK_COLUMNS;
+  const rowIndex = findRowWithCache(sheet, 'Tasks', taskId, 0);
+  if (!rowIndex) return null;
+  const rowData = sheet.getRange(rowIndex, 1, 1, columns.length).getValues()[0];
+  const task = rowToObject(rowData, columns);
+  task.labels = typeof task.labels === 'string' && task.labels
+    ? task.labels.split(',').map(l => l.trim()).filter(l => l)
+    : [];
+  return task;
 }
 
 function getTasksForUser(email) {
@@ -881,8 +961,7 @@ function getAllUsers() {
 }
 
 function getUserByEmail(email) {
-  const users = getAllUsers();
-  return users.find(u => u.email?.toLowerCase() === email?.toLowerCase()) || null;
+  return UserCache.get(email);
 }
 
 function createUser(userData) {

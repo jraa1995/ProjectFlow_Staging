@@ -215,9 +215,7 @@ const CacheService = {
   },
 
   async invalidate(keys) {
-    for (const key of keys) {
-      await this.delete(key);
-    }
+    await Promise.all(keys.map(key => this.delete(key)));
   },
 
   getStats() {

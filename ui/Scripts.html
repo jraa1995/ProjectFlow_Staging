@@ -525,11 +525,7 @@
       persistDataToAllCaches(data);
       showLoading(false);
       State.loading = false;
-      tasks: data.tasks?.length || 0,
-        projects: data.projects?.length || 0,
-        users: data.users?.length || 0
-    });
-  return {
+      return {
     tasks: data.tasks || [],
     projects: data.projects || [],
     users: data.users || []
@@ -562,28 +558,31 @@
 
   function fetchFreshDataInBackground() {
     google.script.run
+      .withSuccessHandler((result) => {
+        if (result.version <= SyncManager.lastSyncVersion && result.changedIds.length === 0) {
+          return;
+        }
+        SyncManager.lastSyncVersion = result.version;
+        if (result.changedIds.length > 0) {
+          SyncManager.fetchChangedItems(result.changedIds);
+        }
+      })
+      .withFailureHandler((err) => console.warn('Version check failed:', err))
+      .getChangesSince(SyncManager.lastSyncVersion || 0);
+
+    google.script.run
       .withSuccessHandler((data) => {
         if (!data || !data.success) {
           console.warn('Background fetch returned invalid data');
           return;
         }
-        const currentTasks = State.cache.tasks.data || [];
         const currentUsers = State.cache.users.data || [];
-        const newTasks = data.tasks || [];
         const newUsers = data.users || [];
-        // Check for task changes
-        const hasTaskChanges = currentTasks.length !== newTasks.length ||
-          newTasks.some((t, i) => {
-            const current = currentTasks.find(ct => ct.id === t.id);
-            return !current || current.status !== t.status || current.title !== t.title;
-          });
-        // Check for user changes (always update users for fresh data)
         const hasUserChanges = currentUsers.length !== newUsers.length ||
           newUsers.some(u => {
             const current = currentUsers.find(cu => cu.email === u.email);
             return !current || current.name !== u.name || current.active !== u.active;
           });
-        // Always update users to ensure fresh data
         if (hasUserChanges) {
           State.setUsers(newUsers);
           LocalCache.set('users', newUsers);
@@ -2460,28 +2459,69 @@
     nav.innerHTML = html;
   }
 
+  let dragDropInitialized = false;
+
   function initDragAndDrop() {
-    const taskCards = $$(".task-card");
-    const taskLists = $$(".task-list");
-    const boardColumns = $$(".board-column");
-    taskCards.forEach((card) => {
-      card.addEventListener("dragstart", handleDragStart);
-      card.addEventListener("dragend", handleDragEnd);
-      card.addEventListener("dragover", handleDragOverCard);
-      card.addEventListener("drop", handleDropOnCard);
-      card.addEventListener("dragleave", handleDragLeaveCard);
+    if (dragDropInitialized) return;
+    dragDropInitialized = true;
+
+    const board = $("board");
+    if (!board) return;
+
+    board.addEventListener("dragstart", (e) => {
+      const card = e.target.closest(".task-card");
+      if (card) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", card.dataset.taskId);
+        State.draggedTask = card;
+        setTimeout(() => card.style.opacity = '0.4', 0);
+        card.classList.add("dragging");
+      }
     });
-    taskLists.forEach((list) => {
-      list.addEventListener("dragover", handleDragOverList);
-      list.addEventListener("drop", handleDrop);
-      list.addEventListener("dragleave", handleDragLeaveList);
-      list.addEventListener("dragenter", handleDragEnterList);
+
+    board.addEventListener("dragend", (e) => {
+      const card = e.target.closest(".task-card");
+      if (card) {
+        card.classList.remove("dragging");
+        card.style.opacity = '';
+        State.draggedTask = null;
+        currentDropTarget = null;
+        $$(".task-list").forEach(l => l.classList.remove("drag-over"));
+        $$(".board-column").forEach(c => c.classList.remove("drag-over"));
+      }
     });
-    boardColumns.forEach((col) => {
-      col.addEventListener("dragover", handleDragOverColumn);
-      col.addEventListener("drop", handleDropOnColumn);
-      col.addEventListener("dragleave", handleDragLeaveColumn);
-      col.addEventListener("dragenter", handleDragEnterColumn);
+
+    board.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const column = e.target.closest(".board-column");
+      const list = e.target.closest(".task-list");
+      if (column) column.classList.add("drag-over");
+      if (list) list.classList.add("drag-over");
+    });
+
+    board.addEventListener("dragleave", (e) => {
+      const column = e.target.closest(".board-column");
+      const list = e.target.closest(".task-list");
+      if (column && !column.contains(e.relatedTarget)) {
+        column.classList.remove("drag-over");
+      }
+      if (list && !list.contains(e.relatedTarget)) {
+        list.classList.remove("drag-over");
+      }
+    });
+
+    board.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const list = e.target.closest(".task-list");
+      const column = e.target.closest(".board-column");
+      if (list) {
+        handleDrop(e);
+      } else if (column) {
+        handleDropOnColumn(e);
+      }
+      $$(".task-list").forEach(l => l.classList.remove("drag-over"));
+      $$(".board-column").forEach(c => c.classList.remove("drag-over"));
     });
   }
   let currentDropTarget = null;
@@ -2773,8 +2813,33 @@
     return statusMap[statusId] || statusId;
   }
 
+  function findTaskInCache(taskId) {
+    if (State.tasks) {
+      const task = State.tasks.find(t => t.id === taskId);
+      if (task) return task;
+    }
+    if (State.cache?.tasks?.data) {
+      const task = State.cache.tasks.data.find(t => t.id === taskId);
+      if (task) return task;
+    }
+    if (State.board?.columns) {
+      for (const col of State.board.columns) {
+        const task = col.tasks?.find(t => t.id === taskId);
+        if (task) return task;
+      }
+    }
+    return null;
+  }
+
   function openTaskModal(taskId) {
     if (taskId) {
+      const cachedTask = findTaskInCache(taskId);
+      if (cachedTask) {
+        State.editingTask = cachedTask;
+        populateTaskModal(cachedTask);
+        show($("taskModal"));
+        return;
+      }
       google.script.run
         .withSuccessHandler((task) => {
           State.editingTask = task;
@@ -2954,11 +3019,11 @@
     toast((error && error.message) || "An error occurred", "error");
   }
 
+  const escapeHtmlEl = document.createElement("div");
   function escapeHtml(text) {
     if (!text) return "";
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
+    escapeHtmlEl.textContent = text;
+    return escapeHtmlEl.innerHTML;
   }
 
   function getInitials(name) {
@@ -3092,10 +3157,7 @@
   }
 
   function handleInitialData(data) {
-    user: data.user?.email,
-    taskCount: data.board?.columns?.reduce((sum, col) => sum + (col.tasks?.length || 0), 0)
-  });
-  try {
+    try {
     State.user = data.user;
     State.board = data.board;
     State.projects = data.board?.projects || [];

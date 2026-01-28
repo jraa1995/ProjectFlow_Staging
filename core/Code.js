@@ -331,10 +331,57 @@ function clearUserCache() {
   }
 }
 
+function patchTaskCache(taskId, updatedTask, changeType) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'ALL_TASKS_CACHE';
+    const cached = cache.get(cacheKey);
+
+    if (cached) {
+      const tasks = JSON.parse(cached);
+      const index = tasks.findIndex(t => t.id === taskId);
+
+      if (changeType === 'delete') {
+        if (index >= 0) tasks.splice(index, 1);
+      } else if (changeType === 'create' && updatedTask) {
+        tasks.push(updatedTask);
+      } else if (updatedTask && index >= 0) {
+        tasks[index] = updatedTask;
+      }
+
+      const jsonStr = JSON.stringify(tasks);
+      if (jsonStr.length < 100000) {
+        cache.put(cacheKey, jsonStr, 300);
+      } else {
+        cache.remove(cacheKey);
+      }
+    }
+
+    cache.remove(`TASK_${taskId}`);
+    cache.remove(`row_Tasks_${taskId}`);
+    logChange('task', taskId, changeType || 'update');
+
+    if (RequestCache && RequestCache._tasks) {
+      if (changeType === 'delete') {
+        RequestCache._tasks = RequestCache._tasks.filter(t => t.id !== taskId);
+      } else if (changeType === 'create' && updatedTask) {
+        RequestCache._tasks.push(updatedTask);
+      } else if (updatedTask) {
+        const idx = RequestCache._tasks.findIndex(t => t.id === taskId);
+        if (idx >= 0) RequestCache._tasks[idx] = updatedTask;
+      }
+    }
+  } catch (error) {
+    console.error('patchTaskCache failed:', error);
+    invalidateTaskCache(taskId, changeType);
+  }
+}
+
 function invalidateTaskCache(taskId, changeType) {
   try {
     const cache = CacheService.getScriptCache();
     cache.remove('ALL_TASKS_CACHE');
+    cache.remove('BATCH_DATA_CACHE');
 
     if (taskId) {
       cache.remove(`TASK_${taskId}`);
@@ -344,8 +391,8 @@ function invalidateTaskCache(taskId, changeType) {
       incrementGlobalVersion();
     }
 
-    if (RequestCache && RequestCache.tasks) {
-      RequestCache.tasks = null;
+    if (RequestCache && RequestCache._tasks) {
+      RequestCache._tasks = null;
     }
   } catch (error) {
     console.error('invalidateTaskCache failed:', error);
@@ -934,26 +981,26 @@ function getMilestonesForView() {
 
 function saveNewTask(taskData) {
   const result = createTask(taskData);
-  invalidateTaskCache(result.id, 'create');
+  patchTaskCache(result.id, result, 'create');
   return result;
 }
 
 function saveTaskUpdate(taskId, updates) {
   const result = updateTask(taskId, updates);
-  invalidateTaskCache(taskId, 'update');
+  patchTaskCache(taskId, result, 'update');
   return result;
 }
 
 function moveTaskToStatus(taskId, newStatus, newPosition) {
   const status = denormalizeStatusId(newStatus);
   const result = moveTask(taskId, status, newPosition);
-  invalidateTaskCache(taskId, 'update');
+  patchTaskCache(taskId, result, 'update');
   return result;
 }
 
 function removeTask(taskId) {
   const result = deleteTask(taskId);
-  invalidateTaskCache(taskId, 'delete');
+  patchTaskCache(taskId, null, 'delete');
   return result;
 }
 
