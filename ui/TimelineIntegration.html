@@ -1,0 +1,33 @@
+<script>
+const originalSwitchView = window.switchView;
+
+window.switchView = function (view) {
+  if (State.loading) return;
+  hideTimelineView();
+  if (originalSwitchView) {
+    originalSwitchView(view);
+  }
+  if (view === "timeline") {
+    showTimelineView();
+  }
+};
+
+const originalLoadBoard = window.loadBoard;
+
+window.loadBoard = function () {
+  if (State.view === "timeline") {
+    return;
+  }
+  if (originalLoadBoard) {
+    originalLoadBoard();
+  }
+};
+
+const originalSelectProject = window.selectProject;
+
+window.selectProject = function (projectId) {
+  if (originalSelectProject) {
+    originalSelectProject(projectId);
+  }
+};
+</script>

@@ -1,0 +1,1600 @@
+<!-- Task Edit Modal Component -->
+<!-- Split-pane layout: Edit task on left, Comments on right -->
+<!-- Modal Overlay -->
+<div id="taskEditModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[1060] hidden"
+onclick="TaskEditModal.handleOverlayClick(event)">
+<!-- Modal Container - Wider for split pane -->
+<div class="task-edit-modal-container bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden"
+onclick="event.stopPropagation()">
+<!-- Modal Header -->
+<div class="modal-header flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-yellow-50">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-md">
+<i class="fas fa-edit text-white text-lg"></i>
+</div>
+<div>
+<h2 class="text-lg font-semibold text-gray-900">Edit Task</h2>
+<p id="taskEditModalId" class="text-xs font-mono text-gray-500">TASK-000</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<!-- Unsaved Changes Indicator -->
+<span id="taskEditModalUnsavedIndicator" class="hidden text-xs text-amber-600 font-medium flex items-center gap-1">
+<i class="fas fa-circle text-[6px]"></i> Unsaved changes
+</span>
+<!-- Close Button -->
+<button
+onclick="TaskEditModal.cancel()"
+class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+title="Close (Esc)"
+>
+<i class="fas fa-times text-xl"></i>
+</button>
+</div>
+</div>
+<!-- Split Pane Container -->
+<div class="flex-1 flex overflow-hidden">
+<!-- LEFT PANE: Edit Form -->
+<div class="modal-body flex-1 overflow-y-auto p-6 border-r border-gray-200">
+<form id="taskEditForm" class="space-y-5">
+<!-- Title (Required) -->
+<div class="form-field">
+<label for="taskEditTitle" class="form-label required">
+<i class="fas fa-heading text-gray-400 mr-1"></i> Title
+</label>
+<input
+type="text"
+id="taskEditTitle"
+class="form-input"
+placeholder="Enter task title..."
+required
+autocomplete="off"
+/>
+<span class="field-error hidden text-xs text-red-500 mt-1">Title is required</span>
+</div>
+<!-- Status & Priority Row -->
+<div class="grid grid-cols-2 gap-4">
+<div class="form-field">
+<label for="taskEditStatus" class="form-label">
+<i class="fas fa-flag text-gray-400 mr-1"></i> Status
+</label>
+<select id="taskEditStatus" class="form-select">
+<option value="To Do">To Do</option>
+</select>
+</div>
+<div class="form-field">
+<label for="taskEditPriority" class="form-label">
+<i class="fas fa-exclamation-triangle text-gray-400 mr-1"></i> Priority
+</label>
+<select id="taskEditPriority" class="form-select">
+<option value="Medium">Medium</option>
+</select>
+</div>
+</div>
+<!-- Type & Project Row -->
+<div class="grid grid-cols-2 gap-4">
+<div class="form-field">
+<label for="taskEditType" class="form-label">
+<i class="fas fa-tag text-gray-400 mr-1"></i> Type
+</label>
+<select id="taskEditType" class="form-select">
+<option value="Task">Task</option>
+</select>
+</div>
+<div class="form-field">
+<label for="taskEditProject" class="form-label">
+<i class="fas fa-folder text-gray-400 mr-1"></i> Project
+</label>
+<select id="taskEditProject" class="form-select">
+<option value="">No Project</option>
+</select>
+</div>
+</div>
+<!-- Assignee Row -->
+<div class="form-field">
+<label for="taskEditAssignee" class="form-label">
+<i class="fas fa-user text-gray-400 mr-1"></i> Assignee
+</label>
+<select id="taskEditAssignee" class="form-select">
+<option value="">Unassigned</option>
+</select>
+</div>
+<!-- Dates Row -->
+<div class="grid grid-cols-2 gap-4">
+<div class="form-field">
+<label for="taskEditStartDate" class="form-label">
+<i class="far fa-calendar text-gray-400 mr-1"></i> Start Date
+</label>
+<input type="date" id="taskEditStartDate" class="form-input" />
+</div>
+<div class="form-field">
+<label for="taskEditDueDate" class="form-label">
+<i class="far fa-calendar-check text-gray-400 mr-1"></i> Due Date
+</label>
+<input type="date" id="taskEditDueDate" class="form-input" />
+</div>
+</div>
+<!-- Metrics Row -->
+<div class="grid grid-cols-3 gap-4">
+<div class="form-field">
+<label for="taskEditStoryPoints" class="form-label">
+<i class="fas fa-chart-line text-gray-400 mr-1"></i> Story Points
+</label>
+<input type="number" id="taskEditStoryPoints" class="form-input" min="0" placeholder="0" />
+</div>
+<div class="form-field">
+<label for="taskEditEstimatedHrs" class="form-label">
+<i class="far fa-clock text-gray-400 mr-1"></i> Est. Hours
+</label>
+<input type="number" id="taskEditEstimatedHrs" class="form-input" min="0" step="0.5" placeholder="0" />
+</div>
+<div class="form-field">
+<label for="taskEditActualHrs" class="form-label">
+<i class="fas fa-stopwatch text-gray-400 mr-1"></i> Actual Hours
+</label>
+<input type="number" id="taskEditActualHrs" class="form-input" min="0" step="0.5" placeholder="0" />
+</div>
+</div>
+<!-- Phase 1: Milestone Marker -->
+<div class="form-field border-t border-gray-200 pt-5 mt-5">
+<label class="flex items-center gap-3 cursor-pointer group">
+<input type="checkbox" id="taskEditIsMilestone" class="form-checkbox w-5 h-5 text-amber-600 focus:ring-amber-500 rounded transition-all" />
+<span class="flex items-center gap-2 text-base font-semibold text-gray-700 group-hover:text-amber-600 transition-colors">
+🏁 <strong>Mark as Milestone</strong>
+</span>
+</label>
+<p class="text-xs text-gray-500 mt-1 ml-8">
+Milestones are key deliverables or checkpoints in your project timeline
+</p>
+</div>
+<!-- Milestone Fields (Conditional) -->
+<div id="taskEditMilestoneFields" class="hidden space-y-4 p-5 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl">
+<div class="flex items-center gap-2 text-amber-800 font-medium text-sm">
+<i class="fas fa-flag"></i>
+<span>Milestone Configuration</span>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<!-- Milestone Date (Required) -->
+<div class="form-field">
+<label for="taskEditMilestoneDate" class="form-label required text-amber-900">
+<i class="fas fa-flag-checkered text-amber-600 mr-1"></i> Milestone Date
+</label>
+<input type="date" id="taskEditMilestoneDate" class="form-input border-amber-300 focus:border-amber-500 focus:ring-amber-500" required />
+<span class="field-error hidden text-xs text-red-500 mt-1">Milestone date is required</span>
+</div>
+<!-- Milestone Type -->
+<div class="form-field">
+<label for="taskEditMilestoneType" class="form-label text-amber-900">
+<i class="fas fa-tags text-amber-600 mr-1"></i> Milestone Type
+</label>
+<select id="taskEditMilestoneType" class="form-select border-amber-300 focus:border-amber-500 focus:ring-amber-500">
+<option value="">Select type...</option>
+<option value="phase-end">Phase End</option>
+<option value="deliverable">Key Deliverable</option>
+<option value="review">Review/Approval</option>
+<option value="launch">Launch/Release</option>
+<option value="other">Other</option>
+</select>
+</div>
+</div>
+<div class="flex items-start gap-2 p-3 bg-white/60 rounded-lg border border-amber-200">
+<i class="fas fa-info-circle text-amber-600 mt-0.5"></i>
+<div class="text-xs text-amber-900">
+<strong>Tip:</strong> Milestone tasks appear with a special yellow gradient in the Kanban board and are highlighted in the dedicated Milestones view.
+</div>
+</div>
+</div>
+<!-- Description -->
+<div class="form-field">
+<label for="taskEditDescription" class="form-label">
+<i class="fas fa-align-left text-gray-400 mr-1"></i> Description
+</label>
+<textarea
+id="taskEditDescription"
+class="form-textarea"
+rows="6"
+placeholder="Add a detailed description of the task..."
+></textarea>
+<div class="flex items-center justify-between mt-1">
+<span class="text-xs text-gray-400">
+<i class="fas fa-lightbulb mr-1"></i>
+Tip: Use clear and specific language
+</span>
+<span id="taskEditDescCharCount" class="text-xs text-gray-400 hidden">0/5000</span>
+</div>
+</div>
+<!-- Dependencies Section -->
+<div class="form-field border-t border-gray-200 pt-5 mt-5">
+<div class="flex items-center justify-between mb-3">
+<label class="form-label">
+<i class="fas fa-link text-gray-400 mr-1"></i> Dependencies
+</label>
+<button
+type="button"
+onclick="TaskEditModal.openDependencyPicker('predecessor')"
+class="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center gap-1"
+>
+<i class="fas fa-plus"></i> Add Blocker
+</button>
+</div>
+<!-- Dependencies List -->
+<div id="taskEditDependenciesContainer">
+<div id="taskEditDependenciesLoading" class="text-center py-4 text-gray-500 text-sm">
+<i class="fas fa-spinner fa-spin mr-2"></i> Loading dependencies...
+</div>
+<div id="taskEditDependenciesList" class="hidden space-y-2"></div>
+<div id="taskEditDependenciesEmpty" class="hidden text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+<i class="fas fa-link text-gray-300 text-2xl mb-2"></i>
+<p class="text-sm text-gray-500">No dependencies configured</p>
+<p class="text-xs text-gray-400 mt-1">Click "Add Blocker" to create task dependencies</p>
+</div>
+</div>
+</div>
+</form>
+</div>
+<!-- RIGHT PANE: Comments Section -->
+<div class="w-[400px] flex flex-col bg-gray-50 overflow-hidden">
+<!-- Comments Header -->
+<div class="px-4 py-3 border-b border-gray-200 bg-white">
+<div class="flex items-center gap-2">
+<i class="fas fa-comments text-amber-500"></i>
+<h3 class="font-semibold text-gray-900">Comments</h3>
+<span id="taskEditCommentCount" class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">0</span>
+</div>
+<div class="flex items-center justify-between">
+<p class="text-xs text-gray-500">Type @ to mention team members</p>
+<button onclick="TaskEditModal.refreshUsers()" class="text-xs text-amber-600 hover:text-amber-700" title="Refresh user list">
+<i class="fas fa-sync-alt"></i>
+</button>
+</div>
+</div>
+<!-- Comments List -->
+<div id="taskEditCommentsList" class="flex-1 overflow-y-auto p-4 space-y-3">
+<!-- Loading State -->
+<div id="taskEditCommentsLoading" class="flex items-center justify-center py-8 text-gray-400">
+<i class="fas fa-spinner fa-spin mr-2"></i> Loading comments...
+</div>
+<!-- Empty State -->
+<div id="taskEditCommentsEmpty" class="hidden text-center py-12">
+<i class="far fa-comment-dots text-gray-300 text-4xl mb-3"></i>
+<p class="text-sm text-gray-500">No comments yet</p>
+<p class="text-xs text-gray-400 mt-1">Start the conversation below</p>
+</div>
+<!-- Comments will be rendered here -->
+</div>
+<!-- Comment Input -->
+<div class="p-4 border-t border-gray-200 bg-white">
+<div class="relative">
+<textarea
+id="taskEditCommentInput"
+class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+rows="3"
+placeholder="Add a comment... Type @ to mention someone"
+maxlength="2000"
+></textarea>
+<div id="taskEditMentionDropdown" class="mention-dropdown hidden absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto z-50"></div>
+</div>
+<div class="flex items-center justify-between mt-2">
+<span id="taskEditCommentCharCount" class="text-xs text-gray-400">0/2000</span>
+<button
+id="taskEditPostCommentBtn"
+onclick="TaskEditModal.postComment()"
+class="px-4 py-1.5 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+disabled
+>
+<i class="fas fa-paper-plane text-xs"></i> Post
+</button>
+</div>
+<p class="text-xs text-gray-400 mt-2"><kbd class="px-1 py-0.5 bg-gray-100 rounded text-[10px]">Ctrl</kbd> + <kbd class="px-1 py-0.5 bg-gray-100 rounded text-[10px]">Enter</kbd> to post</p>
+</div>
+</div>
+</div>
+<!-- Modal Footer - Actions -->
+<div class="modal-footer flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50">
+<!-- Delete Button (Left) -->
+<button
+type="button"
+onclick="TaskEditModal.deleteTask()"
+class="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2"
+>
+<i class="fas fa-trash-alt"></i> Delete Task
+</button>
+<!-- Save/Cancel Buttons (Right) -->
+<div class="flex items-center gap-3">
+<button
+type="button"
+onclick="TaskEditModal.cancel()"
+class="px-5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-all"
+>
+Cancel
+</button>
+<button
+type="button"
+id="taskEditSaveBtn"
+onclick="TaskEditModal.save()"
+class="px-5 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+disabled
+>
+<i class="fas fa-save"></i> Save Changes
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Task Edit Modal Styles -->
+<style>
+#taskEditModal:not(.hidden) .task-edit-modal-container {
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.form-label {
+  font-size: var(--pf-text-xs);
+  font-weight: var(--pf-font-semibold);
+  color: var(--pf-gray-700);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  display: flex;
+  align-items: center;
+}
+
+.form-label.required::after {
+  content: '*';
+  color: var(--pf-error-500);
+  margin-left: 0.25rem;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: var(--pf-space-2-5) var(--pf-space-3);
+  border: 1px solid var(--pf-gray-300);
+  border-radius: var(--pf-border-radius);
+  font-size: var(--pf-text-sm);
+  transition: all var(--pf-transition-fast);
+  background: white;
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--pf-primary-500);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+.form-input:disabled,
+.form-select:disabled,
+.form-textarea:disabled {
+  background: var(--pf-gray-100);
+  cursor: not-allowed;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+.form-input:invalid:not(:placeholder-shown),
+.form-input.error {
+  border-color: var(--pf-error-500);
+}
+
+.form-input:invalid:not(:placeholder-shown):focus,
+.form-input.error:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.form-input:valid:not(:placeholder-shown) {
+  border-color: var(--pf-success-500);
+}
+
+.field-error {
+  display: none;
+  color: var(--pf-error-500);
+  font-size: var(--pf-text-xs);
+  margin-top: 0.25rem;
+}
+
+.field-error:not(.hidden) {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pf-gray-300) var(--pf-gray-100);
+}
+
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: var(--pf-gray-100);
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--pf-gray-300);
+  border-radius: 3px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--pf-gray-400);
+}
+
+#taskEditSaveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+#taskEditSaveBtn:disabled:hover {
+  background: linear-gradient(to right, var(--pf-primary-500), #eab308);
+}
+
+@media (max-width: 768px) {
+  .task-edit-modal-container {
+    max-width: 95vw;
+    max-height: 95vh;
+  }
+
+  .grid-cols-2,
+  .grid-cols-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+#taskEditModalUnsavedIndicator:not(.hidden) {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.task-edit-modal-container {
+  min-height: 600px;
+}
+
+#taskEditCommentsList {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pf-gray-300) var(--pf-gray-100);
+}
+
+#taskEditCommentsList::-webkit-scrollbar {
+  width: 6px;
+}
+
+#taskEditCommentsList::-webkit-scrollbar-track {
+  background: var(--pf-gray-100);
+}
+
+#taskEditCommentsList::-webkit-scrollbar-thumb {
+  background: var(--pf-gray-300);
+  border-radius: 3px;
+}
+
+.comment-item {
+  transition: all 0.15s ease;
+}
+
+.comment-item:hover {
+  border-color: var(--pf-gray-200);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.comment-content .mention {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.mention-dropdown {
+  border: 1px solid var(--pf-gray-200);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.mention-suggestion {
+  transition: background-color 0.1s ease;
+}
+
+.mention-suggestion:hover,
+.mention-suggestion.selected {
+  background-color: #fef3c7;
+}
+
+@media (max-width: 900px) {
+  .task-edit-modal-container {
+    max-width: 95vw;
+    max-height: 95vh;
+  }
+
+  .task-edit-modal-container > .flex-1.flex {
+    flex-direction: column;
+  }
+
+  .task-edit-modal-container > .flex-1.flex > .w-\[400px\] {
+    width: 100%;
+    max-height: 300px;
+    border-right: none;
+    border-top: 1px solid var(--pf-gray-200);
+  }
+}
+</style>
+<!-- Task Edit Modal JavaScript -->
+<script>
+const TaskEditModal = {
+  task: null,
+  originalTask: null,
+  isOpen: false,
+  hasUnsavedChanges: false,
+
+  open(taskId) {
+    if (!taskId) {
+      console.error('TaskEditModal.open: taskId is required');
+      return;
+    }
+    const modal = document.getElementById('taskEditModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      this.isOpen = true;
+    }
+    this.task = null;
+    this.originalTask = null;
+    this.hasUnsavedChanges = false;
+    this.updateUnsavedIndicator();
+    this.setElementText('taskEditModalId', 'Loading...');
+    this.loadTask(taskId);
+    document.addEventListener('keydown', this.handleKeydown);
+  },
+
+  close() {
+    const modal = document.getElementById('taskEditModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      this.isOpen = false;
+    }
+    document.removeEventListener('keydown', this.handleKeydown);
+    this.task = null;
+    this.originalTask = null;
+    this.hasUnsavedChanges = false;
+    this.comments = [];
+    this.hideMentionDropdown();
+    const commentInput = document.getElementById('taskEditCommentInput');
+    if (commentInput) commentInput.value = '';
+  },
+
+  handleOverlayClick(event) {
+    if (event.target.id === 'taskEditModal') {
+      this.cancel();
+    }
+  },
+
+  handleKeydown(event) {
+    if (!TaskEditModal.isOpen) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      TaskEditModal.cancel();
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      TaskEditModal.save();
+    }
+  },
+
+  loadTask(taskId) {
+    const cachedTask = this.getTaskFromCache(taskId);
+    if (cachedTask) {
+      this.handleTaskLoaded(cachedTask);
+      google.script.run
+        .withSuccessHandler((freshTask) => {
+          if (freshTask && this.task && this.task.id === freshTask.id) {
+            const hasChanges = JSON.stringify(this.task) !== JSON.stringify(freshTask);
+            if (hasChanges && !this.hasUnsavedChanges) {
+              this.task = freshTask;
+              this.originalTask = JSON.parse(JSON.stringify(freshTask));
+              this.populateForm();
+            }
+          }
+        })
+        .withFailureHandler((error) => {
+          console.warn('Background task refresh failed:', error);
+        })
+        .loadTask(taskId);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler((task) => this.handleTaskLoaded(task))
+      .withFailureHandler((error) => this.handleLoadError(error))
+      .loadTask(taskId);
+  },
+
+  getTaskFromCache(taskId) {
+    if (State.board && State.board.columns) {
+      for (const col of State.board.columns) {
+        if (col.tasks) {
+          const task = col.tasks.find(t => t.id === taskId);
+          if (task) return task;
+        }
+      }
+    }
+    if (State.cache && State.cache.tasks && State.cache.tasks.data) {
+      const task = State.cache.tasks.data.find(t => t.id === taskId);
+      if (task) return task;
+    }
+    if (State.tasks && Array.isArray(State.tasks)) {
+      const task = State.tasks.find(t => t.id === taskId);
+      if (task) return task;
+    }
+    return null;
+  },
+
+  handleTaskLoaded(task) {
+    this.task = task;
+    this.originalTask = JSON.parse(JSON.stringify(task));
+    this.populateForm();
+    this.attachChangeListeners();
+    this.initCommentSection();
+    this.loadComments();
+  },
+
+  handleLoadError(error) {
+    console.error('Failed to load task:', error);
+    toast('Failed to load task', 'error');
+    this.close();
+  },
+
+  populateForm() {
+    if (!this.task) return;
+    const task = this.task;
+    this.setElementText('taskEditModalId', task.id || 'TASK-000');
+    this.setInputValue('taskEditTitle', task.title || '');
+    this.setInputValue('taskEditStatus', task.status || 'To Do');
+    this.setInputValue('taskEditPriority', task.priority || 'Medium');
+    this.setInputValue('taskEditType', task.type || 'Task');
+    this.setInputValue('taskEditProject', task.projectId || '');
+    this.setInputValue('taskEditAssignee', task.assignee || '');
+    this.setInputValue('taskEditStartDate', task.startDate || '');
+    this.setInputValue('taskEditDueDate', task.dueDate || '');
+    this.setInputValue('taskEditStoryPoints', task.storyPoints || '');
+    this.setInputValue('taskEditEstimatedHrs', task.estimatedHrs || '');
+    this.setInputValue('taskEditActualHrs', task.actualHrs || '');
+    this.setInputValue('taskEditDescription', task.description || '');
+    const isMilestone = task.isMilestone === true || task.isMilestone === 'true';
+    const milestoneCheckbox = document.getElementById('taskEditIsMilestone');
+    if (milestoneCheckbox) {
+      milestoneCheckbox.checked = isMilestone;
+    }
+    this.setInputValue('taskEditMilestoneDate', task.milestoneDate || '');
+    this.setInputValue('taskEditMilestoneType', task.milestoneType || '');
+    this.toggleMilestoneFields(isMilestone);
+    this.populateSelectOptions();
+    this.loadDependencies();
+    this.updateSaveButtonState();
+  },
+
+  populateSelectOptions() {
+    const config = State.config || State.board?.config || {};
+    const defaultStatuses = ['Backlog', 'To Do', 'In Progress', 'Review', 'Testing', 'Done'];
+    const defaultPriorities = ['Critical', 'Highest', 'High', 'Medium', 'Low', 'Lowest'];
+    const defaultTypes = ['Task', 'Bug', 'Story', 'Epic', 'Subtask'];
+
+    const statusSelect = document.getElementById('taskEditStatus');
+    if (statusSelect) {
+      const statuses = config.statuses || defaultStatuses;
+      statusSelect.innerHTML = statuses
+        .map(s => `<option value="${s}" ${s === this.task?.status ? 'selected' : ''}>${this.escapeHtml(s)}</option>`)
+        .join('');
+    }
+
+    const prioritySelect = document.getElementById('taskEditPriority');
+    if (prioritySelect) {
+      const priorities = config.priorities || defaultPriorities;
+      prioritySelect.innerHTML = priorities
+        .map(p => `<option value="${p}" ${p === this.task?.priority ? 'selected' : ''}>${this.escapeHtml(p)}</option>`)
+        .join('');
+    }
+
+    const typeSelect = document.getElementById('taskEditType');
+    if (typeSelect) {
+      const types = config.types || defaultTypes;
+      typeSelect.innerHTML = types
+        .map(t => `<option value="${t}" ${t === this.task?.type ? 'selected' : ''}>${this.escapeHtml(t)}</option>`)
+        .join('');
+    }
+
+    const projectSelect = document.getElementById('taskEditProject');
+    if (projectSelect) {
+      const projects = State.projects || [];
+      projectSelect.innerHTML = '<option value="">No Project</option>' +
+        projects.map(p =>
+          `<option value="${p.id}" ${p.id === this.task?.projectId ? 'selected' : ''}>${this.escapeHtml(p.name)}</option>`
+        ).join('');
+    }
+
+    const assigneeSelect = document.getElementById('taskEditAssignee');
+    if (assigneeSelect) {
+      const users = State.users || [];
+      assigneeSelect.innerHTML = '<option value="">Unassigned</option>' +
+        users.map(u =>
+          `<option value="${u.email}" ${u.email === this.task?.assignee ? 'selected' : ''}>${this.escapeHtml(u.name || u.email)}</option>`
+        ).join('');
+    }
+  },
+
+  attachChangeListeners() {
+    const form = document.getElementById('taskEditForm');
+    if (!form) return;
+
+    const inputFields = form.querySelectorAll('input[type="text"], input[type="number"], input[type="date"], textarea');
+    inputFields.forEach(field => {
+      field.addEventListener('input', () => {
+        this.checkForChanges();
+        this.updateSaveButtonState();
+        this.updateDescriptionCharCount();
+      });
+    });
+
+    const selectFields = form.querySelectorAll('select');
+    selectFields.forEach(field => {
+      field.addEventListener('change', () => {
+        this.checkForChanges();
+        this.updateSaveButtonState();
+      });
+    });
+
+    const checkboxFields = form.querySelectorAll('input[type="checkbox"]');
+    checkboxFields.forEach(field => {
+      field.addEventListener('change', () => {
+        this.checkForChanges();
+        this.updateSaveButtonState();
+      });
+    });
+
+    const milestoneCheckbox = document.getElementById('taskEditIsMilestone');
+    if (milestoneCheckbox) {
+      milestoneCheckbox.addEventListener('change', (e) => {
+        this.toggleMilestoneFields(e.target.checked);
+        this.checkForChanges();
+        this.updateSaveButtonState();
+      });
+    }
+  },
+
+  checkForChanges() {
+    if (!this.task || !this.originalTask) {
+      this.hasUnsavedChanges = false;
+      this.updateUnsavedIndicator();
+      return;
+    }
+    const currentData = this.getFormData();
+    const originalIsMilestone = this.originalTask.isMilestone === true || this.originalTask.isMilestone === 'true';
+    this.hasUnsavedChanges = JSON.stringify(currentData) !== JSON.stringify({
+      title: this.originalTask.title || '',
+      status: this.originalTask.status || 'To Do',
+      priority: this.originalTask.priority || 'Medium',
+      type: this.originalTask.type || 'Task',
+      projectId: this.originalTask.projectId || '',
+      assignee: this.originalTask.assignee || '',
+      startDate: this.originalTask.startDate || '',
+      dueDate: this.originalTask.dueDate || '',
+      storyPoints: this.originalTask.storyPoints || 0,
+      estimatedHrs: this.originalTask.estimatedHrs || 0,
+      actualHrs: this.originalTask.actualHrs || 0,
+      description: this.originalTask.description || '',
+      isMilestone: originalIsMilestone,
+      milestoneDate: this.originalTask.milestoneDate || '',
+      milestoneType: this.originalTask.milestoneType || ''
+    });
+    this.updateUnsavedIndicator();
+  },
+
+  updateUnsavedIndicator() {
+    const indicator = document.getElementById('taskEditModalUnsavedIndicator');
+    if (indicator) {
+      indicator.classList.toggle('hidden', !this.hasUnsavedChanges);
+    }
+  },
+
+  updateSaveButtonState() {
+    const saveBtn = document.getElementById('taskEditSaveBtn');
+    if (!saveBtn) return;
+    const title = this.getInputValue('taskEditTitle').trim();
+    const isValid = title.length > 0;
+    saveBtn.disabled = !isValid || !this.hasUnsavedChanges;
+  },
+
+  updateDescriptionCharCount() {
+    const description = this.getInputValue('taskEditDescription');
+    const charCount = document.getElementById('taskEditDescCharCount');
+    if (charCount) {
+      const length = description.length;
+      const maxLength = 5000;
+      if (length > 0) {
+        charCount.classList.remove('hidden');
+        charCount.textContent = `${length}/${maxLength}`;
+        charCount.className = length > maxLength ? 'text-xs text-red-500' : 'text-xs text-gray-400';
+      } else {
+        charCount.classList.add('hidden');
+      }
+    }
+  },
+
+  toggleMilestoneFields(show) {
+    const milestoneFields = document.getElementById('taskEditMilestoneFields');
+    if (milestoneFields) {
+      if (show) {
+        milestoneFields.classList.remove('hidden');
+      } else {
+        milestoneFields.classList.add('hidden');
+      }
+    }
+  },
+
+  loadDependencies() {
+    if (!this.task || !this.task.id) return;
+
+    const loadingEl = document.getElementById('taskEditDependenciesLoading');
+    const listEl = document.getElementById('taskEditDependenciesList');
+    const emptyEl = document.getElementById('taskEditDependenciesEmpty');
+
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    if (listEl) listEl.classList.add('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    google.script.run
+      .withSuccessHandler((deps) => {
+        if (loadingEl) loadingEl.classList.add('hidden');
+        const predecessors = deps.predecessors || [];
+        const successors = deps.successors || [];
+        if (predecessors.length === 0 && successors.length === 0) {
+          if (emptyEl) emptyEl.classList.remove('hidden');
+          return;
+        }
+        if (listEl) {
+          listEl.classList.remove('hidden');
+          listEl.innerHTML = this.renderDependenciesList(deps);
+        }
+      })
+      .withFailureHandler((error) => {
+        if (loadingEl) loadingEl.innerHTML = '<span class="text-red-500"><i class="fas fa-exclamation-circle mr-1"></i> Failed to load</span>';
+        console.error('Failed to load dependencies:', error);
+      })
+      .getTaskDependenciesWithDetails(this.task.id);
+  },
+
+  renderDependenciesList(deps) {
+    const predecessors = deps.predecessors || [];
+    const successors = deps.successors || [];
+    let html = '';
+
+    if (predecessors.length > 0) {
+      html += `
+        <div class="mb-3">
+          <div class="text-xs uppercase font-semibold text-red-600 mb-2 flex items-center gap-1">
+            <i class="fas fa-ban"></i> Blocked By (${predecessors.length})
+          </div>
+          ${predecessors.map(dep => dep.task ? `
+            <div class="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg mb-2">
+              <div class="flex items-center gap-2 flex-1 min-w-0">
+                <span class="text-xs font-mono text-red-700 bg-red-100 px-2 py-0.5 rounded">${this.escapeHtml(dep.task.id)}</span>
+                <span class="text-sm text-red-900 font-medium truncate">${this.escapeHtml(dep.task.title)}</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-white text-gray-600">${this.escapeHtml(dep.task.status)}</span>
+              </div>
+              <button onclick="TaskEditModal.removeDependency('${dep.id}')" class="text-red-500 hover:text-red-700 p-1" title="Remove">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          ` : '').join('')}
+        </div>
+      `;
+    }
+
+    if (successors.length > 0) {
+      html += `
+        <div>
+          <div class="text-xs uppercase font-semibold text-blue-600 mb-2 flex items-center gap-1">
+            <i class="fas fa-arrow-right"></i> Blocking (${successors.length})
+          </div>
+          ${successors.map(dep => dep.task ? `
+            <div class="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+              <div class="flex items-center gap-2 flex-1 min-w-0">
+                <span class="text-xs font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">${this.escapeHtml(dep.task.id)}</span>
+                <span class="text-sm text-blue-900 font-medium truncate">${this.escapeHtml(dep.task.title)}</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-white text-gray-600">${this.escapeHtml(dep.task.status)}</span>
+              </div>
+              <button onclick="TaskEditModal.removeDependency('${dep.id}')" class="text-blue-500 hover:text-blue-700 p-1" title="Remove">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          ` : '').join('')}
+        </div>
+      `;
+    }
+
+    return html;
+  },
+
+  openDependencyPicker(type) {
+    if (!this.task || !this.task.id) {
+      toast('Please save the task first', 'warning');
+      return;
+    }
+    if (typeof DependencyPicker !== 'undefined') {
+      DependencyPicker.open(this.task.id, type);
+    } else {
+      toast('Dependency picker not available', 'error');
+    }
+  },
+
+  removeDependency(dependencyId) {
+    if (!confirm('Remove this dependency?')) return;
+    google.script.run
+      .withSuccessHandler((result) => {
+        if (result.success) {
+          toast('Dependency removed', 'success');
+          this.loadDependencies();
+        } else {
+          toast(result.error || 'Failed to remove dependency', 'error');
+        }
+      })
+      .withFailureHandler((error) => {
+        toast('Failed to remove dependency', 'error');
+        console.error('Remove dependency failed:', error);
+      })
+      .removeDependency(dependencyId);
+  },
+
+  getFormData() {
+    const milestoneCheckbox = document.getElementById('taskEditIsMilestone');
+    const isMilestone = milestoneCheckbox ? milestoneCheckbox.checked : false;
+    return {
+      title: this.getInputValue('taskEditTitle').trim(),
+      status: this.getInputValue('taskEditStatus'),
+      priority: this.getInputValue('taskEditPriority'),
+      type: this.getInputValue('taskEditType'),
+      projectId: this.getInputValue('taskEditProject'),
+      assignee: this.getInputValue('taskEditAssignee'),
+      startDate: this.getInputValue('taskEditStartDate'),
+      dueDate: this.getInputValue('taskEditDueDate'),
+      storyPoints: parseInt(this.getInputValue('taskEditStoryPoints')) || 0,
+      estimatedHrs: parseFloat(this.getInputValue('taskEditEstimatedHrs')) || 0,
+      actualHrs: parseFloat(this.getInputValue('taskEditActualHrs')) || 0,
+      description: this.getInputValue('taskEditDescription').trim(),
+      isMilestone: isMilestone,
+      milestoneDate: this.getInputValue('taskEditMilestoneDate'),
+      milestoneType: this.getInputValue('taskEditMilestoneType')
+    };
+  },
+
+  save() {
+    if (!this.task || !this.task.id) {
+      toast('No task to save', 'error');
+      return;
+    }
+
+    const title = this.getInputValue('taskEditTitle').trim();
+    if (!title) {
+      toast('Title is required', 'error');
+      const titleInput = document.getElementById('taskEditTitle');
+      if (titleInput) {
+        titleInput.classList.add('error');
+        titleInput.focus();
+      }
+      return;
+    }
+
+    const milestoneCheckbox = document.getElementById('taskEditIsMilestone');
+    if (milestoneCheckbox && milestoneCheckbox.checked) {
+      const milestoneDate = this.getInputValue('taskEditMilestoneDate');
+      if (!milestoneDate) {
+        toast('Milestone date is required for milestone tasks', 'error');
+        const milestoneDateInput = document.getElementById('taskEditMilestoneDate');
+        if (milestoneDateInput) {
+          milestoneDateInput.classList.add('error');
+          milestoneDateInput.focus();
+        }
+        return;
+      }
+    }
+
+    const formData = this.getFormData();
+    const saveBtn = document.getElementById('taskEditSaveBtn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    }
+
+    toast('Saving changes...', 'info');
+    google.script.run
+      .withSuccessHandler(() => {
+        toast('Task updated successfully', 'success');
+        if (typeof loadBoard === 'function') {
+          loadBoard();
+        }
+        this.close();
+        if (TaskDetailPanel.isOpen && TaskDetailPanel.task?.id === this.task.id) {
+          TaskDetailPanel.loadTask(this.task.id);
+        }
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to save task:', error);
+        toast('Failed to save changes. Please try again.', 'error');
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
+        }
+      })
+      .saveTaskUpdate(this.task.id, formData);
+  },
+
+  cancel() {
+    if (this.hasUnsavedChanges) {
+      if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
+        return;
+      }
+    }
+    this.close();
+  },
+
+  deleteTask() {
+    if (!this.task || !this.task.id) return;
+    const taskTitle = this.task.title || 'this task';
+    const confirmed = confirm(`Are you sure you want to delete "${taskTitle}"?\n\nThis action cannot be undone.`);
+    if (!confirmed) return;
+
+    toast('Deleting task...', 'info');
+    google.script.run
+      .withSuccessHandler(() => {
+        toast('Task deleted successfully', 'success');
+        if (typeof loadBoard === 'function') {
+          loadBoard();
+        }
+        this.close();
+        if (TaskDetailPanel.isOpen && TaskDetailPanel.task?.id === this.task.id) {
+          TaskDetailPanel.close();
+        }
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to delete task:', error);
+        toast('Failed to delete task. Please try again.', 'error');
+      })
+      .deleteTask(this.task.id);
+  },
+
+  setElementText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  },
+
+  setInputValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+  },
+
+  getInputValue(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : '';
+  },
+
+  escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+
+  comments: [],
+  mentionAutocomplete: null,
+  cachedUsers: [],
+  usersCacheLoaded: false,
+
+  initCommentSection() {
+    const input = document.getElementById('taskEditCommentInput');
+    if (!input) return;
+
+    this.prefetchUsers();
+
+    input.addEventListener('input', () => {
+      this.updateCommentCharCount();
+      this.updatePostButtonState();
+      this.handleMentionInput();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        this.postComment();
+      }
+      if (e.key === 'Escape' && this.isMentionDropdownVisible()) {
+        e.preventDefault();
+        this.hideMentionDropdown();
+      }
+      if (this.isMentionDropdownVisible()) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          this.navigateMentionSuggestion(1);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          this.navigateMentionSuggestion(-1);
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          this.selectMentionSuggestion();
+        }
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#taskEditMentionDropdown') && !e.target.closest('#taskEditCommentInput')) {
+        this.hideMentionDropdown();
+      }
+    });
+  },
+
+  refreshUsers() {
+    toast('Refreshing users...', 'info');
+    google.script.run
+      .withSuccessHandler(() => {
+        google.script.run
+          .withSuccessHandler((users) => {
+            this.cachedUsers = (users || []).map(u => ({
+              email: u.email,
+              name: u.name || u.email.split('@')[0],
+              displayText: (u.name || u.email.split('@')[0]) + ' (' + u.email + ')'
+            }));
+            this.usersCacheLoaded = true;
+            toast('Users refreshed: ' + this.cachedUsers.length + ' found', 'success');
+            if (typeof State !== 'undefined') {
+              State.setUsers(users);
+            }
+          })
+          .withFailureHandler((error) => {
+            console.error('refreshUsers: Failed to load users:', error);
+            toast('Failed to refresh users', 'error');
+          })
+          .getAllUsersForMentions(true);
+      })
+      .withFailureHandler((error) => {
+        console.warn('refreshUsers: Failed to clear cache:', error);
+        this.prefetchUsers();
+      })
+      .clearUserCache();
+  },
+
+  prefetchUsers() {
+    if (typeof State !== 'undefined' && State.users && State.users.length > 0) {
+      this.cachedUsers = State.users.map(u => ({
+        email: u.email,
+        name: u.name || u.email.split('@')[0],
+        displayText: (u.name || u.email.split('@')[0]) + ' (' + u.email + ')'
+      }));
+      this.usersCacheLoaded = true;
+    }
+
+    google.script.run
+      .withSuccessHandler((users) => {
+        const freshUsers = (users || []).map(u => ({
+          email: u.email,
+          name: u.name || u.email.split('@')[0],
+          displayText: (u.name || u.email.split('@')[0]) + ' (' + u.email + ')'
+        }));
+        this.cachedUsers = freshUsers;
+        this.usersCacheLoaded = true;
+        if (typeof State !== 'undefined') {
+          State.users = users;
+        }
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to fetch fresh users:', error);
+        if (!this.usersCacheLoaded || this.cachedUsers.length === 0) {
+          google.script.run
+            .withSuccessHandler((users) => {
+              this.cachedUsers = (users || []).map(u => ({
+                email: u.email,
+                name: u.name || u.email.split('@')[0],
+                displayText: (u.name || u.email.split('@')[0]) + ' (' + u.email + ')'
+              }));
+              this.usersCacheLoaded = true;
+            })
+            .loadUsersFresh();
+        }
+      })
+      .getAllUsersForMentions(true);
+  },
+
+  loadComments() {
+    if (!this.task || !this.task.id) {
+      console.error('loadComments: No task or task.id available');
+      return;
+    }
+
+    const taskId = this.task.id;
+    const loadingEl = document.getElementById('taskEditCommentsLoading');
+    const emptyEl = document.getElementById('taskEditCommentsEmpty');
+    const listEl = document.getElementById('taskEditCommentsList');
+
+    this.comments = [];
+    if (listEl) listEl.innerHTML = '';
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    google.script.run
+      .withSuccessHandler((comments) => {
+        if (comments && comments.length > 0) {
+          const validComments = comments.filter(c => c.taskId === taskId);
+          this.comments = validComments;
+        } else {
+          this.comments = [];
+        }
+        if (loadingEl) loadingEl.classList.add('hidden');
+        this.renderComments();
+      })
+      .withFailureHandler((error) => {
+        if (loadingEl) loadingEl.innerHTML = '<span class="text-red-500 text-sm"><i class="fas fa-exclamation-circle mr-1"></i> Failed to load comments</span>';
+        console.error('Failed to load comments:', error);
+      })
+      .loadComments(taskId);
+  },
+
+  renderComments() {
+    const listEl = document.getElementById('taskEditCommentsList');
+    const emptyEl = document.getElementById('taskEditCommentsEmpty');
+    const countEl = document.getElementById('taskEditCommentCount');
+
+    const currentTaskId = this.task ? this.task.id : null;
+    const validComments = this.comments.filter(c => {
+      const commentTaskId = String(c.taskId || '').trim().toLowerCase();
+      const expectedTaskId = String(currentTaskId || '').trim().toLowerCase();
+      return commentTaskId === expectedTaskId;
+    });
+
+    if (countEl) countEl.textContent = validComments.length;
+
+    if (validComments.length === 0) {
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      if (listEl) listEl.innerHTML = emptyEl ? emptyEl.outerHTML : '';
+      return;
+    }
+
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    const sortedComments = [...validComments].sort((a, b) =>
+      new Date(a.createdAt) - new Date(b.createdAt)
+    );
+
+    const commentsHtml = sortedComments.map(comment => this.renderCommentItem(comment)).join('');
+
+    const loadingEl = document.getElementById('taskEditCommentsLoading');
+    if (loadingEl) loadingEl.remove();
+
+    listEl.innerHTML = commentsHtml;
+    listEl.scrollTop = listEl.scrollHeight;
+  },
+
+  renderCommentItem(comment) {
+    const userName = comment.userName || comment.userId || 'Unknown';
+    const initials = this.getInitials(userName);
+    const timeAgo = this.formatTimeAgo(comment.createdAt);
+    const formattedContent = this.formatMentions(comment.formattedContent || comment.content);
+    const isEdited = comment.isEdited ? '<span class="text-gray-400 text-xs ml-1">(edited)</span>' : '';
+
+    return `
+      <div class="comment-item bg-white rounded-lg p-3 shadow-sm border border-gray-100" data-comment-id="${comment.id}">
+        <div class="flex items-start gap-3">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-yellow-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-medium">
+            ${this.escapeHtml(initials)}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="font-medium text-sm text-gray-900">${this.escapeHtml(userName)}</span>
+              <span class="text-xs text-gray-400">${timeAgo}</span>
+              ${isEdited}
+            </div>
+            <div class="text-sm text-gray-700 whitespace-pre-wrap break-words comment-content">${formattedContent}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  formatMentions(text) {
+    if (!text) return '';
+    let formatted = text;
+
+    if (formatted.includes('<span class="mention">')) {
+      formatted = formatted.replace(/<span class="mention">/g,
+        '<span class="mention bg-amber-100 text-amber-800 px-1 rounded">'
+      );
+      return formatted;
+    }
+
+    formatted = formatted.replace(/@\[([^\]]+)\]\([^)]+\)/g,
+      '<span class="mention bg-amber-100 text-amber-800 px-1 rounded">@$1</span>'
+    );
+
+    formatted = formatted.replace(/@([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?![^<]*<\/span>)/g,
+      '<span class="mention bg-amber-100 text-amber-800 px-1 rounded">@$1</span>'
+    );
+
+    return formatted;
+  },
+
+  getInitials(name) {
+    if (!name) return '?';
+    const parts = name.split(/[@\s]+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  },
+
+  formatTimeAgo(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  },
+
+  updateCommentCharCount() {
+    const input = document.getElementById('taskEditCommentInput');
+    const countEl = document.getElementById('taskEditCommentCharCount');
+    if (input && countEl) {
+      const len = input.value.length;
+      countEl.textContent = `${len}/2000`;
+      countEl.className = len > 1800 ? 'text-xs text-red-500' : 'text-xs text-gray-400';
+    }
+  },
+
+  updatePostButtonState() {
+    const input = document.getElementById('taskEditCommentInput');
+    const btn = document.getElementById('taskEditPostCommentBtn');
+    if (input && btn) {
+      btn.disabled = input.value.trim().length === 0;
+    }
+  },
+
+  postComment() {
+    const input = document.getElementById('taskEditCommentInput');
+    const btn = document.getElementById('taskEditPostCommentBtn');
+    if (!input || !this.task || !this.task.id) return;
+
+    const content = input.value.trim();
+    if (!content) return;
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin text-xs"></i> Posting...';
+    }
+
+    google.script.run
+      .withSuccessHandler((result) => {
+        if (result && result.success) {
+          input.value = '';
+          this.updateCommentCharCount();
+          this.updatePostButtonState();
+          this.loadComments();
+          if (result.mentionCount > 0) {
+            toast('Comment posted. ' + result.mentionCount + ' user(s) notified.', 'success');
+          } else {
+            toast('Comment posted', 'success');
+          }
+        } else {
+          toast(result.error || 'Failed to post comment', 'error');
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane text-xs"></i> Post';
+        }
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to post comment:', error);
+        toast('Failed to post comment: ' + (error.message || error), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane text-xs"></i> Post';
+        }
+      })
+      .saveComment(this.task.id, content);
+  },
+
+  mentionQuery: '',
+  mentionStartPos: -1,
+  mentionSuggestions: [],
+  mentionSelectedIndex: 0,
+
+  handleMentionInput() {
+    const input = document.getElementById('taskEditCommentInput');
+    if (!input) return;
+
+    const cursorPos = input.selectionStart;
+    const text = input.value;
+
+    let atPos = -1;
+    for (let i = cursorPos - 1; i >= 0; i--) {
+      if (text[i] === '@') {
+        atPos = i;
+        break;
+      }
+      if (text[i] === ' ' || text[i] === '\n') break;
+    }
+
+    if (atPos === -1) {
+      this.hideMentionDropdown();
+      return;
+    }
+
+    const query = text.substring(atPos + 1, cursorPos);
+    if (query.length < 1) {
+      this.hideMentionDropdown();
+      return;
+    }
+
+    this.mentionQuery = query;
+    this.mentionStartPos = atPos;
+    this.searchMentionUsers(query);
+  },
+
+  searchMentionUsers(query) {
+    if (this.usersCacheLoaded && this.cachedUsers.length > 0) {
+      const queryLower = query.toLowerCase();
+      const filtered = this.cachedUsers
+        .filter(user => {
+          const nameMatch = user.name && user.name.toLowerCase().includes(queryLower);
+          const emailMatch = user.email.toLowerCase().includes(queryLower);
+          return nameMatch || emailMatch;
+        })
+        .slice(0, 8);
+
+      this.mentionSuggestions = filtered;
+      this.mentionSelectedIndex = 0;
+
+      if (this.mentionSuggestions.length > 0) {
+        this.renderMentionDropdown();
+      } else {
+        this.hideMentionDropdown();
+      }
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler((users) => {
+        this.mentionSuggestions = users || [];
+        this.mentionSelectedIndex = 0;
+        if (this.mentionSuggestions.length > 0) {
+          this.renderMentionDropdown();
+        } else {
+          this.hideMentionDropdown();
+        }
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to search users:', error);
+        this.hideMentionDropdown();
+      })
+      .getUserSuggestions(query, []);
+  },
+
+  renderMentionDropdown() {
+    const dropdown = document.getElementById('taskEditMentionDropdown');
+    if (!dropdown) return;
+
+    const html = this.mentionSuggestions.map((user, index) => {
+      const isSelected = index === this.mentionSelectedIndex;
+      const initials = this.getInitials(user.name || user.email);
+      return `
+        <div class="mention-suggestion flex items-center gap-2 px-3 py-2 cursor-pointer ${isSelected ? 'bg-amber-50' : 'hover:bg-gray-50'}"
+             data-index="${index}"
+             onclick="TaskEditModal.selectMentionAtIndex(${index})">
+          <div class="w-7 h-7 rounded-full bg-gradient-to-br from-amber-500 to-yellow-600 text-white text-xs flex items-center justify-center font-medium">
+            ${this.escapeHtml(initials)}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-gray-900 truncate">${this.escapeHtml(user.name || user.email)}</div>
+            <div class="text-xs text-gray-500 truncate">${this.escapeHtml(user.email)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    dropdown.innerHTML = html;
+    dropdown.classList.remove('hidden');
+  },
+
+  hideMentionDropdown() {
+    const dropdown = document.getElementById('taskEditMentionDropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    this.mentionSuggestions = [];
+    this.mentionSelectedIndex = 0;
+  },
+
+  isMentionDropdownVisible() {
+    const dropdown = document.getElementById('taskEditMentionDropdown');
+    return dropdown && !dropdown.classList.contains('hidden');
+  },
+
+  navigateMentionSuggestion(direction) {
+    const newIndex = this.mentionSelectedIndex + direction;
+    if (newIndex >= 0 && newIndex < this.mentionSuggestions.length) {
+      this.mentionSelectedIndex = newIndex;
+      this.renderMentionDropdown();
+    }
+  },
+
+  selectMentionAtIndex(index) {
+    this.mentionSelectedIndex = index;
+    this.selectMentionSuggestion();
+  },
+
+  selectMentionSuggestion() {
+    if (this.mentionSuggestions.length === 0) return;
+
+    const user = this.mentionSuggestions[this.mentionSelectedIndex];
+    if (!user) return;
+
+    const input = document.getElementById('taskEditCommentInput');
+    if (!input) return;
+
+    const text = input.value;
+    const cursorPos = input.selectionStart;
+    const displayName = user.name || user.email.split('@')[0];
+    const mentionText = '@' + displayName;
+
+    const beforeMention = text.substring(0, this.mentionStartPos);
+    const afterMention = text.substring(cursorPos);
+    const newText = beforeMention + mentionText + ' ' + afterMention;
+
+    input.value = newText;
+
+    const newCursorPos = this.mentionStartPos + mentionText.length + 1;
+    input.setSelectionRange(newCursorPos, newCursorPos);
+    input.focus();
+
+    this.hideMentionDropdown();
+    this.updateCommentCharCount();
+    this.updatePostButtonState();
+  }
+};
+</script>

@@ -1,0 +1,948 @@
+<!-- Funnel View HTML -->
+<div class="funnel-container">
+  <!-- Header -->
+  <div class="pf-card mb-6">
+    <div class="pf-card-body">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-900">
+          <i class="fas fa-filter text-primary-500 mr-2"></i>
+          Ticket Funnel
+        </h2>
+        <button
+          onclick="FunnelPage.openImportDialog()"
+          class="pf-btn pf-btn-primary"
+        >
+          <i class="fas fa-file-import"></i> Import Tickets
+        </button>
+      </div>
+      <!-- Stats -->
+      <div class="grid grid-cols-4 gap-4">
+        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+          <div class="text-2xl font-bold text-gray-900" id="funnelStatPending">0</div>
+          <div class="text-gray-600 text-sm">Pending Review</div>
+        </div>
+        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <div class="text-2xl font-bold text-blue-600" id="funnelStatReviewed">0</div>
+          <div class="text-blue-800 text-sm">Reviewed</div>
+        </div>
+        <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+          <div class="text-2xl font-bold text-green-600" id="funnelStatImported">0</div>
+          <div class="text-green-800 text-sm">Imported</div>
+        </div>
+        <div class="bg-red-50 p-4 rounded-lg border border-red-200">
+          <div class="text-2xl font-bold text-red-600" id="funnelStatRejected">0</div>
+          <div class="text-red-800 text-sm">Rejected</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters and Actions -->
+  <div class="pf-card mb-6">
+    <div class="pf-card-body">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <select
+            id="funnelStatusFilter"
+            onchange="FunnelPage.filterTickets()"
+            class="pf-input w-48"
+          >
+            <option value="">All Statuses</option>
+            <option value="pending">Pending Review</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="imported">Imported</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <input
+            type="text"
+            id="funnelSearchInput"
+            placeholder="Search tickets..."
+            class="pf-input w-64"
+            oninput="FunnelPage.searchTickets()"
+          />
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="funnelSelectedCount" class="text-sm text-gray-600 hidden">
+            <span id="funnelSelectedCountNum">0</span> selected
+          </span>
+          <button
+            id="funnelBulkAssignBtn"
+            onclick="FunnelPage.openBulkAssignDialog()"
+            class="pf-btn pf-btn-secondary hidden"
+          >
+            <i class="fas fa-user-plus"></i> Assign
+          </button>
+          <button
+            id="funnelBulkImportBtn"
+            onclick="FunnelPage.bulkImport()"
+            class="pf-btn pf-btn-primary hidden"
+          >
+            <i class="fas fa-check"></i> Import Selected
+          </button>
+          <button
+            id="funnelBulkDeleteBtn"
+            onclick="FunnelPage.bulkDelete()"
+            class="pf-btn pf-btn-secondary hidden"
+          >
+            <i class="fas fa-trash"></i> Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tickets List -->
+  <div class="pf-card">
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-200">
+            <th class="px-4 py-3 text-left">
+              <input
+                type="checkbox"
+                id="funnelSelectAll"
+                onchange="FunnelPage.toggleSelectAll()"
+                class="rounded"
+              />
+            </th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ID</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Title</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Priority</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Assignee</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Import Status</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Imported</th>
+            <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="funnelTableBody">
+          <tr>
+            <td colspan="9" class="px-4 py-12 text-center text-gray-500">
+              <i class="fas fa-inbox text-4xl mb-3 text-gray-300"></i>
+              <p>No tickets in funnel</p>
+              <p class="text-sm mt-1">Click "Import Tickets" to get started</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Import Dialog Modal -->
+<div id="funnelImportDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden pf-animate-scale-in">
+    <div id="funnelImportDialogContent">
+      <!-- Step 1: Select Workbook -->
+      <div id="funnelImportStep1" class="funnel-import-step">
+        <div class="flex items-center justify-between px-6 py-4 border-b">
+          <h2 class="text-lg font-semibold">Import Tickets - Step 1 of 3</h2>
+          <button onclick="FunnelPage.closeImportDialog()" class="text-gray-400 hover:text-gray-600">
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+        <div class="p-6 space-y-4">
+          <p class="text-gray-600">Enter the Google Sheets ID of the workbook containing your tickets.</p>
+          <div>
+            <label class="pf-label">Workbook ID</label>
+            <input
+              type="text"
+              id="funnelWorkbookId"
+              placeholder="1ABC...XYZ (from Google Sheets URL)"
+              class="pf-input"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+              Find this in the URL: https://docs.google.com/spreadsheets/d/<strong>WORKBOOK_ID</strong>/edit
+            </p>
+          </div>
+          <div>
+            <label class="pf-label">Sheet Name</label>
+            <input
+              type="text"
+              id="funnelSheetName"
+              placeholder="Sheet1"
+              class="pf-input"
+            />
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+          <button onclick="FunnelPage.closeImportDialog()" class="pf-btn pf-btn-secondary">Cancel</button>
+          <button onclick="FunnelPage.loadWorkbookData()" class="pf-btn pf-btn-primary">
+            Next <i class="fas fa-arrow-right ml-1"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Column Mapping (hidden initially) -->
+      <div id="funnelImportStep2" class="funnel-import-step hidden"></div>
+
+      <!-- Step 3: Preview & Confirm (hidden initially) -->
+      <div id="funnelImportStep3" class="funnel-import-step hidden"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+.funnel-ticket-row {
+  border-bottom: 1px solid var(--pf-gray-200);
+  transition: background-color var(--pf-transition-fast);
+}
+
+.funnel-ticket-row:hover {
+  background-color: var(--pf-gray-50);
+}
+
+.funnel-ticket-row.selected {
+  background-color: var(--pf-primary-50);
+}
+</style>
+
+<script>
+const FunnelPage = {
+  tickets: [],
+  filteredTickets: [],
+  selectedTickets: new Set(),
+  columnMapping: null,
+  importData: null,
+  currentStep: 1,
+  hasInitialized: false,
+
+  init() {
+    if (this.hasInitialized && this.tickets.length > 0) {
+      this.renderTickets();
+      this.updateStats();
+      showLoading(false);
+      return;
+    }
+    this.hasInitialized = true;
+    this.loadTickets();
+  },
+
+  loadTickets() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((tickets) => {
+        this.tickets = tickets;
+        this.filteredTickets = tickets;
+        this.renderTickets();
+        this.updateStats();
+        showLoading(false);
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to load funnel tickets:', error);
+        toast('Failed to load funnel tickets', 'error');
+        showLoading(false);
+      })
+      .getFunnelTickets();
+  },
+
+  renderTickets() {
+    const tbody = document.getElementById('funnelTableBody');
+    if (!tbody) return;
+
+    if (this.filteredTickets.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="9" class="px-4 py-12 text-center text-gray-500">
+            <i class="fas fa-inbox text-4xl mb-3 text-gray-300"></i>
+            <p>No tickets match your filters</p>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = this.filteredTickets.map(ticket => this.renderTicketRow(ticket)).join('');
+    this.updateSelectionUI();
+  },
+
+  renderTicketRow(ticket) {
+    const isSelected = this.selectedTickets.has(ticket.id);
+    const mappedData = ticket.mappedData || {};
+    return `
+      <tr class="funnel-ticket-row ${isSelected ? 'selected' : ''}" data-ticket-id="${ticket.id}">
+        <td class="px-4 py-3">
+          <input
+            type="checkbox"
+            class="funnel-ticket-checkbox rounded"
+            data-ticket-id="${ticket.id}"
+            ${isSelected ? 'checked' : ''}
+            onchange="FunnelPage.toggleTicketSelection('${ticket.id}')"
+          />
+        </td>
+        <td class="px-4 py-3">
+          <span class="text-xs font-mono text-gray-500">${this.escapeHtml(ticket.id)}</span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="font-medium text-gray-900">${this.escapeHtml(mappedData.title || 'Untitled')}</span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="pf-badge pf-badge-primary">${this.escapeHtml(mappedData.status || 'To Do')}</span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="text-sm text-gray-600">${this.escapeHtml(mappedData.priority || 'Medium')}</span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="text-sm text-gray-600">${this.escapeHtml(ticket.assignedTo || 'Unassigned')}</span>
+        </td>
+        <td class="px-4 py-3">
+          ${this.renderImportStatus(ticket.importStatus)}
+        </td>
+        <td class="px-4 py-3">
+          <span class="text-xs text-gray-500">${ticket.importedAt ? this.formatDate(ticket.importedAt) : '-'}</span>
+        </td>
+        <td class="px-4 py-3 text-center">
+          <div class="flex items-center justify-center gap-2">
+            <button
+              onclick="FunnelPage.editTicket('${ticket.id}')"
+              class="p-1 text-gray-500 hover:text-primary-600"
+              title="Edit"
+            >
+              <i class="fas fa-edit"></i>
+            </button>
+            <button
+              onclick="FunnelPage.viewTicket('${ticket.id}')"
+              class="p-1 text-gray-500 hover:text-blue-600"
+              title="View details"
+            >
+              <i class="fas fa-eye"></i>
+            </button>
+            <button
+              onclick="FunnelPage.deleteTicket('${ticket.id}')"
+              class="p-1 text-gray-500 hover:text-red-600"
+              title="Delete"
+            >
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  },
+
+  renderImportStatus(status) {
+    const badges = {
+      'pending': '<span class="pf-badge pf-badge-gray">Pending</span>',
+      'reviewed': '<span class="pf-badge pf-badge-info">Reviewed</span>',
+      'imported': '<span class="pf-badge pf-badge-success">Imported</span>',
+      'rejected': '<span class="pf-badge pf-badge-error">Rejected</span>'
+    };
+    return badges[status] || badges['pending'];
+  },
+
+  updateStats() {
+    const stats = {
+      pending: 0,
+      reviewed: 0,
+      imported: 0,
+      rejected: 0
+    };
+
+    this.tickets.forEach(ticket => {
+      const status = ticket.importStatus || 'pending';
+      stats[status] = (stats[status] || 0) + 1;
+    });
+
+    const pendingEl = document.getElementById('funnelStatPending');
+    const reviewedEl = document.getElementById('funnelStatReviewed');
+    const importedEl = document.getElementById('funnelStatImported');
+    const rejectedEl = document.getElementById('funnelStatRejected');
+
+    if (pendingEl) pendingEl.textContent = stats.pending;
+    if (reviewedEl) reviewedEl.textContent = stats.reviewed;
+    if (importedEl) importedEl.textContent = stats.imported;
+    if (rejectedEl) rejectedEl.textContent = stats.rejected;
+  },
+
+  filterTickets() {
+    const statusFilter = document.getElementById('funnelStatusFilter').value;
+    const searchQuery = document.getElementById('funnelSearchInput').value.toLowerCase();
+
+    this.filteredTickets = this.tickets.filter(ticket => {
+      if (statusFilter && ticket.importStatus !== statusFilter) {
+        return false;
+      }
+      if (searchQuery) {
+        const mappedData = ticket.mappedData || {};
+        const searchFields = [
+          ticket.id,
+          mappedData.title,
+          mappedData.description,
+          ticket.assignedTo
+        ].filter(Boolean).map(f => String(f).toLowerCase());
+        if (!searchFields.some(field => field.includes(searchQuery))) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    this.renderTickets();
+  },
+
+  searchTickets() {
+    this.filterTickets();
+  },
+
+  toggleTicketSelection(ticketId) {
+    if (this.selectedTickets.has(ticketId)) {
+      this.selectedTickets.delete(ticketId);
+    } else {
+      this.selectedTickets.add(ticketId);
+    }
+    this.updateSelectionUI();
+  },
+
+  toggleSelectAll() {
+    const checkbox = document.getElementById('funnelSelectAll');
+    if (checkbox.checked) {
+      this.filteredTickets.forEach(ticket => {
+        this.selectedTickets.add(ticket.id);
+      });
+    } else {
+      this.selectedTickets.clear();
+    }
+    this.renderTickets();
+  },
+
+  updateSelectionUI() {
+    const count = this.selectedTickets.size;
+    const countEl = document.getElementById('funnelSelectedCount');
+    const countNumEl = document.getElementById('funnelSelectedCountNum');
+    const bulkAssignBtn = document.getElementById('funnelBulkAssignBtn');
+    const bulkImportBtn = document.getElementById('funnelBulkImportBtn');
+    const bulkDeleteBtn = document.getElementById('funnelBulkDeleteBtn');
+
+    if (count > 0) {
+      if (countEl) countEl.classList.remove('hidden');
+      if (countNumEl) countNumEl.textContent = count;
+      if (bulkAssignBtn) bulkAssignBtn.classList.remove('hidden');
+      if (bulkImportBtn) bulkImportBtn.classList.remove('hidden');
+      if (bulkDeleteBtn) bulkDeleteBtn.classList.remove('hidden');
+    } else {
+      if (countEl) countEl.classList.add('hidden');
+      if (bulkAssignBtn) bulkAssignBtn.classList.add('hidden');
+      if (bulkImportBtn) bulkImportBtn.classList.add('hidden');
+      if (bulkDeleteBtn) bulkDeleteBtn.classList.add('hidden');
+    }
+
+    document.querySelectorAll('.funnel-ticket-checkbox').forEach(checkbox => {
+      const ticketId = checkbox.dataset.ticketId;
+      checkbox.checked = this.selectedTickets.has(ticketId);
+    });
+
+    document.querySelectorAll('.funnel-ticket-row').forEach(row => {
+      const ticketId = row.dataset.ticketId;
+      row.classList.toggle('selected', this.selectedTickets.has(ticketId));
+    });
+  },
+
+  openImportDialog() {
+    const dialog = document.getElementById('funnelImportDialog');
+    if (dialog) {
+      dialog.classList.remove('hidden');
+      this.currentStep = 1;
+      this.showImportStep(1);
+    }
+  },
+
+  closeImportDialog() {
+    const dialog = document.getElementById('funnelImportDialog');
+    if (dialog) {
+      dialog.classList.add('hidden');
+    }
+    this.currentStep = 1;
+    this.importData = null;
+    this.columnMapping = null;
+  },
+
+  showImportStep(step) {
+    for (let i = 1; i <= 3; i++) {
+      const stepEl = document.getElementById(`funnelImportStep${i}`);
+      if (stepEl) {
+        stepEl.classList.toggle('hidden', i !== step);
+      }
+    }
+    this.currentStep = step;
+  },
+
+  loadWorkbookData() {
+    const workbookId = document.getElementById('funnelWorkbookId').value.trim();
+    const sheetName = document.getElementById('funnelSheetName').value.trim();
+
+    if (!workbookId || !sheetName) {
+      toast('Please enter both Workbook ID and Sheet Name', 'warning');
+      return;
+    }
+
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to load workbook data', 'error');
+          return;
+        }
+        this.importData = result;
+        this.renderColumnMappingStep();
+        this.showImportStep(2);
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Failed to load workbook:', error);
+        toast('Failed to load workbook data', 'error');
+      })
+      .importTicketsFromWorkbook(workbookId, sheetName);
+  },
+
+  renderColumnMappingStep() {
+    const step2 = document.getElementById('funnelImportStep2');
+    if (!step2 || !this.importData) return;
+
+    const sourceColumns = this.importData.headers;
+    const taskFields = [
+      { value: 'title', label: 'Title *', required: true },
+      { value: 'description', label: 'Description' },
+      { value: 'status', label: 'Status' },
+      { value: 'priority', label: 'Priority' },
+      { value: 'type', label: 'Type' },
+      { value: 'assignee', label: 'Assignee' },
+      { value: 'dueDate', label: 'Due Date' },
+      { value: 'startDate', label: 'Start Date' },
+      { value: 'storyPoints', label: 'Story Points' },
+      { value: 'estimatedHrs', label: 'Estimated Hours' },
+      { value: 'actualHrs', label: 'Actual Hours' }
+    ];
+
+    const autoMapping = this.detectColumnMapping(sourceColumns);
+    this.columnMapping = autoMapping;
+
+    step2.innerHTML = `
+      <div class="flex items-center justify-between px-6 py-4 border-b">
+        <h2 class="text-lg font-semibold">Import Tickets - Step 2 of 3: Map Columns</h2>
+        <button onclick="FunnelPage.closeImportDialog()" class="text-gray-400 hover:text-gray-600">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+        <p class="text-gray-600">Map columns from your source sheet to ProjectFlow task fields.</p>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+          <i class="fas fa-info-circle mr-1"></i>
+          Found <strong>${this.importData.count}</strong> tickets in <strong>${this.importData.sheetName}</strong>
+        </div>
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800 mb-4">
+          <i class="fas fa-magic mr-1"></i>
+          <strong>Smart Mapping Detected!</strong> Automatically mapped ${Object.keys(autoMapping).length} fields from Ad Hoc Request schema.
+        </div>
+        ${this.unmappedFields && this.unmappedFields.length > 0 ? `
+          <div class="bg-blue-50 border border-blue-300 rounded-lg p-4 text-sm text-blue-900 mb-4">
+            <div class="flex items-start gap-2">
+              <i class="fas fa-info-circle mt-0.5"></i>
+              <div class="flex-1">
+                <strong>Data Preservation:</strong> ${this.unmappedFields.length} fields will be preserved in original data storage.
+                <details class="mt-2">
+                  <summary class="cursor-pointer text-blue-700 hover:text-blue-900 font-medium">
+                    View unmapped fields (${this.unmappedFields.length})
+                  </summary>
+                  <div class="mt-2 pl-4 text-xs space-y-1">
+                    ${this.unmappedFields.map(field => `
+                      <div class="flex items-center gap-2">
+                        <i class="fas fa-database text-blue-400"></i>
+                        <code class="bg-white px-2 py-0.5 rounded">${this.escapeHtml(field)}</code>
+                      </div>
+                    `).join('')}
+                  </div>
+                  <div class="mt-3 p-2 bg-white rounded text-xs border border-blue-200">
+                    <strong>Note:</strong> All unmapped fields are preserved in the system and can be accessed via the raw data view or API.
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+        <div class="grid grid-cols-2 gap-4">
+          ${taskFields.map(field => {
+            const mappedColumn = autoMapping[field.value] || '';
+            return `
+              <div>
+                <label class="pf-label">
+                  ${field.label}
+                  ${mappedColumn ? '<span class="text-xs text-green-600 ml-1"><i class="fas fa-check-circle"></i> Auto-mapped</span>' : ''}
+                </label>
+                <select
+                  id="mapping_${field.value}"
+                  class="pf-input ${mappedColumn ? 'border-green-500 bg-green-50' : ''}"
+                  ${field.required ? 'required' : ''}
+                >
+                  <option value="">-- Not mapped --</option>
+                  ${sourceColumns.map(col => `
+                    <option value="${this.escapeHtml(col)}" ${col === mappedColumn ? 'selected' : ''}>
+                      ${this.escapeHtml(col)}
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <div class="flex items-center gap-2 mt-4">
+          <input type="checkbox" id="saveMapping" class="rounded" />
+          <label for="saveMapping" class="text-sm text-gray-600">
+            Save this mapping for future imports from this source
+          </label>
+        </div>
+      </div>
+      <div class="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
+        <button onclick="FunnelPage.showImportStep(1)" class="pf-btn pf-btn-secondary">
+          <i class="fas fa-arrow-left mr-1"></i> Back
+        </button>
+        <button onclick="FunnelPage.previewImport()" class="pf-btn pf-btn-primary">
+          Next <i class="fas fa-arrow-right ml-1"></i>
+        </button>
+      </div>
+    `;
+  },
+
+  detectColumnMapping(sourceColumns) {
+    const mapping = {};
+    const unmappedFields = [];
+    const normalize = (str) => str.toLowerCase().replace(/[_\s-]/g, '');
+
+    const mappingRules = {
+      title: ['requestname', 'requesttitle', 'title', 'taskname', 'name', 'subject'],
+      description: ['descriptionofrequest', 'description', 'details', 'summary', 'desc'],
+      status: ['status', 'state', 'requeststatus'],
+      priority: ['priority', 'urgency', 'importance'],
+      type: ['requesttypecategory', 'type', 'category', 'requesttype'],
+      assignee: ['assignedto', 'assignee', 'assigned', 'owner', 'assignedtoemail'],
+      dueDate: ['duedeadline', 'duedate', 'deadline', 'targetcompletiondate', 'targetdate'],
+      startDate: ['startdatetime', 'startdate', 'start', 'dateassigned', 'dateofrequest'],
+      storyPoints: ['difficultyLevel', 'difficulty', 'points', 'storypoints'],
+      estimatedHrs: ['timetocompletestimatedhours', 'estimatedhours', 'estimate', 'estimatedtime'],
+      actualHrs: ['timetocompleteactualhours', 'actualhours', 'actual', 'actualtime', 'timespent']
+    };
+
+    const usedColumns = new Set();
+
+    sourceColumns.forEach(sourceCol => {
+      const normalizedSource = normalize(sourceCol);
+      Object.keys(mappingRules).forEach(taskField => {
+        const patterns = mappingRules[taskField];
+        const matches = patterns.some(pattern => {
+          return normalizedSource === normalize(pattern) ||
+            normalizedSource.includes(normalize(pattern)) ||
+            normalize(pattern).includes(normalizedSource);
+        });
+        if (matches && !mapping[taskField]) {
+          mapping[taskField] = sourceCol;
+          usedColumns.add(sourceCol);
+        }
+      });
+    });
+
+    const importantUnmappedFields = [
+      'businessJustification',
+      'whatContractDoesItApplyTo',
+      'assignedTeam',
+      'assignedToName',
+      'requestor',
+      'contractorPoc',
+      'contractorPocEmail',
+      'internalNotes',
+      'resolutionNotes',
+      'deliverables',
+      'attachments',
+      'satisfactionRating',
+      'slaBreached',
+      'escalated',
+      'notificationEmails',
+      'topic',
+      'requestId',
+      'createdBy',
+      'lastUpdatedBy'
+    ];
+
+    sourceColumns.forEach(col => {
+      if (!usedColumns.has(col)) {
+        const normalizedCol = normalize(col);
+        const isImportant = importantUnmappedFields.some(field =>
+          normalizedCol.includes(normalize(field)) ||
+          normalize(field).includes(normalizedCol)
+        );
+        if (isImportant || col.length > 0) {
+          unmappedFields.push(col);
+        }
+      }
+    });
+
+    this.unmappedFields = unmappedFields;
+    return mapping;
+  },
+
+  previewImport() {
+    const titleMapping = document.getElementById('mapping_title').value;
+    if (!titleMapping) {
+      toast('Title field is required', 'warning');
+      return;
+    }
+
+    this.columnMapping = {};
+    document.querySelectorAll('[id^="mapping_"]').forEach(select => {
+      const fieldName = select.id.replace('mapping_', '');
+      const sourceColumn = select.value;
+      if (sourceColumn) {
+        this.columnMapping[fieldName] = sourceColumn;
+      }
+    });
+
+    const saveMappingCheckbox = document.getElementById('saveMapping');
+    if (saveMappingCheckbox && saveMappingCheckbox.checked) {
+      google.script.run.saveColumnMapping({
+        workbookId: this.importData.workbookId,
+        sheetName: this.importData.sheetName,
+        mapping: this.columnMapping
+      });
+    }
+
+    this.renderPreviewStep();
+    this.showImportStep(3);
+  },
+
+  renderPreviewStep() {
+    const step3 = document.getElementById('funnelImportStep3');
+    if (!step3 || !this.importData) return;
+
+    const previewTickets = this.importData.tickets.slice(0, 5);
+    step3.innerHTML = `
+      <div class="flex items-center justify-between px-6 py-4 border-b">
+        <h2 class="text-lg font-semibold">Import Tickets - Step 3 of 3: Preview & Confirm</h2>
+        <button onclick="FunnelPage.closeImportDialog()" class="text-gray-400 hover:text-gray-600">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+        <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
+          <i class="fas fa-check-circle mr-1"></i>
+          Ready to import <strong>${this.importData.count}</strong> tickets into the funnel
+        </div>
+        <p class="text-gray-600">Preview of first 5 tickets:</p>
+        <div class="space-y-3">
+          ${previewTickets.map(ticket => {
+            const mapped = {};
+            Object.keys(this.columnMapping).forEach(field => {
+              const sourceColumn = this.columnMapping[field];
+              mapped[field] = ticket[sourceColumn];
+            });
+            return `
+              <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div class="font-medium text-gray-900 mb-2">${this.escapeHtml(mapped.title || 'Untitled')}</div>
+                <div class="grid grid-cols-3 gap-2 text-sm text-gray-600">
+                  <div><strong>Status:</strong> ${this.escapeHtml(mapped.status || 'To Do')}</div>
+                  <div><strong>Priority:</strong> ${this.escapeHtml(mapped.priority || 'Medium')}</div>
+                  <div><strong>Type:</strong> ${this.escapeHtml(mapped.type || 'Task')}</div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        ${this.importData.count > 5 ? `
+          <p class="text-xs text-gray-500 italic">... and ${this.importData.count - 5} more tickets</p>
+        ` : ''}
+      </div>
+      <div class="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
+        <button onclick="FunnelPage.showImportStep(2)" class="pf-btn pf-btn-secondary">
+          <i class="fas fa-arrow-left mr-1"></i> Back
+        </button>
+        <button onclick="FunnelPage.confirmImport()" class="pf-btn pf-btn-primary">
+          <i class="fas fa-file-import mr-1"></i> Import to Funnel
+        </button>
+      </div>
+    `;
+  },
+
+  confirmImport() {
+    if (!this.importData || !this.columnMapping) {
+      toast('Import data not ready', 'error');
+      return;
+    }
+
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to stage tickets', 'error');
+          return;
+        }
+        toast(`Successfully staged ${result.stagedCount} tickets in funnel`, 'success');
+        this.closeImportDialog();
+        this.loadTickets();
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Failed to stage tickets:', error);
+        toast('Failed to stage tickets in funnel', 'error');
+      })
+      .stageTicketsInFunnel(
+        this.importData.tickets,
+        this.columnMapping,
+        this.importData.workbookId,
+        this.importData.sheetName
+      );
+  },
+
+  bulkImport() {
+    if (this.selectedTickets.size === 0) {
+      toast('No tickets selected', 'warning');
+      return;
+    }
+
+    const selectedIds = Array.from(this.selectedTickets);
+    const count = selectedIds.length;
+
+    if (!confirm(`Import ${count} selected ticket(s) to Tasks?`)) {
+      return;
+    }
+
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success && result.errors && result.errors.length > 0) {
+          toast(`Imported ${result.importedCount} tickets with ${result.errors.length} errors`, 'warning');
+        } else {
+          toast(`Successfully imported ${result.importedCount} tickets`, 'success');
+        }
+        this.selectedTickets.clear();
+        this.loadTickets();
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Bulk import failed:', error);
+        toast('Failed to import tickets', 'error');
+      })
+      .importFunnelTicketsToTasks(selectedIds);
+  },
+
+  bulkDelete() {
+    if (this.selectedTickets.size === 0) {
+      toast('No tickets selected', 'warning');
+      return;
+    }
+
+    const count = this.selectedTickets.size;
+    if (!confirm(`Delete ${count} selected ticket(s) from funnel?`)) {
+      return;
+    }
+
+    const selectedIds = Array.from(this.selectedTickets);
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(() => {
+        showLoading(false);
+        toast(`Deleted ${count} tickets from funnel`, 'success');
+        this.selectedTickets.clear();
+        this.loadTickets();
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Bulk delete failed:', error);
+        toast('Failed to delete tickets', 'error');
+      })
+      .deleteFunnelTickets(selectedIds);
+  },
+
+  openBulkAssignDialog() {
+    if (this.selectedTickets.size === 0) {
+      toast('No tickets selected', 'warning');
+      return;
+    }
+    const assignee = prompt('Enter assignee email:');
+    if (assignee) {
+      this.bulkAssign(assignee);
+    }
+  },
+
+  bulkAssign(assignee) {
+    const selectedIds = Array.from(this.selectedTickets);
+    const count = selectedIds.length;
+    let completed = 0;
+    let errors = 0;
+
+    showLoading(true);
+    selectedIds.forEach(ticketId => {
+      google.script.run
+        .withSuccessHandler(() => {
+          completed++;
+          if (completed + errors === count) {
+            this.handleBulkAssignComplete(completed, errors);
+          }
+        })
+        .withFailureHandler(() => {
+          errors++;
+          if (completed + errors === count) {
+            this.handleBulkAssignComplete(completed, errors);
+          }
+        })
+        .updateFunnelTicket(ticketId, { assignedTo: assignee });
+    });
+  },
+
+  handleBulkAssignComplete(completed, errors) {
+    showLoading(false);
+    if (errors > 0) {
+      toast(`Assigned ${completed} tickets with ${errors} errors`, 'warning');
+    } else {
+      toast(`Successfully assigned ${completed} tickets`, 'success');
+    }
+    this.loadTickets();
+  },
+
+  editTicket(ticketId) {
+    toast('Ticket editing coming soon', 'info');
+  },
+
+  viewTicket(ticketId) {
+    const ticket = this.tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+    alert(`Ticket Details:\n\n${JSON.stringify(ticket, null, 2)}`);
+  },
+
+  deleteTicket(ticketId) {
+    if (!confirm('Delete this ticket from funnel?')) {
+      return;
+    }
+
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(() => {
+        showLoading(false);
+        toast('Ticket deleted', 'success');
+        this.loadTickets();
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Failed to delete ticket:', error);
+        toast('Failed to delete ticket', 'error');
+      })
+      .deleteFunnelTickets([ticketId]);
+  },
+
+  escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+
+  formatDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  }
+};
+</script>

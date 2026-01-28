@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(node -e:*)",
+      "Bash(grep:*)",
+      "Bash(__NEW_LINE_32aa305c1322b74d__ echo -e \"\\\\n=== CalendarView.html ===\")",
+      "Bash(__NEW_LINE_d93a0d691777927b__ echo -e \"\\\\n=== MilestoneView.html ===\")",
+      "Bash(__NEW_LINE_5fc6aee52e9baac8__ echo -e \"\\\\n=== MatrixView.html ===\")",
+      "Bash(__NEW_LINE_43ecde5f5dcd2dea__ echo -e \"\\\\n=== FunnelView.html ===\")",
+      "Bash(__NEW_LINE_5e761a1823db4c13__ echo -e \"\\\\n=== Data.js ===\")",
+      "Bash(__NEW_LINE_716f43fe2b80e932__ echo -e \"\\\\n=== LockManager.js ===\")",
+      "Bash(for fn in \"function init\" \"function loadBoard\" \"function renderBoard\" \"function switchView\" \"function handleDropOnColumn\" \"function handleDropOnCard\" \"function handleDrop\" \"function openTaskModal\" \"function saveTask\" \"function updateTaskInDOM\" \"function removeTaskFromDOM\" \"function refreshAllData\" \"function handleBoardData\" \"function toast\" \"function showLoading\" \"function updateColumnCounts\" \"function loadAnalyticsData\" \"function loadTimelineData\" \"RequestQueue\" \"SyncManager\")",
+      "Bash(do)",
+      "Bash(if grep -q \"$fn\" Scripts.html)",
+      "Bash(then)",
+      "Bash(echo:*)",
+      "Bash(else)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(for fn in \"function doGet\" \"function include\" \"function getCurrentUser\" \"function getListViewData\" \"function getBoardData\" \"function createTask\" \"function updateTask\" \"function deleteTask\" \"function moveTaskToStatus\" \"function getTimelineData\" \"function getAnalyticsData\" \"function invalidateTaskCache\" \"function getGlobalVersion\" \"function incrementGlobalVersion\" \"function logChange\" \"function getChangesSince\" \"function executeBatchOperations\")",
+      "Bash(if grep -q \"$fn\" Code.js)",
+      "Bash(ls:*)",
+      "Bash(for file in Scripts.html ListView.html CalendarView.html MilestoneView.html MatrixView.html FunnelView.html Index.html TaskDetailPanel.html TaskEditModal.html GanttChart.html NotificationCenter.html MentionAutocomplete.html CacheService.html DependencyPicker.html TimelineIntegration.html)",
+      "Bash([ -f \"$file\" ])",
+      "Bash(python3:*)",
+      "Bash(node --check:*)",
+      "Bash(for id in aa03c47 a8e912e a5614d2 aceecde aa87442 a535d24 ae5f958)",
+      "Bash(f=\"/private/tmp/claude/-Users-justinaguila-Desktop-ProjectFlow/tasks/$id.output\")",
+      "Bash(if grep -q '\"\"type\"\":\"\"result\"\"' \"$f\")"
+    ]
+  }
+}

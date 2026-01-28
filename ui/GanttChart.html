@@ -1,0 +1,974 @@
+<script>
+const GanttState = {
+  gantt: null,
+  timelineData: null,
+  viewMode: "gantt",
+  filters: {
+    assignee: "",
+    status: "",
+    priority: "",
+    search: "",
+    startDate: "",
+    endDate: "",
+  },
+  originalTasks: [],
+};
+
+function showTimelineView() {
+  const boardView = document.getElementById("boardView");
+  const timelineView = document.getElementById("timelineView");
+  if (boardView) boardView.classList.add("hidden");
+  if (timelineView) timelineView.classList.remove("hidden");
+  initializeTimelineFilters();
+  loadTimelineData();
+}
+
+function hideTimelineView() {
+  const boardView = document.getElementById("boardView");
+  const timelineView = document.getElementById("timelineView");
+  if (boardView) boardView.classList.remove("hidden");
+  if (timelineView) timelineView.classList.add("hidden");
+}
+
+function setTimelineViewMode(mode) {
+  if (mode === 'Week' || mode === 'Month' || mode === 'Day' || mode === 'Quarter Day' || mode === 'Half Day') {
+    if (GanttState.gantt) {
+      try {
+        GanttState.gantt.change_view_mode(mode);
+      } catch (error) {
+        console.error('Error changing Gantt view mode:', error);
+      }
+    }
+    return;
+  }
+
+  GanttState.viewMode = mode;
+  const ganttBtn = document.getElementById("ganttViewBtn");
+  const listBtn = document.getElementById("listViewBtn");
+
+  if (ganttBtn && listBtn) {
+    if (mode === "gantt") {
+      ganttBtn.classList.add("bg-white", "shadow-sm", "text-gray-900");
+      ganttBtn.classList.remove("text-gray-600");
+      listBtn.classList.remove("bg-white", "shadow-sm", "text-gray-900");
+      listBtn.classList.add("text-gray-600");
+      const ganttContainer = document.getElementById("ganttContainer");
+      const listContainer = document.getElementById("timelineListContainer");
+      if (ganttContainer) ganttContainer.classList.remove("hidden");
+      if (listContainer) listContainer.classList.add("hidden");
+    } else {
+      listBtn.classList.add("bg-white", "shadow-sm", "text-gray-900");
+      listBtn.classList.remove("text-gray-600");
+      ganttBtn.classList.remove("bg-white", "shadow-sm", "text-gray-900");
+      ganttBtn.classList.add("text-gray-600");
+      const ganttContainer = document.getElementById("ganttContainer");
+      const listContainer = document.getElementById("timelineListContainer");
+      if (ganttContainer) ganttContainer.classList.add("hidden");
+      if (listContainer) listContainer.classList.remove("hidden");
+    }
+
+    if (GanttState.timelineData) {
+      if (mode === "gantt") {
+        renderGanttChart(GanttState.timelineData);
+      } else {
+        renderTimelineList(GanttState.timelineData);
+      }
+    }
+  }
+}
+
+function loadTimelineData() {
+  showGanttLoading(true);
+  const projectId = State.projectFilter;
+  const filters = {
+    dateRange: getTimelineDateRange(),
+    assignee: GanttState.filters.assignee,
+    status: GanttState.filters.status,
+    priority: GanttState.filters.priority,
+    search: GanttState.filters.search,
+    showOverdueOnly: GanttState.filters.showOverdueOnly || false,
+  };
+
+  google.script.run
+    .withSuccessHandler(handleTimelineData)
+    .withFailureHandler(handleTimelineError)
+    .getFilteredTimeline(projectId, filters);
+}
+
+function getTimelineDateRange() {
+  const startDateEl = document.getElementById("timelineStartDate");
+  const endDateEl = document.getElementById("timelineEndDate");
+
+  if (!startDateEl || !endDateEl) {
+    return null;
+  }
+
+  const startDate = startDateEl.value;
+  const endDate = endDateEl.value;
+
+  if (startDate && endDate) {
+    return {
+      start: new Date(startDate),
+      end: new Date(endDate),
+    };
+  }
+
+  return null;
+}
+
+function handleTimelineData(timelineData) {
+  showGanttLoading(false);
+
+  if (!timelineData || !timelineData.tasks) {
+    console.warn('Timeline data is null or missing tasks');
+    showGanttEmpty(true);
+    toast('No timeline data available', 'warning');
+    return;
+  }
+
+  GanttState.timelineData = timelineData;
+  GanttState.originalTasks = [...timelineData.tasks];
+
+  const filteredData = applyTimelineFiltersToData(timelineData);
+
+  if (filteredData.tasks.length === 0) {
+    showGanttEmpty(true);
+    return;
+  }
+
+  showGanttEmpty(false);
+
+  if (GanttState.viewMode === "gantt") {
+    renderGanttChart(filteredData);
+  } else {
+    renderTimelineList(filteredData);
+  }
+}
+
+function handleTimelineError(error) {
+  console.error("Timeline data error:", error);
+  showGanttLoading(false);
+  toast("Failed to load timeline data: " + error.message, "error");
+}
+
+function renderGanttChart(timelineData) {
+  const container = document.getElementById("ganttChart");
+  if (!container || !timelineData.tasks.length) return;
+
+  try {
+    const ganttTasks = timelineData.tasks.map((task) => ({
+      id: task.id,
+      name: task.name,
+      start: task.start,
+      end: task.end,
+      progress: task.progress,
+      dependencies: task.dependencies.join(","),
+      custom_class: getTaskCustomClass(task),
+    }));
+
+    if (GanttState.gantt) {
+      GanttState.gantt = null;
+    }
+
+    container.innerHTML = "";
+
+    GanttState.gantt = new Gantt(container, ganttTasks, {
+      header_height: 50,
+      column_width: 30,
+      step: 24,
+      view_modes: ["Quarter Day", "Half Day", "Day", "Week", "Month"],
+      bar_height: 20,
+      bar_corner_radius: 3,
+      arrow_curve: 5,
+      padding: 18,
+      view_mode: "Day",
+      date_format: "YYYY-MM-DD",
+      custom_popup_html: function (task) {
+        return createGanttTaskPopup(task);
+      },
+      on_click: function (task) {
+        handleGanttTaskClick(task);
+      },
+      on_date_change: function (task, start, end) {
+        handleGanttTaskDateChange(task, start, end);
+      },
+      on_progress_change: function (task, progress) {
+        handleGanttTaskProgressChange(task, progress);
+      },
+      on_view_change: function (mode) {
+      },
+    });
+
+    if (timelineData.criticalPath && timelineData.criticalPath.length > 0) {
+      highlightCriticalPath(timelineData.criticalPath);
+    }
+  } catch (error) {
+    console.error("Error rendering Gantt chart:", error);
+    toast("Failed to render Gantt chart: " + error.message, "error");
+  }
+}
+
+function getTaskCustomClass(task) {
+  const classes = [];
+
+  if (task.priority === "Critical" || task.priority === "High") {
+    classes.push("high-priority");
+  } else if (task.priority === "Low" || task.priority === "Lowest") {
+    classes.push("low-priority");
+  }
+
+  if (task.status === "Done") {
+    classes.push("completed");
+  } else if (task.status === "In Progress") {
+    classes.push("in-progress");
+  }
+
+  if (task.end < new Date() && task.status !== "Done") {
+    classes.push("overdue");
+  }
+
+  return classes.join(" ");
+}
+
+function createGanttTaskPopup(task) {
+  const originalTask = GanttState.originalTasks.find((t) => t.id === task.id);
+  if (!originalTask) return "";
+
+  return `
+    <div class="gantt-popup">
+      <div class="popup-header">
+        <h4>${escapeHtml(task.name)}</h4>
+        <span class="task-id">${escapeHtml(task.id)}</span>
+      </div>
+      <div class="popup-content">
+        <div class="popup-row">
+          <span class="label">Status:</span>
+          <span class="value status-${originalTask.status.toLowerCase().replace(" ", "-")}">${originalTask.status}</span>
+        </div>
+        <div class="popup-row">
+          <span class="label">Priority:</span>
+          <span class="value priority-${originalTask.priority.toLowerCase()}">${originalTask.priority}</span>
+        </div>
+        <div class="popup-row">
+          <span class="label">Assignee:</span>
+          <span class="value">${originalTask.assignee || "Unassigned"}</span>
+        </div>
+        <div class="popup-row">
+          <span class="label">Progress:</span>
+          <span class="value">${task.progress}%</span>
+        </div>
+        <div class="popup-row">
+          <span class="label">Duration:</span>
+          <span class="value">${formatDateRange(task.start, task.end)}</span>
+        </div>
+        ${originalTask.estimatedHrs ? `
+          <div class="popup-row">
+            <span class="label">Estimated:</span>
+            <span class="value">${originalTask.estimatedHrs}h</span>
+          </div>
+        ` : ""}
+      </div>
+      <div class="popup-actions">
+        <button onclick="openTaskDetail('${task.id}')" class="popup-btn">View Details</button>
+      </div>
+    </div>
+  `;
+}
+
+function highlightCriticalPath(criticalPath) {
+  criticalPath.forEach((taskId) => {
+    const taskElement = document.querySelector(`[data-id="${taskId}"]`);
+    if (taskElement) {
+      taskElement.classList.add("critical-path");
+    }
+  });
+  showCriticalPathAnalysis(criticalPath);
+}
+
+function renderTimelineList(timelineData) {
+  const container = document.getElementById("timelineList");
+  if (!container) return;
+
+  if (!timelineData.tasks.length) {
+    container.innerHTML = '<div class="p-4 text-center text-gray-500">No tasks found</div>';
+    return;
+  }
+
+  const sortedTasks = [...timelineData.tasks].sort((a, b) => a.start - b.start);
+
+  container.innerHTML = sortedTasks
+    .map(
+      (task) => `
+        <div class="timeline-list-item p-4 hover:bg-gray-50 cursor-pointer" onclick="openTaskDetail('${task.id}')">
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-3 mb-2">
+                <span class="font-medium text-gray-900">${escapeHtml(task.name)}</span>
+                <span class="text-xs font-mono text-gray-500">${escapeHtml(task.id)}</span>
+                <span class="status-badge status-${task.status.toLowerCase().replace(" ", "-")}">${task.status}</span>
+                <span class="priority-badge priority-${task.priority.toLowerCase()}">${task.priority}</span>
+              </div>
+              <div class="flex items-center gap-4 text-sm text-gray-600">
+                <span><i class="fas fa-calendar mr-1"></i> ${formatDateRange(task.start, task.end)}</span>
+                ${task.assignee ? `<span><i class="fas fa-user mr-1"></i> ${getNameFromEmail(task.assignee)}</span>` : ""}
+                <span><i class="fas fa-tasks mr-1"></i> ${task.progress}% complete</span>
+                ${task.estimatedHrs ? `<span><i class="fas fa-clock mr-1"></i> ${task.estimatedHrs}h estimated</span>` : ""}
+              </div>
+              ${task.dependencies.length > 0 ? `
+                <div class="mt-2 text-xs text-gray-500">
+                  <i class="fas fa-link mr-1"></i> Depends on: ${task.dependencies.join(", ")}
+                </div>
+              ` : ""}
+            </div>
+            <div class="flex items-center gap-2">
+              ${task.end < new Date() && task.status !== "Done" ? '<i class="fas fa-exclamation-triangle text-red-500" title="Overdue"></i>' : ""}
+              ${timelineData.criticalPath && timelineData.criticalPath.includes(task.id) ? '<i class="fas fa-route text-orange-500" title="Critical Path"></i>' : ""}
+              <i class="fas fa-chevron-right text-gray-400"></i>
+            </div>
+          </div>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function handleGanttTaskClick(task) {
+  openTaskDetail(task.id);
+}
+
+function handleGanttTaskDateChange(task, start, end) {
+  const updates = {
+    startDate: start.toISOString().split("T")[0],
+    dueDate: end.toISOString().split("T")[0],
+  };
+
+  google.script.run
+    .withSuccessHandler(() => {
+      toast("Task dates updated successfully", "success");
+      loadTimelineData();
+    })
+    .withFailureHandler((error) => {
+      toast("Failed to update task dates: " + error.message, "error");
+      loadTimelineData();
+    })
+    .saveTaskUpdate(task.id, updates);
+}
+
+function handleGanttTaskProgressChange(task, progress) {
+  let status = "To Do";
+  if (progress === 100) {
+    status = "Done";
+  } else if (progress > 0) {
+    status = "In Progress";
+  }
+
+  const updates = { status };
+
+  google.script.run
+    .withSuccessHandler(() => {
+      toast("Task progress updated successfully", "success");
+    })
+    .withFailureHandler((error) => {
+      toast("Failed to update task progress: " + error.message, "error");
+      loadTimelineData();
+    })
+    .saveTaskUpdate(task.id, updates);
+}
+
+function initializeTimelineFilters() {
+  const assigneeFilter = document.getElementById("timelineAssigneeFilter");
+  if (assigneeFilter && State.users) {
+    assigneeFilter.innerHTML =
+      '<option value="">All Assignees</option>' +
+      State.users
+        .map((user) => `<option value="${user.email}">${user.name}</option>`)
+        .join("");
+  }
+
+  const statusFilter = document.getElementById("timelineStatusFilter");
+  if (statusFilter && State.config) {
+    statusFilter.innerHTML =
+      '<option value="">All Statuses</option>' +
+      State.config.statuses
+        .map((status) => `<option value="${status}">${status}</option>`)
+        .join("");
+  }
+
+  const priorityFilter = document.getElementById("timelinePriorityFilter");
+  if (priorityFilter && State.config) {
+    priorityFilter.innerHTML =
+      '<option value="">All Priorities</option>' +
+      State.config.priorities
+        .map((priority) => `<option value="${priority}">${priority}</option>`)
+        .join("");
+  }
+
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setMonth(startDate.getMonth() - 3);
+  const endDate = new Date(today);
+  endDate.setMonth(endDate.getMonth() + 3);
+
+  const startDateEl = document.getElementById("timelineStartDate");
+  const endDateEl = document.getElementById("timelineEndDate");
+
+  if (startDateEl) {
+    startDateEl.value = startDate.toISOString().split("T")[0];
+  }
+  if (endDateEl) {
+    endDateEl.value = endDate.toISOString().split("T")[0];
+  }
+}
+
+function applyTimelineFilters() {
+  const assigneeFilter = document.getElementById("timelineAssigneeFilter");
+  const statusFilter = document.getElementById("timelineStatusFilter");
+  const priorityFilter = document.getElementById("timelinePriorityFilter");
+  const searchInput = document.getElementById("timelineSearchInput");
+  const overdueCheckbox = document.getElementById("showOverdueOnly");
+
+  GanttState.filters.assignee = assigneeFilter ? assigneeFilter.value : "";
+  GanttState.filters.status = statusFilter ? statusFilter.value : "";
+  GanttState.filters.priority = priorityFilter ? priorityFilter.value : "";
+  GanttState.filters.search = searchInput ? searchInput.value.toLowerCase() : "";
+  GanttState.filters.showOverdueOnly = overdueCheckbox ? overdueCheckbox.checked : false;
+
+  loadTimelineData();
+}
+
+function applyTimelineFiltersToData(timelineData) {
+  if (!GanttState.originalTasks || GanttState.originalTasks.length === 0) {
+    return timelineData;
+  }
+
+  let filteredTasks = [...GanttState.originalTasks];
+
+  if (GanttState.filters.assignee) {
+    filteredTasks = filteredTasks.filter(
+      (task) => task.assignee === GanttState.filters.assignee
+    );
+  }
+
+  if (GanttState.filters.status) {
+    filteredTasks = filteredTasks.filter(
+      (task) => task.status === GanttState.filters.status
+    );
+  }
+
+  if (GanttState.filters.priority) {
+    filteredTasks = filteredTasks.filter(
+      (task) => task.priority === GanttState.filters.priority
+    );
+  }
+
+  if (GanttState.filters.search) {
+    filteredTasks = filteredTasks.filter(
+      (task) =>
+        (task.name && task.name.toLowerCase().includes(GanttState.filters.search)) ||
+        (task.id && task.id.toLowerCase().includes(GanttState.filters.search))
+    );
+  }
+
+  return {
+    ...timelineData,
+    tasks: filteredTasks,
+  };
+}
+
+function handleTimelineSearch(event) {
+  if (event.key === "Enter" || event.type === "input") {
+    applyTimelineFilters();
+  }
+}
+
+function clearTimelineFilters() {
+  const assigneeFilter = document.getElementById("timelineAssigneeFilter");
+  const statusFilter = document.getElementById("timelineStatusFilter");
+  const priorityFilter = document.getElementById("timelinePriorityFilter");
+  const searchInput = document.getElementById("timelineSearchInput");
+  const startDateEl = document.getElementById("timelineStartDate");
+  const endDateEl = document.getElementById("timelineEndDate");
+  const overdueCheckbox = document.getElementById("showOverdueOnly");
+
+  if (assigneeFilter) assigneeFilter.value = "";
+  if (statusFilter) statusFilter.value = "";
+  if (priorityFilter) priorityFilter.value = "";
+  if (searchInput) searchInput.value = "";
+  if (startDateEl) startDateEl.value = "";
+  if (endDateEl) endDateEl.value = "";
+  if (overdueCheckbox) overdueCheckbox.checked = false;
+
+  GanttState.filters = {
+    assignee: "",
+    status: "",
+    priority: "",
+    search: "",
+    startDate: "",
+    endDate: "",
+    showOverdueOnly: false,
+  };
+
+  loadTimelineData();
+}
+
+function refreshTimeline() {
+  loadTimelineData();
+}
+
+function showCriticalPathAnalysis(criticalPath) {
+  const panel = document.getElementById("criticalPathPanel");
+  const content = document.getElementById("criticalPathContent");
+  if (!panel || !content || !criticalPath.length) return;
+
+  google.script.run
+    .withSuccessHandler((analysis) => {
+      renderCriticalPathAnalysis(analysis, panel, content);
+    })
+    .withFailureHandler((error) => {
+      console.error("Failed to load critical path analysis:", error);
+      renderBasicCriticalPathAnalysis(criticalPath, panel, content);
+    })
+    .getCriticalPathAnalysis(State.projectFilter);
+}
+
+function renderCriticalPathAnalysis(analysis, panel, content) {
+  const {
+    criticalTasks,
+    analysis: analysisData,
+    scenarios,
+    dependencies,
+  } = analysis;
+
+  content.innerHTML = `
+    <div class="mb-6">
+      <h4 class="font-medium text-gray-900 mb-3">Critical Path Analysis</h4>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div class="bg-blue-50 p-3 rounded-lg">
+          <div class="text-blue-600 font-semibold">${analysisData.criticalTasks}</div>
+          <div class="text-blue-800">Critical Tasks</div>
+        </div>
+        <div class="bg-orange-50 p-3 rounded-lg">
+          <div class="text-orange-600 font-semibold">${analysisData.criticalPathPercentage}%</div>
+          <div class="text-orange-800">of Total Tasks</div>
+        </div>
+        <div class="bg-green-50 p-3 rounded-lg">
+          <div class="text-green-600 font-semibold">${analysisData.projectDuration}</div>
+          <div class="text-green-800">Days Duration</div>
+        </div>
+        <div class="bg-${getRiskColor(analysisData.riskLevel)}-50 p-3 rounded-lg">
+          <div class="text-${getRiskColor(analysisData.riskLevel)}-600 font-semibold capitalize">${analysisData.riskLevel}</div>
+          <div class="text-${getRiskColor(analysisData.riskLevel)}-800">Risk Level</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mb-6">
+      <h4 class="font-medium text-gray-900 mb-3">Completion Predictions</h4>
+      <div class="space-y-3">
+        ${scenarios
+          .map(
+            (scenario) => `
+              <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <div class="font-medium text-gray-900">${scenario.name}</div>
+                  <div class="text-sm text-gray-600">${scenario.description}</div>
+                </div>
+                <div class="text-right">
+                  <div class="font-medium text-gray-900">${formatDate(scenario.completionDate)}</div>
+                  <div class="text-xs text-gray-500 capitalize">${scenario.probability} probability</div>
+                </div>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+
+    ${analysisData.riskFactors.length > 0 ? `
+      <div class="mb-6">
+        <h4 class="font-medium text-gray-900 mb-3">Risk Factors</h4>
+        <div class="space-y-2">
+          ${analysisData.riskFactors
+            .map(
+              (risk) => `
+                <div class="flex items-start gap-3 p-3 bg-${getSeverityColor(risk.severity)}-50 border border-${getSeverityColor(risk.severity)}-200 rounded-lg">
+                  <i class="fas fa-${getSeverityIcon(risk.severity)} text-${getSeverityColor(risk.severity)}-600 mt-0.5"></i>
+                  <div class="flex-1">
+                    <div class="font-medium text-${getSeverityColor(risk.severity)}-800">${risk.description}</div>
+                    ${risk.tasks ? `<div class="text-xs text-${getSeverityColor(risk.severity)}-600 mt-1">Affects: ${risk.tasks.join(", ")}</div>` : ""}
+                  </div>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </div>
+    ` : ""}
+
+    ${analysisData.recommendations.length > 0 ? `
+      <div class="mb-6">
+        <h4 class="font-medium text-gray-900 mb-3">Recommendations</h4>
+        <div class="space-y-3">
+          ${analysisData.recommendations
+            .slice(0, 5)
+            .map(
+              (rec) => `
+                <div class="p-3 border border-gray-200 rounded-lg">
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="font-medium text-gray-900">${rec.title}</div>
+                    <span class="px-2 py-1 text-xs font-medium rounded-full bg-${getPriorityColor(rec.priority)}-100 text-${getPriorityColor(rec.priority)}-800">
+                      ${rec.priority}
+                    </span>
+                  </div>
+                  <div class="text-sm text-gray-600 mb-2">${rec.description}</div>
+                  <div class="text-sm text-gray-800 font-medium">Action: ${rec.action}</div>
+                  ${rec.tasks ? `<div class="text-xs text-gray-500 mt-1">Tasks: ${rec.tasks.join(", ")}</div>` : ""}
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </div>
+    ` : ""}
+
+    <div class="mb-4">
+      <h4 class="font-medium text-gray-900 mb-3">Critical Path Tasks</h4>
+      <div class="space-y-2">
+        ${criticalTasks
+          .map(
+            (task) => `
+              <div class="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg cursor-pointer hover:bg-orange-100"
+                onclick="openTaskDetail('${task.id}')">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="w-6 h-6 bg-orange-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                      ${task.criticalPathPosition}
+                    </span>
+                    <div class="font-medium text-gray-900">${escapeHtml(task.name)}</div>
+                  </div>
+                  <div class="text-sm text-gray-600 ml-8">
+                    ${escapeHtml(task.id)} ${formatDateRange(task.start, task.end)}
+                    ${task.impactScore ? ` Impact: ${task.impactScore}` : ""}
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-sm font-medium text-orange-600">${task.progress}% complete</div>
+                  <div class="text-xs text-gray-500">${task.assignee || "Unassigned"}</div>
+                </div>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+
+    <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+      <div class="flex items-start gap-2">
+        <i class="fas fa-exclamation-triangle text-yellow-600 mt-0.5"></i>
+        <div class="text-sm">
+          <div class="font-medium text-yellow-800">Critical Path Impact</div>
+          <div class="text-yellow-700 mt-1">
+            Delays in any of these tasks will directly impact the project completion date.
+            Monitor these tasks closely and prioritize their completion.
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  panel.classList.remove("hidden");
+}
+
+function renderBasicCriticalPathAnalysis(criticalPath, panel, content) {
+  const criticalTasks = GanttState.originalTasks.filter((task) =>
+    criticalPath.includes(task.id)
+  );
+
+  const totalDuration = criticalTasks.reduce((total, task) => {
+    const duration = Math.ceil(
+      (task.end - task.start) / (1000 * 60 * 60 * 24)
+    );
+    return total + duration;
+  }, 0);
+
+  content.innerHTML = `
+    <div class="mb-4">
+      <h4 class="font-medium text-gray-900 mb-2">Critical Path Summary</h4>
+      <div class="grid grid-cols-3 gap-4 text-sm">
+        <div>
+          <span class="text-gray-600">Tasks on Critical Path:</span>
+          <span class="font-medium ml-2">${criticalPath.length}</span>
+        </div>
+        <div>
+          <span class="text-gray-600">Total Duration:</span>
+          <span class="font-medium ml-2">${totalDuration} days</span>
+        </div>
+        <div>
+          <span class="text-gray-600">Project Impact:</span>
+          <span class="font-medium ml-2 text-orange-600">High</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h4 class="font-medium text-gray-900 mb-3">Critical Path Tasks</h4>
+      <div class="space-y-2">
+        ${criticalTasks
+          .map(
+            (task) => `
+              <div class="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <div>
+                  <div class="font-medium text-gray-900">${escapeHtml(task.name)}</div>
+                  <div class="text-sm text-gray-600">${escapeHtml(task.id)} ${formatDateRange(task.start, task.end)}</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-sm font-medium text-orange-600">${task.progress}% complete</div>
+                  <div class="text-xs text-gray-500">${task.assignee || "Unassigned"}</div>
+                </div>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+    <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+      <div class="flex items-start gap-2">
+        <i class="fas fa-exclamation-triangle text-yellow-600 mt-0.5"></i>
+        <div class="text-sm">
+          <div class="font-medium text-yellow-800">Critical Path Impact</div>
+          <div class="text-yellow-700 mt-1">
+            Delays in any of these tasks will directly impact the project completion date.
+            Monitor these tasks closely and prioritize their completion.
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  panel.classList.remove("hidden");
+}
+
+function getRiskColor(riskLevel) {
+  switch (riskLevel) {
+    case "high":
+      return "red";
+    case "medium":
+      return "yellow";
+    case "low":
+      return "green";
+    default:
+      return "gray";
+  }
+}
+
+function getSeverityColor(severity) {
+  switch (severity) {
+    case "high":
+      return "red";
+    case "medium":
+      return "yellow";
+    case "low":
+      return "blue";
+    default:
+      return "gray";
+  }
+}
+
+function getSeverityIcon(severity) {
+  switch (severity) {
+    case "high":
+      return "exclamation-circle";
+    case "medium":
+      return "exclamation-triangle";
+    case "low":
+      return "info-circle";
+    default:
+      return "info";
+  }
+}
+
+function getPriorityColor(priority) {
+  switch (priority) {
+    case "critical":
+      return "red";
+    case "high":
+      return "orange";
+    case "medium":
+      return "yellow";
+    case "low":
+      return "blue";
+    default:
+      return "gray";
+  }
+}
+
+function toggleCriticalPathPanel() {
+  const panel = document.getElementById("criticalPathPanel");
+  if (panel) {
+    panel.classList.toggle("hidden");
+  }
+}
+
+function showGanttLoading(show) {
+  const loading = document.getElementById("ganttLoading");
+  const chart = document.getElementById("ganttChart");
+  if (show) {
+    loading?.classList.remove("hidden");
+    chart?.classList.add("hidden");
+  } else {
+    loading?.classList.add("hidden");
+    chart?.classList.remove("hidden");
+  }
+}
+
+function showGanttEmpty(show) {
+  const empty = document.getElementById("ganttEmpty");
+  const chart = document.getElementById("ganttChart");
+  if (show) {
+    empty?.classList.remove("hidden");
+    chart?.classList.add("hidden");
+  } else {
+    empty?.classList.add("hidden");
+    chart?.classList.remove("hidden");
+  }
+}
+
+function formatDateRange(start, end) {
+  const startStr = start.toLocaleDateString();
+  const endStr = end.toLocaleDateString();
+  return `${startStr} - ${endStr}`;
+}
+</script>
+
+<style>
+.gantt-popup {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  padding: 0;
+  min-width: 250px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.popup-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 8px 8px 0 0;
+}
+
+.popup-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.popup-header .task-id {
+  font-size: 12px;
+  color: #6b7280;
+  font-family: monospace;
+}
+
+.popup-content {
+  padding: 12px 16px;
+}
+
+.popup-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.popup-row .label {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.popup-row .value {
+  color: #111827;
+  font-weight: 600;
+}
+
+.popup-actions {
+  padding: 12px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 0 0 8px 8px;
+}
+
+.popup-btn {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.popup-btn:hover {
+  background: #d97706;
+}
+
+.status-done { color: #059669; }
+.status-in-progress { color: #d97706; }
+.status-to-do { color: #6b7280; }
+.status-review { color: #7c3aed; }
+.status-testing { color: #0891b2; }
+
+.priority-critical { color: #dc2626; }
+.priority-high { color: #ea580c; }
+.priority-medium { color: #d97706; }
+.priority-low { color: #65a30d; }
+.priority-lowest { color: #6b7280; }
+
+.gantt .bar.high-priority { fill: #fca5a5 !important; }
+.gantt .bar.low-priority { fill: #a7f3d0 !important; }
+.gantt .bar.completed { fill: #86efac !important; }
+.gantt .bar.in-progress { fill: #fde68a !important; }
+
+.gantt .bar.overdue {
+  fill: #fca5a5 !important;
+  stroke: #dc2626 !important;
+  stroke-width: 2px !important;
+}
+
+.gantt .bar.critical-path {
+  fill: #fed7aa !important;
+  stroke: #ea580c !important;
+  stroke-width: 3px !important;
+}
+
+.timeline-list-item {
+  transition: background-color 0.2s;
+}
+
+.status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.status-done { background: #d1fae5; color: #065f46; }
+.status-in-progress { background: #fef3c7; color: #92400e; }
+.status-to-do { background: #f3f4f6; color: #374151; }
+.status-review { background: #ede9fe; color: #5b21b6; }
+.status-testing { background: #cffafe; color: #155e75; }
+
+.priority-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 12px;
+}
+
+.priority-critical { background: #fee2e2; color: #991b1b; }
+.priority-high { background: #fed7aa; color: #9a3412; }
+.priority-medium { background: #fef3c7; color: #92400e; }
+.priority-low { background: #dcfce7; color: #166534; }
+.priority-lowest { background: #f3f4f6; color: #374151; }
+</style>

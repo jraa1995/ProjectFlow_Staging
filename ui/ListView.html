@@ -1,0 +1,1802 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>List View - ProjectFlow</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root {
+  --pf-primary-500: #f59e0b;
+  --pf-primary-600: #d97706;
+  --pf-primary-700: #b45309;
+  --pf-gray-50: #f9fafb;
+  --pf-gray-100: #f3f4f6;
+  --pf-gray-200: #e5e7eb;
+  --pf-gray-300: #d1d5db;
+  --pf-gray-400: #9ca3af;
+  --pf-gray-500: #6b7280;
+  --pf-gray-600: #4b5563;
+  --pf-gray-700: #374151;
+  --pf-gray-800: #1f2937;
+  --pf-gray-900: #111827;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--pf-gray-50);
+  margin: 0;
+  padding: 0;
+}
+
+.list-table {
+  width: 100%;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.list-table thead {
+  background: var(--pf-gray-50);
+  border-bottom: 2px solid var(--pf-gray-200);
+}
+
+.list-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--pf-gray-700);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  position: relative;
+}
+
+.list-table th.sortable:hover {
+  background: var(--pf-gray-100);
+}
+
+.list-table th .sort-icon {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.3;
+}
+
+.list-table th.sorted-asc .sort-icon,
+.list-table th.sorted-desc .sort-icon {
+  opacity: 1;
+  color: var(--pf-primary-600);
+}
+
+.list-table tbody tr {
+  border-bottom: 1px solid var(--pf-gray-200);
+  transition: background 0.15s ease;
+}
+
+.list-table tbody tr:hover {
+  background: var(--pf-gray-50);
+}
+
+.list-table tbody tr.selected {
+  background: #fef3c7;
+}
+
+.list-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--pf-gray-900);
+  vertical-align: middle;
+}
+
+.editable-cell {
+  cursor: pointer;
+  position: relative;
+  min-height: 20px;
+}
+
+.editable-cell:hover {
+  background: var(--pf-gray-100);
+  border-radius: 4px;
+}
+
+.editable-cell.editing {
+  padding: 0;
+}
+
+.editable-cell input,
+.editable-cell select {
+  width: 100%;
+  padding: 8px;
+  border: 2px solid var(--pf-primary-500);
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+}
+
+.editable-cell input:focus,
+.editable-cell select:focus {
+  border-color: var(--pf-primary-600);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-new { background: #dbeafe; color: #1e40af; }
+.status-assigned { background: #e0e7ff; color: #4338ca; }
+.status-in-progress { background: #fef3c7; color: #d97706; }
+.status-pending-clarification { background: #fce7f3; color: #be185d; }
+.status-on-hold { background: #f3f4f6; color: #6b7280; }
+.status-in-review { background: #e0f2fe; color: #0369a1; }
+.status-completed { background: #d1fae5; color: #047857; }
+.status-resolved { background: #d1fae5; color: #047857; }
+.status-closed { background: #e5e7eb; color: #4b5563; }
+.status-cancelled { background: #fee2e2; color: #991b1b; }
+.status-rejected { background: #fee2e2; color: #991b1b; }
+
+.priority-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.priority-urgent { background: #fee2e2; color: #991b1b; }
+.priority-high { background: #fed7aa; color: #c2410c; }
+.priority-medium { background: #fef3c7; color: #d97706; }
+.priority-low { background: #dbeafe; color: #1e40af; }
+.priority-routine { background: #e5e7eb; color: #6b7280; }
+
+.filters-panel {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.filter-group {
+  margin-bottom: 16px;
+}
+
+.filter-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pf-gray-700);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.filter-group input,
+.filter-group select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--pf-gray-300);
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.15s ease;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+  outline: none;
+  border-color: var(--pf-primary-500);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+  outline: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: var(--pf-primary-500);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--pf-primary-600);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2);
+}
+
+.btn-secondary {
+  background: white;
+  color: var(--pf-gray-700);
+  border: 1px solid var(--pf-gray-300);
+}
+
+.btn-secondary:hover {
+  background: var(--pf-gray-50);
+  border-color: var(--pf-gray-400);
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--pf-primary-500);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.pagination button {
+  padding: 6px 12px;
+  border: 1px solid var(--pf-gray-300);
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.pagination button:hover:not(:disabled) {
+  background: var(--pf-gray-50);
+  border-color: var(--pf-primary-500);
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination .page-number {
+  padding: 6px 12px;
+  border: 1px solid var(--pf-gray-300);
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.pagination .page-number.active {
+  background: var(--pf-primary-500);
+  color: white;
+  border-color: var(--pf-primary-500);
+}
+
+.column-visibility-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: white;
+  border: 1px solid var(--pf-gray-300);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  padding: 12px;
+  z-index: 1000;
+  min-width: 200px;
+}
+
+.column-visibility-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.column-visibility-item:hover {
+  background: var(--pf-gray-50);
+}
+
+.column-visibility-item label {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--pf-gray-700);
+}
+
+.preset-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: white;
+  border: 1px solid var(--pf-gray-300);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  padding: 12px;
+  z-index: 1000;
+  min-width: 250px;
+}
+
+.preset-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.preset-item:hover {
+  background: var(--pf-gray-50);
+}
+
+.preset-item .delete-preset {
+  color: #ef4444;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.preset-item:hover .delete-preset {
+  opacity: 1;
+}
+
+.bulk-actions-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--pf-gray-800);
+  color: white;
+  padding: 16px 24px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.bulk-actions-bar.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.bulk-actions-bar .count {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.bulk-actions-bar .btn {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--pf-gray-300);
+  border-top-color: var(--pf-primary-500);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toast {
+  background: white;
+  border-left: 4px solid;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  min-width: 300px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: slideIn 0.3s ease;
+}
+
+.toast.success { border-left-color: #10b981; }
+.toast.error { border-left-color: #ef4444; }
+.toast.warning { border-left-color: #f59e0b; }
+.toast.info { border-left-color: #3b82f6; }
+
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.hidden {
+  display: none !important;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--pf-gray-500);
+}
+
+.empty-state i {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+.empty-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  font-size: 14px;
+}
+</style>
+</head>
+<body>
+<div id="toastContainer" class="toast-container"></div>
+
+<div class="p-6">
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900">List View</h1>
+      <p class="text-gray-600 mt-1">Manage and filter all tasks</p>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="ListViewPage.exportToCSV()" class="btn btn-secondary">
+        <i class="fas fa-download"></i>
+        Export CSV
+      </button>
+      <div class="relative">
+        <button onclick="ListViewPage.togglePresetPanel()" class="btn btn-secondary">
+          <i class="fas fa-bookmark"></i>
+          Presets
+        </button>
+        <div id="presetPanel" class="preset-panel hidden">
+          <div class="mb-3">
+            <input type="text" id="presetName" placeholder="Preset name..." class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+            <button onclick="ListViewPage.savePreset()" class="btn btn-primary btn-sm w-full mt-2">
+              <i class="fas fa-save"></i>
+              Save Current Filters
+            </button>
+          </div>
+          <div class="border-t border-gray-200 pt-3">
+            <div id="presetList"></div>
+          </div>
+        </div>
+      </div>
+      <div class="relative">
+        <button onclick="ListViewPage.toggleColumnVisibility()" class="btn btn-secondary">
+          <i class="fas fa-columns"></i>
+          Columns
+        </button>
+        <div id="columnVisibilityPanel" class="column-visibility-panel hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filters-panel">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-lg font-semibold text-gray-800">Filters</h3>
+      <button onclick="ListViewPage.clearFilters()" class="btn btn-secondary btn-sm">
+        <i class="fas fa-times"></i>
+        Clear All
+      </button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="filter-group">
+        <label>Search</label>
+        <input type="text" id="filterSearch" placeholder="Search by ID or title..." oninput="ListViewPage.applyFilters()">
+      </div>
+      <div class="filter-group">
+        <label>Status</label>
+        <select id="filterStatus" multiple size="3" onchange="ListViewPage.applyFilters()">
+          <option value="">All Statuses</option>
+          <option value="new">New</option>
+          <option value="assigned">Assigned</option>
+          <option value="in-progress">In Progress</option>
+          <option value="pending-clarification">Pending Clarification</option>
+          <option value="on-hold">On Hold</option>
+          <option value="in-review">In Review</option>
+          <option value="completed">Completed</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Priority</label>
+        <select id="filterPriority" multiple size="3" onchange="ListViewPage.applyFilters()">
+          <option value="">All Priorities</option>
+          <option value="urgent">Urgent</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="routine">Routine</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Type</label>
+        <select id="filterType" multiple size="3" onchange="ListViewPage.applyFilters()">
+          <option value="">All Types</option>
+          <option value="Data Pull">Data Pull</option>
+          <option value="Report Generation">Report Generation</option>
+          <option value="System Configuration">System Configuration</option>
+          <option value="Minor Bug Fix">Minor Bug Fix</option>
+          <option value="Content Update">Content Update</option>
+          <option value="Training Material">Training Material</option>
+          <option value="Documentation">Documentation</option>
+          <option value="Analysis">Analysis</option>
+          <option value="Process Improvement">Process Improvement</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Assignee</label>
+        <select id="filterAssignee" onchange="ListViewPage.applyFilters()">
+          <option value="">All Assignees</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Project</label>
+        <select id="filterProject" onchange="ListViewPage.applyFilters()">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Due Date From</label>
+        <input type="date" id="filterDateFrom" onchange="ListViewPage.applyFilters()">
+      </div>
+      <div class="filter-group">
+        <label>Due Date To</label>
+        <input type="date" id="filterDateTo" onchange="ListViewPage.applyFilters()">
+      </div>
+    </div>
+  </div>
+
+  <div class="flex justify-between items-center mb-4">
+    <div class="text-sm text-gray-600">
+      Showing <span id="resultCount" class="font-semibold">0</span> of <span id="totalCount" class="font-semibold">0</span> tasks
+    </div>
+    <div class="text-sm text-gray-600">
+      <span id="selectedCount" class="font-semibold">0</span> selected
+    </div>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="list-table">
+      <thead>
+        <tr id="tableHeader">
+          <th style="width: 40px;">
+            <input type="checkbox" id="selectAll" onchange="ListViewPage.toggleSelectAll()">
+          </th>
+          <th class="sortable" data-column="id" onclick="ListViewPage.sortBy('id', event)">
+            ID <i class="fas fa-sort sort-icon"></i>
+          </th>
+          <th class="sortable" data-column="title" onclick="ListViewPage.sortBy('title', event)">
+            Title <i class="fas fa-sort sort-icon"></i>
+          </th>
+          <th class="sortable" data-column="status" onclick="ListViewPage.sortBy('status', event)">
+            Status <i class="fas fa-sort sort-icon"></i>
+          </th>
+          <th class="sortable" data-column="priority" onclick="ListViewPage.sortBy('priority', event)">
+            Priority <i class="fas fa-sort sort-icon"></i>
+          </th>
+          <th class="sortable" data-column="type" onclick="ListViewPage.sortBy('type', event)">
+            Type <i class="fas fa-sort sort-icon"></i>
+          </th>
+          <th class="sortable" data-column="assignee" onclick="ListViewPage.sortBy('assignee', event)">
+            Assignee <i class="fas fa-sort sort-icon"></i>
+          </th>
+          <th class="sortable" data-column="dueDate" onclick="ListViewPage.sortBy('dueDate', event)">
+            Due Date <i class="fas fa-sort sort-icon"></i>
+          </th>
+          <th class="sortable" data-column="createdDate" onclick="ListViewPage.sortBy('createdDate', event)">
+            Created <i class="fas fa-sort sort-icon"></i>
+          </th>
+          <th style="width: 100px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyState" class="empty-state hidden">
+      <i class="fas fa-inbox"></i>
+      <h3>No tasks found</h3>
+      <p>Try adjusting your filters or create a new task</p>
+    </div>
+  </div>
+
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<div id="bulkActionsBar" class="bulk-actions-bar">
+  <span class="count">
+    <span id="bulkSelectedCount">0</span> tasks selected
+  </span>
+  <select id="bulkStatusSelect" class="px-3 py-1 rounded-md text-gray-800">
+    <option value="">Change Status...</option>
+    <option value="new">New</option>
+    <option value="assigned">Assigned</option>
+    <option value="in-progress">In Progress</option>
+    <option value="pending-clarification">Pending Clarification</option>
+    <option value="on-hold">On Hold</option>
+    <option value="in-review">In Review</option>
+    <option value="completed">Completed</option>
+    <option value="resolved">Resolved</option>
+    <option value="closed">Closed</option>
+    <option value="cancelled">Cancelled</option>
+    <option value="rejected">Rejected</option>
+  </select>
+  <select id="bulkAssigneeSelect" class="px-3 py-1 rounded-md text-gray-800">
+    <option value="">Change Assignee...</option>
+  </select>
+  <button onclick="ListViewPage.applyBulkAction('status')" class="btn btn-primary btn-sm">
+    <i class="fas fa-check"></i>
+    Apply
+  </button>
+  <button onclick="ListViewPage.deleteBulkTasks()" class="btn btn-danger btn-sm">
+    <i class="fas fa-trash"></i>
+    Delete
+  </button>
+  <button onclick="ListViewPage.clearSelection()" class="btn btn-secondary btn-sm">
+    <i class="fas fa-times"></i>
+    Cancel
+  </button>
+</div>
+
+<script>
+const ListViewPage = {
+  hasInitialized: false,
+  allTasks: [],
+  filteredTasks: [],
+  displayedTasks: [],
+  selectedTasks: new Set(),
+  sortState: [],
+  currentPage: 1,
+  itemsPerPage: 50,
+  editingCell: null,
+  users: [],
+  projects: [],
+  visibleColumns: {
+    id: true,
+    title: true,
+    status: true,
+    priority: true,
+    type: true,
+    assignee: true,
+    dueDate: true,
+    createdDate: true,
+  },
+
+  init() {
+    if (this.tryInstantRender()) {
+      if (!this.hasInitialized) {
+        this.loadColumnVisibility();
+        this.setupEventListeners();
+        this.hasInitialized = true;
+      }
+      return;
+    }
+
+    if (!this.hasInitialized) {
+      this.loadColumnVisibility();
+      this.setupEventListeners();
+      this.hasInitialized = true;
+    }
+
+    this.loadData();
+  },
+
+  tryInstantRender() {
+    let tasks = null;
+    let users = null;
+    let projects = null;
+
+    if (typeof State !== 'undefined' && State.cache) {
+      if (State.cache.tasks?.data?.length > 0) {
+        tasks = State.cache.tasks.data;
+        users = State.cache.users?.data || [];
+        projects = State.cache.projects?.data || [];
+      }
+    }
+
+    if (!tasks && this.allTasks?.length > 0) {
+      tasks = this.allTasks;
+      users = this.users || [];
+      projects = this.projects || [];
+    }
+
+    if (!tasks && typeof State !== 'undefined' && State.tasks?.length > 0) {
+      tasks = State.tasks;
+      users = State.users || [];
+      projects = State.projects || [];
+    }
+
+    if (tasks && tasks.length > 0) {
+      this.allTasks = tasks;
+      this.users = users;
+      this.projects = projects;
+      this.populateFilterDropdowns();
+      this.applyFilters();
+      this.showLoading(false);
+      return true;
+    }
+
+    return false;
+  },
+
+  refresh() {
+    this.loadData();
+  },
+
+  setupEventListeners() {
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#presetPanel') && !e.target.closest('button[onclick*="togglePresetPanel"]')) {
+        document.getElementById('presetPanel').classList.add('hidden');
+      }
+
+      if (!e.target.closest('#columnVisibilityPanel') && !e.target.closest('button[onclick*="toggleColumnVisibility"]')) {
+        document.getElementById('columnVisibilityPanel').classList.add('hidden');
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (this.editingCell && !e.target.closest('.editable-cell.editing')) {
+        this.cancelInlineEdit();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && this.editingCell) {
+        this.saveInlineEdit();
+      }
+
+      if (e.key === 'Escape' && this.editingCell) {
+        this.cancelInlineEdit();
+      }
+    });
+  },
+
+  async loadData() {
+    this.showLoading(true);
+
+    try {
+      if (typeof State !== 'undefined' && State.cache && State.cache.tasks && State.cache.tasks.data) {
+        this.allTasks = State.cache.tasks.data || [];
+        this.users = State.cache.users?.data || [];
+        this.projects = State.cache.projects?.data || [];
+        this.populateFilterDropdowns();
+        this.applyFilters();
+        this.showLoading(false);
+        return;
+      }
+
+      if (typeof loadAllData !== 'undefined') {
+        const data = await loadAllData();
+        this.allTasks = data.tasks || [];
+        this.users = data.users || [];
+        this.projects = data.projects || [];
+        this.populateFilterDropdowns();
+        this.applyFilters();
+        this.showLoading(false);
+      } else {
+        console.warn('ListView: Fallback to direct API call');
+        google.script.run
+          .withSuccessHandler((data) => {
+            this.allTasks = data.tasks || [];
+            this.users = data.users || [];
+            this.projects = data.projects || [];
+            this.populateFilterDropdowns();
+            this.applyFilters();
+            this.showLoading(false);
+          })
+          .withFailureHandler((error) => {
+            console.error('Failed to load data:', error);
+            this.toast('Failed to load data', 'error');
+            this.showLoading(false);
+          })
+          .getListViewData();
+      }
+    } catch (error) {
+      console.error('Failed to load data:', error);
+      this.toast('Failed to load data', 'error');
+      this.showLoading(false);
+    }
+  },
+
+  loadMockData() {
+    this.allTasks = [
+      {
+        requestId: 'REQ-2026-00001',
+        requestName: 'Update user dashboard with new analytics',
+        status: 'in-progress',
+        priority: 'high',
+        requestTypeCategory: 'System Configuration',
+        assignedTo: 'john@example.com',
+        assignedToName: 'John Doe',
+        dueDeadline: '2026-01-20',
+        createdDate: '2026-01-10',
+      },
+      {
+        requestId: 'REQ-2026-00002',
+        requestName: 'Generate quarterly report',
+        status: 'new',
+        priority: 'urgent',
+        requestTypeCategory: 'Report Generation',
+        assignedTo: 'jane@example.com',
+        assignedToName: 'Jane Smith',
+        dueDeadline: '2026-01-18',
+        createdDate: '2026-01-12',
+      },
+      {
+        requestId: 'REQ-2026-00003',
+        requestName: 'Fix login bug on mobile',
+        status: 'completed',
+        priority: 'medium',
+        requestTypeCategory: 'Minor Bug Fix',
+        assignedTo: 'mike@example.com',
+        assignedToName: 'Mike Johnson',
+        dueDeadline: '2026-01-15',
+        createdDate: '2026-01-08',
+      },
+    ];
+
+    this.users = [
+      { email: 'john@example.com', name: 'John Doe' },
+      { email: 'jane@example.com', name: 'Jane Smith' },
+      { email: 'mike@example.com', name: 'Mike Johnson' },
+    ];
+
+    this.projects = [
+      { id: 'PROJ-001', name: 'SQuAT' },
+      { id: 'PROJ-002', name: 'Forward' },
+    ];
+
+    this.populateFilterDropdowns();
+    this.applyFilters();
+    this.showLoading(false);
+  },
+
+  populateFilterDropdowns() {
+    const assigneeSelect = document.getElementById('filterAssignee');
+    const bulkAssigneeSelect = document.getElementById('bulkAssigneeSelect');
+
+    this.users.forEach(user => {
+      const option = document.createElement('option');
+      option.value = user.email;
+      option.textContent = user.name;
+      assigneeSelect.appendChild(option);
+
+      const bulkOption = document.createElement('option');
+      bulkOption.value = user.email;
+      bulkOption.textContent = user.name;
+      bulkAssigneeSelect.appendChild(bulkOption);
+    });
+
+    const projectSelect = document.getElementById('filterProject');
+    this.projects.forEach(project => {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      projectSelect.appendChild(option);
+    });
+
+    this.renderColumnVisibilityPanel();
+  },
+
+  applyFilters() {
+    const search = document.getElementById('filterSearch').value.toLowerCase();
+    const statusSelect = document.getElementById('filterStatus');
+    const selectedStatuses = Array.from(statusSelect.selectedOptions).map(opt => opt.value).filter(v => v);
+    const prioritySelect = document.getElementById('filterPriority');
+    const selectedPriorities = Array.from(prioritySelect.selectedOptions).map(opt => opt.value).filter(v => v);
+    const typeSelect = document.getElementById('filterType');
+    const selectedTypes = Array.from(typeSelect.selectedOptions).map(opt => opt.value).filter(v => v);
+    const assignee = document.getElementById('filterAssignee').value;
+    const project = document.getElementById('filterProject').value;
+    const dateFrom = document.getElementById('filterDateFrom').value;
+    const dateTo = document.getElementById('filterDateTo').value;
+
+    this.filteredTasks = this.allTasks.filter(task => {
+      if (search) {
+        const taskId = (task.id || '').toLowerCase();
+        const taskTitle = (task.title || '').toLowerCase();
+        const searchMatch = taskId.includes(search) || taskTitle.includes(search);
+        if (!searchMatch) return false;
+      }
+
+      if (selectedStatuses.length > 0 && !selectedStatuses.includes(task.status)) {
+        return false;
+      }
+
+      if (selectedPriorities.length > 0 && !selectedPriorities.includes(task.priority)) {
+        return false;
+      }
+
+      if (selectedTypes.length > 0 && !selectedTypes.includes(task.type)) {
+        return false;
+      }
+
+      if (assignee && task.assignee !== assignee) {
+        return false;
+      }
+
+      if (project && task.projectId !== project) {
+        return false;
+      }
+
+      if (dateFrom && task.dueDate && task.dueDate < dateFrom) {
+        return false;
+      }
+
+      if (dateTo && task.dueDate && task.dueDate > dateTo) {
+        return false;
+      }
+
+      return true;
+    });
+
+    this.applySorting();
+    this.currentPage = 1;
+    this.renderTable();
+    this.updateResultCount();
+  },
+
+  clearFilters() {
+    document.getElementById('filterSearch').value = '';
+    document.getElementById('filterStatus').selectedIndex = -1;
+    document.getElementById('filterPriority').selectedIndex = -1;
+    document.getElementById('filterType').selectedIndex = -1;
+    document.getElementById('filterAssignee').value = '';
+    document.getElementById('filterProject').value = '';
+    document.getElementById('filterDateFrom').value = '';
+    document.getElementById('filterDateTo').value = '';
+    this.applyFilters();
+  },
+
+  sortBy(column, event) {
+    const isShiftKey = event.shiftKey;
+
+    if (!isShiftKey) {
+      this.sortState = [];
+    }
+
+    const existingIndex = this.sortState.findIndex(s => s.column === column);
+    if (existingIndex >= 0) {
+      const existing = this.sortState[existingIndex];
+      if (existing.direction === 'asc') {
+        existing.direction = 'desc';
+      } else {
+        this.sortState.splice(existingIndex, 1);
+      }
+    } else {
+      this.sortState.push({ column, direction: 'asc' });
+    }
+
+    this.applySorting();
+    this.renderTable();
+    this.updateSortIndicators();
+  },
+
+  applySorting() {
+    if (this.sortState.length === 0) {
+      return;
+    }
+
+    this.filteredTasks.sort((a, b) => {
+      for (const sort of this.sortState) {
+        const aVal = a[sort.column] || '';
+        const bVal = b[sort.column] || '';
+        let comparison = 0;
+
+        if (typeof aVal === 'string') {
+          comparison = aVal.localeCompare(bVal);
+        } else {
+          comparison = aVal - bVal;
+        }
+
+        if (comparison !== 0) {
+          return sort.direction === 'asc' ? comparison : -comparison;
+        }
+      }
+      return 0;
+    });
+  },
+
+  updateSortIndicators() {
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.classList.remove('sorted-asc', 'sorted-desc');
+      const icon = th.querySelector('.sort-icon');
+      if (icon) {
+        icon.className = 'fas fa-sort sort-icon';
+      }
+    });
+
+    this.sortState.forEach((sort, index) => {
+      const th = document.querySelector(`th[data-column="${sort.column}"]`);
+      if (th) {
+        th.classList.add(sort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        const icon = th.querySelector('.sort-icon');
+        if (icon) {
+          icon.className = `fas fa-sort-${sort.direction === 'asc' ? 'up' : 'down'} sort-icon`;
+        }
+      }
+    });
+  },
+
+  renderTable() {
+    const tbody = document.getElementById('tableBody');
+    const emptyState = document.getElementById('emptyState');
+    tbody.innerHTML = '';
+
+    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+    const endIndex = startIndex + this.itemsPerPage;
+    this.displayedTasks = this.filteredTasks.slice(startIndex, endIndex);
+
+    if (this.displayedTasks.length === 0) {
+      emptyState.classList.remove('hidden');
+      return;
+    } else {
+      emptyState.classList.add('hidden');
+    }
+
+    this.displayedTasks.forEach(task => {
+      const row = document.createElement('tr');
+      row.dataset.taskId = task.id;
+
+      if (this.selectedTasks.has(task.id)) {
+        row.classList.add('selected');
+      }
+
+      const assigneeUser = this.users.find(u => u.email === task.assignee);
+      const assigneeName = assigneeUser ? assigneeUser.name : (task.assignee || 'Unassigned');
+
+      row.innerHTML = `
+        <td>
+          <input
+            type="checkbox"
+            ${this.selectedTasks.has(task.id) ? 'checked' : ''}
+            onchange="ListViewPage.toggleTaskSelection('${task.id}')">
+        </td>
+        <td>${task.id || ''}</td>
+        <td class="editable-cell" data-field="title" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
+          ${task.title || ''}
+        </td>
+        <td class="editable-cell" data-field="status" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
+          <span class="status-badge status-${(task.status || '').toLowerCase().replace(/\s+/g, '-')}">${this.formatStatus(task.status || '')}</span>
+        </td>
+        <td class="editable-cell" data-field="priority" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
+          <span class="priority-badge priority-${(task.priority || '').toLowerCase()}">${this.formatPriority(task.priority || '')}</span>
+        </td>
+        <td>${task.type || ''}</td>
+        <td class="editable-cell" data-field="assignee" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
+          ${assigneeName}
+        </td>
+        <td class="editable-cell" data-field="dueDate" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
+          ${task.dueDate ? this.formatDate(task.dueDate) : ''}
+        </td>
+        <td>${task.createdDate ? this.formatDate(task.createdDate) : ''}</td>
+        <td>
+          <button onclick="ListViewPage.editTask('${task.id}')" class="btn btn-secondary btn-sm" title="Edit">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button onclick="ListViewPage.deleteTask('${task.id}')" class="btn btn-danger btn-sm" title="Delete">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      `;
+
+      tbody.appendChild(row);
+    });
+
+    this.renderPagination();
+    this.updateBulkActionsBar();
+  },
+
+  renderPagination() {
+    const pagination = document.getElementById('pagination');
+    pagination.innerHTML = '';
+
+    const totalPages = Math.ceil(this.filteredTasks.length / this.itemsPerPage);
+    if (totalPages <= 1) return;
+
+    const prevBtn = document.createElement('button');
+    prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+    prevBtn.disabled = this.currentPage === 1;
+    prevBtn.onclick = () => this.goToPage(this.currentPage - 1);
+    pagination.appendChild(prevBtn);
+
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    if (startPage > 1) {
+      const firstPage = document.createElement('div');
+      firstPage.className = 'page-number';
+      firstPage.textContent = '1';
+      firstPage.onclick = () => this.goToPage(1);
+      pagination.appendChild(firstPage);
+
+      if (startPage > 2) {
+        const ellipsis = document.createElement('span');
+        ellipsis.textContent = '...';
+        ellipsis.className = 'px-2';
+        pagination.appendChild(ellipsis);
+      }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      const pageBtn = document.createElement('div');
+      pageBtn.className = 'page-number';
+      if (i === this.currentPage) {
+        pageBtn.classList.add('active');
+      }
+      pageBtn.textContent = i;
+      pageBtn.onclick = () => this.goToPage(i);
+      pagination.appendChild(pageBtn);
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        const ellipsis = document.createElement('span');
+        ellipsis.textContent = '...';
+        ellipsis.className = 'px-2';
+        pagination.appendChild(ellipsis);
+      }
+
+      const lastPage = document.createElement('div');
+      lastPage.className = 'page-number';
+      lastPage.textContent = totalPages;
+      lastPage.onclick = () => this.goToPage(totalPages);
+      pagination.appendChild(lastPage);
+    }
+
+    const nextBtn = document.createElement('button');
+    nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+    nextBtn.disabled = this.currentPage === totalPages;
+    nextBtn.onclick = () => this.goToPage(this.currentPage + 1);
+    pagination.appendChild(nextBtn);
+  },
+
+  goToPage(page) {
+    this.currentPage = page;
+    this.renderTable();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+
+  updateResultCount() {
+    document.getElementById('resultCount').textContent = this.filteredTasks.length;
+    document.getElementById('totalCount').textContent = this.allTasks.length;
+  },
+
+  toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll');
+    if (selectAll.checked) {
+      this.displayedTasks.forEach(task => {
+        this.selectedTasks.add(task.requestId);
+      });
+    } else {
+      this.displayedTasks.forEach(task => {
+        this.selectedTasks.delete(task.requestId);
+      });
+    }
+    this.renderTable();
+  },
+
+  toggleTaskSelection(taskId) {
+    if (this.selectedTasks.has(taskId)) {
+      this.selectedTasks.delete(taskId);
+    } else {
+      this.selectedTasks.add(taskId);
+    }
+
+    const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+    if (row) {
+      row.classList.toggle('selected', this.selectedTasks.has(taskId));
+    }
+
+    this.updateBulkActionsBar();
+    this.updateSelectedCount();
+  },
+
+  clearSelection() {
+    this.selectedTasks.clear();
+    document.getElementById('selectAll').checked = false;
+    this.renderTable();
+  },
+
+  updateSelectedCount() {
+    document.getElementById('selectedCount').textContent = this.selectedTasks.size;
+  },
+
+  updateBulkActionsBar() {
+    const bar = document.getElementById('bulkActionsBar');
+    const count = document.getElementById('bulkSelectedCount');
+    count.textContent = this.selectedTasks.size;
+
+    if (this.selectedTasks.size > 0) {
+      bar.classList.add('visible');
+    } else {
+      bar.classList.remove('visible');
+    }
+
+    this.updateSelectedCount();
+  },
+
+  applyBulkAction(actionType) {
+    if (this.selectedTasks.size === 0) {
+      this.toast('No tasks selected', 'warning');
+      return;
+    }
+
+    if (actionType === 'status') {
+      const newStatus = document.getElementById('bulkStatusSelect').value;
+      if (!newStatus) {
+        this.toast('Please select a status', 'warning');
+        return;
+      }
+
+      this.showLoading(true);
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(() => {
+            this.toast(`Updated ${this.selectedTasks.size} tasks`, 'success');
+            this.clearSelection();
+            this.loadData();
+          })
+          .withFailureHandler((error) => {
+            this.toast('Failed to update tasks: ' + error.message, 'error');
+            this.showLoading(false);
+          })
+          .bulkUpdateStatus(Array.from(this.selectedTasks), newStatus);
+      } else {
+        this.selectedTasks.forEach(taskId => {
+          const task = this.allTasks.find(t => t.requestId === taskId);
+          if (task) {
+            task.status = newStatus;
+          }
+        });
+
+        this.clearSelection();
+        this.applyFilters();
+        this.showLoading(false);
+        this.toast(`Updated ${this.selectedTasks.size} tasks`, 'success');
+      }
+    } else if (actionType === 'assignee') {
+      const newAssignee = document.getElementById('bulkAssigneeSelect').value;
+      if (!newAssignee) {
+        this.toast('Please select an assignee', 'warning');
+        return;
+      }
+
+      this.showLoading(true);
+    }
+  },
+
+  deleteBulkTasks() {
+    if (this.selectedTasks.size === 0) {
+      this.toast('No tasks selected', 'warning');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${this.selectedTasks.size} task(s)?`)) {
+      return;
+    }
+
+    this.showLoading(true);
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(() => {
+          this.toast(`Deleted ${this.selectedTasks.size} tasks`, 'success');
+          this.clearSelection();
+          this.loadData();
+        })
+        .withFailureHandler((error) => {
+          this.toast('Failed to delete tasks: ' + error.message, 'error');
+          this.showLoading(false);
+        })
+        .bulkDeleteTasks(Array.from(this.selectedTasks));
+    } else {
+      this.selectedTasks.forEach(taskId => {
+        const index = this.allTasks.findIndex(t => t.requestId === taskId);
+        if (index >= 0) {
+          this.allTasks.splice(index, 1);
+        }
+      });
+
+      this.clearSelection();
+      this.applyFilters();
+      this.showLoading(false);
+      this.toast('Tasks deleted', 'success');
+    }
+  },
+
+  startInlineEdit(cell) {
+    if (this.editingCell) {
+      this.cancelInlineEdit();
+    }
+
+    const field = cell.dataset.field;
+    const taskId = cell.dataset.taskId;
+    const task = this.allTasks.find(t => t.id === taskId);
+
+    if (!task) return;
+
+    this.editingCell = { cell, field, taskId, originalValue: task[field] };
+    cell.classList.add('editing');
+
+    let editor;
+
+    if (field === 'status') {
+      editor = document.createElement('select');
+      editor.innerHTML = `
+        <option value="new">New</option>
+        <option value="assigned">Assigned</option>
+        <option value="in-progress">In Progress</option>
+        <option value="pending-clarification">Pending Clarification</option>
+        <option value="on-hold">On Hold</option>
+        <option value="in-review">In Review</option>
+        <option value="completed">Completed</option>
+        <option value="resolved">Resolved</option>
+        <option value="closed">Closed</option>
+        <option value="cancelled">Cancelled</option>
+        <option value="rejected">Rejected</option>
+      `;
+      editor.value = task[field];
+    } else if (field === 'priority') {
+      editor = document.createElement('select');
+      editor.innerHTML = `
+        <option value="urgent">Urgent</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+        <option value="routine">Routine</option>
+      `;
+      editor.value = task[field];
+    } else if (field === 'assignee') {
+      editor = document.createElement('select');
+      editor.innerHTML = '<option value="">Unassigned</option>';
+      this.users.forEach(user => {
+        const option = document.createElement('option');
+        option.value = user.email;
+        option.textContent = user.name;
+        editor.appendChild(option);
+      });
+      editor.value = task[field];
+    } else if (field === 'dueDate') {
+      editor = document.createElement('input');
+      editor.type = 'date';
+      editor.value = task[field] || '';
+    } else {
+      editor = document.createElement('input');
+      editor.type = 'text';
+      editor.value = task[field] || '';
+    }
+
+    editor.style.cssText = 'width: 100%; padding: 8px; border: 2px solid var(--pf-primary-500); border-radius: 4px;';
+    editor.onblur = () => this.saveInlineEdit();
+
+    cell.innerHTML = '';
+    cell.appendChild(editor);
+    editor.focus();
+  },
+
+  saveInlineEdit() {
+    if (!this.editingCell) return;
+
+    const { cell, field, taskId, originalValue } = this.editingCell;
+    const editor = cell.querySelector('input, select');
+    const newValue = editor.value;
+
+    if (newValue === originalValue) {
+      this.cancelInlineEdit();
+      return;
+    }
+
+    const task = this.allTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    this.showLoading(true);
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(() => {
+          task[field] = newValue;
+          this.editingCell = null;
+          this.applyFilters();
+          this.showLoading(false);
+          this.toast('Task updated', 'success');
+        })
+        .withFailureHandler((error) => {
+          this.toast('Failed to update task: ' + error.message, 'error');
+          this.cancelInlineEdit();
+          this.showLoading(false);
+        })
+        .updateTaskField(taskId, field, newValue);
+    } else {
+      task[field] = newValue;
+      this.editingCell = null;
+      this.applyFilters();
+      this.showLoading(false);
+      this.toast('Task updated', 'success');
+    }
+  },
+
+  cancelInlineEdit() {
+    if (!this.editingCell) return;
+
+    const { cell, field, taskId } = this.editingCell;
+    const task = this.allTasks.find(t => t.id === taskId);
+
+    this.editingCell = null;
+    cell.classList.remove('editing');
+
+    if (field === 'status') {
+      cell.innerHTML = `<span class="status-badge status-${(task[field] || '').toLowerCase().replace(/\s+/g, '-')}">${this.formatStatus(task[field] || '')}</span>`;
+    } else if (field === 'priority') {
+      cell.innerHTML = `<span class="priority-badge priority-${(task[field] || '').toLowerCase()}">${this.formatPriority(task[field] || '')}</span>`;
+    } else if (field === 'assignee') {
+      const assigneeUser = this.users.find(u => u.email === task.assignee);
+      cell.textContent = assigneeUser ? assigneeUser.name : (task.assignee || 'Unassigned');
+    } else if (field === 'dueDate') {
+      cell.textContent = task[field] ? this.formatDate(task[field]) : '';
+    } else {
+      cell.textContent = task[field] || '';
+    }
+  },
+
+  editTask(taskId) {
+    if (typeof openTaskDetailPanel !== 'undefined') {
+      openTaskDetailPanel(taskId);
+    } else if (typeof TaskDetailPanel !== 'undefined') {
+      TaskDetailPanel.open(taskId);
+    } else {
+      this.toast('Task detail panel not available', 'error');
+    }
+  },
+
+  deleteTask(taskId) {
+    if (!confirm('Are you sure you want to delete this task?')) {
+      return;
+    }
+
+    this.showLoading(true);
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(() => {
+          this.toast('Task deleted', 'success');
+          this.loadData();
+        })
+        .withFailureHandler((error) => {
+          this.toast('Failed to delete task: ' + error.message, 'error');
+          this.showLoading(false);
+        })
+        .deleteTask(taskId);
+    } else {
+      const index = this.allTasks.findIndex(t => t.requestId === taskId);
+      if (index >= 0) {
+        this.allTasks.splice(index, 1);
+      }
+
+      this.applyFilters();
+      this.showLoading(false);
+      this.toast('Task deleted', 'success');
+    }
+  },
+
+  exportToCSV() {
+    const tasks = this.filteredTasks.length > 0 ? this.filteredTasks : this.allTasks;
+
+    if (tasks.length === 0) {
+      this.toast('No data to export', 'warning');
+      return;
+    }
+
+    const headers = [
+      'ID',
+      'Title',
+      'Status',
+      'Priority',
+      'Type',
+      'Assignee',
+      'Due Date',
+      'Created Date'
+    ];
+
+    const rows = tasks.map(task => [
+      task.requestId,
+      `"${(task.requestName || '').replace(/"/g, '""')}"`,
+      task.status,
+      task.priority,
+      task.requestTypeCategory,
+      task.assignedToName || '',
+      task.dueDeadline || '',
+      task.createdDate || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', `projectflow_tasks_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    this.toast('CSV exported successfully', 'success');
+  },
+
+  togglePresetPanel() {
+    const panel = document.getElementById('presetPanel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) {
+      this.renderPresetList();
+    }
+  },
+
+  renderPresetList() {
+    const presetList = document.getElementById('presetList');
+    const presets = this.loadPresets();
+
+    if (presets.length === 0) {
+      presetList.innerHTML = '<div class="text-sm text-gray-500 text-center py-2">No saved presets</div>';
+      return;
+    }
+
+    presetList.innerHTML = presets.map(preset => `
+      <div class="preset-item">
+        <span class="text-sm" onclick="ListViewPage.loadPreset('${preset.name}')">${preset.name}</span>
+        <button class="delete-preset" onclick="ListViewPage.deletePreset('${preset.name}'); event.stopPropagation();">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    `).join('');
+  },
+
+  savePreset() {
+    const nameInput = document.getElementById('presetName');
+    const name = nameInput.value.trim();
+
+    if (!name) {
+      this.toast('Please enter a preset name', 'warning');
+      return;
+    }
+
+    const preset = {
+      name,
+      filters: {
+        search: document.getElementById('filterSearch').value,
+        status: Array.from(document.getElementById('filterStatus').selectedOptions).map(opt => opt.value),
+        priority: Array.from(document.getElementById('filterPriority').selectedOptions).map(opt => opt.value),
+        type: Array.from(document.getElementById('filterType').selectedOptions).map(opt => opt.value),
+        assignee: document.getElementById('filterAssignee').value,
+        project: document.getElementById('filterProject').value,
+        dateFrom: document.getElementById('filterDateFrom').value,
+        dateTo: document.getElementById('filterDateTo').value,
+      }
+    };
+
+    const presets = this.loadPresets();
+    const existingIndex = presets.findIndex(p => p.name === name);
+
+    if (existingIndex >= 0) {
+      presets[existingIndex] = preset;
+    } else {
+      presets.push(preset);
+    }
+
+    localStorage.setItem('listview_presets', JSON.stringify(presets));
+    nameInput.value = '';
+    this.renderPresetList();
+    this.toast('Preset saved', 'success');
+  },
+
+  loadPreset(name) {
+    const presets = this.loadPresets();
+    const preset = presets.find(p => p.name === name);
+
+    if (!preset) return;
+
+    document.getElementById('filterSearch').value = preset.filters.search || '';
+
+    const statusSelect = document.getElementById('filterStatus');
+    Array.from(statusSelect.options).forEach(option => {
+      option.selected = preset.filters.status.includes(option.value);
+    });
+
+    const prioritySelect = document.getElementById('filterPriority');
+    Array.from(prioritySelect.options).forEach(option => {
+      option.selected = preset.filters.priority.includes(option.value);
+    });
+
+    const typeSelect = document.getElementById('filterType');
+    Array.from(typeSelect.options).forEach(option => {
+      option.selected = preset.filters.type.includes(option.value);
+    });
+
+    document.getElementById('filterAssignee').value = preset.filters.assignee || '';
+    document.getElementById('filterProject').value = preset.filters.project || '';
+    document.getElementById('filterDateFrom').value = preset.filters.dateFrom || '';
+    document.getElementById('filterDateTo').value = preset.filters.dateTo || '';
+
+    this.applyFilters();
+    this.togglePresetPanel();
+    this.toast(`Preset "${name}" loaded`, 'success');
+  },
+
+  deletePreset(name) {
+    const presets = this.loadPresets();
+    const filtered = presets.filter(p => p.name !== name);
+    localStorage.setItem('listview_presets', JSON.stringify(filtered));
+    this.renderPresetList();
+    this.toast('Preset deleted', 'success');
+  },
+
+  loadPresets() {
+    const stored = localStorage.getItem('listview_presets');
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  toggleColumnVisibility() {
+    const panel = document.getElementById('columnVisibilityPanel');
+    panel.classList.toggle('hidden');
+  },
+
+  renderColumnVisibilityPanel() {
+    const panel = document.getElementById('columnVisibilityPanel');
+    const columns = [
+      { key: 'id', label: 'ID' },
+      { key: 'title', label: 'Title' },
+      { key: 'status', label: 'Status' },
+      { key: 'priority', label: 'Priority' },
+      { key: 'type', label: 'Type' },
+      { key: 'assignee', label: 'Assignee' },
+      { key: 'dueDate', label: 'Due Date' },
+      { key: 'createdDate', label: 'Created' },
+    ];
+
+    panel.innerHTML = columns.map(col => `
+      <div class="column-visibility-item">
+        <input
+          type="checkbox"
+          id="col_${col.key}"
+          ${this.visibleColumns[col.key] ? 'checked' : ''}
+          onchange="ListViewPage.toggleColumnVisibility('${col.key}')">
+        <label for="col_${col.key}">${col.label}</label>
+      </div>
+    `).join('');
+  },
+
+  toggleColumn(columnKey) {
+    this.visibleColumns[columnKey] = !this.visibleColumns[columnKey];
+    this.saveColumnVisibility();
+    this.renderTable();
+  },
+
+  saveColumnVisibility() {
+    localStorage.setItem('listview_columns', JSON.stringify(this.visibleColumns));
+  },
+
+  loadColumnVisibility() {
+    const stored = localStorage.getItem('listview_columns');
+    if (stored) {
+      this.visibleColumns = JSON.parse(stored);
+    }
+  },
+
+  formatStatus(status) {
+    return status.split('-').map(word =>
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+  },
+
+  formatPriority(priority) {
+    return priority.charAt(0).toUpperCase() + priority.slice(1);
+  },
+
+  formatDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  },
+
+  showLoading(show) {
+  },
+
+  toast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+
+    const icon = {
+      success: 'fa-check-circle',
+      error: 'fa-exclamation-circle',
+      warning: 'fa-exclamation-triangle',
+      info: 'fa-info-circle'
+    }[type] || 'fa-info-circle';
+
+    toast.innerHTML = `
+      <i class="fas ${icon}"></i>
+      <span>${message}</span>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.animation = 'slideIn 0.3s ease reverse';
+      setTimeout(() => {
+        container.removeChild(toast);
+      }, 300);
+    }, 3000);
+  }
+};
+</script>
+</body>
+</html>

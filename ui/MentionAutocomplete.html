@@ -1,0 +1,432 @@
+<script>
+class MentionAutocomplete {
+  constructor(inputElement, options = {}) {
+    this.input = inputElement;
+    this.options = {
+      minQueryLength: 1,
+      maxSuggestions: 10,
+      debounceMs: 200,
+      ...options,
+    };
+    this.dropdown = null;
+    this.suggestions = [];
+    this.selectedIndex = -1;
+    this.isVisible = false;
+    this.isLoading = false;
+    this.currentQuery = "";
+    this.mentionStartPos = -1;
+    this.debounceTimer = null;
+    this.destroyed = false;
+    this.init();
+  }
+
+  init() {
+    this.createDropdown();
+    this.attachEventListeners();
+  }
+
+  createDropdown() {
+    this.dropdown = document.createElement("div");
+    this.dropdown.className = "mention-autocomplete hidden";
+    this.dropdown.id = `mention-dropdown-${Date.now()}`;
+    this.dropdown.setAttribute('role', 'listbox');
+    this.dropdown.setAttribute('aria-label', 'User suggestions');
+    this.input.parentNode.style.position = "relative";
+    this.input.parentNode.appendChild(this.dropdown);
+  }
+
+  attachEventListeners() {
+    this._handleInput = this.handleInput.bind(this);
+    this._handleKeydown = this.handleKeydown.bind(this);
+    this._handleBlur = this.handleBlur.bind(this);
+    this._handleFocus = this.handleFocus.bind(this);
+    this._handleMouseDown = this.handleMouseDown.bind(this);
+    this._handleClick = this.handleClick.bind(this);
+    this._handleDocumentClick = this.handleDocumentClick.bind(this);
+    this._handleScroll = this.handleScroll.bind(this);
+
+    this.input.addEventListener("input", this._handleInput);
+    this.input.addEventListener("keydown", this._handleKeydown);
+    this.input.addEventListener("blur", this._handleBlur);
+    this.input.addEventListener("focus", this._handleFocus);
+    this.dropdown.addEventListener("mousedown", this._handleMouseDown);
+    this.dropdown.addEventListener("click", this._handleClick);
+    document.addEventListener("click", this._handleDocumentClick);
+    window.addEventListener("scroll", this._handleScroll, true);
+  }
+
+  handleInput(event) {
+    if (this.destroyed) return;
+
+    const { value, selectionStart } = this.input;
+
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+
+    const mentionMatch = this.findMentionAtCursor(value, selectionStart);
+
+    if (mentionMatch) {
+      this.mentionStartPos = mentionMatch.start;
+      this.currentQuery = mentionMatch.query;
+
+      if (this.currentQuery.length >= this.options.minQueryLength) {
+        this.showLoading();
+      }
+
+      this.debounceTimer = setTimeout(() => {
+        this.searchUsers(this.currentQuery);
+      }, this.options.debounceMs);
+    } else {
+      this.hide();
+    }
+  }
+
+  handleKeydown(event) {
+    if (!this.isVisible) return;
+
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        event.stopPropagation();
+        this.selectNext();
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        event.stopPropagation();
+        this.selectPrevious();
+        break;
+      case "Enter":
+        if (this.selectedIndex >= 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.insertSelectedMention();
+        }
+        break;
+      case "Tab":
+        if (this.selectedIndex >= 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.insertSelectedMention();
+        } else if (this.suggestions.length > 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.selectedIndex = 0;
+          this.insertSelectedMention();
+        }
+        break;
+      case "Escape":
+        event.preventDefault();
+        event.stopPropagation();
+        this.hide();
+        break;
+    }
+  }
+
+  handleBlur(event) {
+    setTimeout(() => {
+      if (!this.destroyed && !this.dropdown.contains(document.activeElement)) {
+        this.hide();
+      }
+    }, 200);
+  }
+
+  handleFocus(event) {
+    const { value, selectionStart } = this.input;
+    const mentionMatch = this.findMentionAtCursor(value, selectionStart);
+
+    if (mentionMatch && mentionMatch.query.length >= this.options.minQueryLength) {
+      this.mentionStartPos = mentionMatch.start;
+      this.currentQuery = mentionMatch.query;
+      this.searchUsers(this.currentQuery);
+    }
+  }
+
+  handleMouseDown(event) {
+    event.preventDefault();
+  }
+
+  handleClick(event) {
+    const suggestion = event.target.closest(".mention-suggestion");
+    if (suggestion && !suggestion.classList.contains('mention-no-results')) {
+      const index = parseInt(suggestion.dataset.index);
+      if (!isNaN(index)) {
+        this.selectedIndex = index;
+        this.insertSelectedMention();
+      }
+    }
+  }
+
+  handleDocumentClick(event) {
+    if (this.destroyed) return;
+
+    if (!this.input.contains(event.target) && !this.dropdown.contains(event.target)) {
+      this.hide();
+    }
+  }
+
+  handleScroll(event) {
+    if (this.isVisible && !this.destroyed) {
+      this.positionDropdown();
+    }
+  }
+
+  findMentionAtCursor(text, cursorPos) {
+    let start = cursorPos - 1;
+
+    while (start >= 0 && text[start] !== "@" && text[start] !== " " && text[start] !== "\n") {
+      start--;
+    }
+
+    if (start >= 0 && text[start] === "@") {
+      const query = text.substring(start + 1, cursorPos);
+      if (!/[\s@]/.test(query)) {
+        return {
+          start: start,
+          end: cursorPos,
+          query: query,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  showLoading() {
+    this.isLoading = true;
+    this.dropdown.innerHTML = `
+      <div class="mention-loading">
+        <span>Searching users...</span>
+      </div>
+    `;
+    this.show();
+  }
+
+  async searchUsers(query) {
+    if (this.destroyed) return;
+
+    if (query.length < this.options.minQueryLength) {
+      this.hide();
+      return;
+    }
+
+    this.isLoading = true;
+
+    try {
+      const suggestions = await new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .getUserSuggestions(query, []);
+      });
+
+      if (this.destroyed) return;
+
+      this.isLoading = false;
+      this.suggestions = suggestions.slice(0, this.options.maxSuggestions);
+      this.selectedIndex = this.suggestions.length > 0 ? 0 : -1;
+      this.renderSuggestions();
+      this.show();
+    } catch (error) {
+      console.error("Failed to search users:", error);
+      this.isLoading = false;
+      this.suggestions = [];
+      this.renderNoResults("Error loading users");
+      this.show();
+    }
+  }
+
+  renderSuggestions() {
+    if (this.suggestions.length === 0) {
+      this.renderNoResults("No users found");
+      return;
+    }
+
+    this.dropdown.innerHTML = this.suggestions
+      .map((user, index) => {
+        const initials = this.getInitials(user.name);
+        const highlightedName = this.highlightQuery(user.name, this.currentQuery);
+        const highlightedEmail = this.highlightQuery(user.email, this.currentQuery);
+
+        return `
+          <div class="mention-suggestion ${index === this.selectedIndex ? "selected" : ""}"
+            data-index="${index}"
+            role="option"
+            aria-selected="${index === this.selectedIndex}">
+            <div class="mention-avatar">${initials}</div>
+            <div class="mention-user-info">
+              <div class="mention-user-name">${highlightedName}</div>
+              <div class="mention-user-email">${highlightedEmail}</div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  renderNoResults(message) {
+    this.dropdown.innerHTML = `
+      <div class="mention-suggestion mention-no-results" style="cursor: default; opacity: 0.7;">
+        <div class="mention-user-info">
+          <div class="mention-user-name" style="color: #6b7280;">${this.escapeHtml(message)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  getInitials(name) {
+    if (!name) return '?';
+    return name
+      .split(" ")
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  }
+
+  highlightQuery(text, query) {
+    if (!query) return this.escapeHtml(text);
+
+    const regex = new RegExp(`(${this.escapeRegExp(query)})`, "gi");
+    return this.escapeHtml(text).replace(regex, '<span class="mention-highlight">$1</span>');
+  }
+
+  escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  selectNext() {
+    if (this.suggestions.length === 0) return;
+    this.selectedIndex = (this.selectedIndex + 1) % this.suggestions.length;
+    this.updateSelection();
+  }
+
+  selectPrevious() {
+    if (this.suggestions.length === 0) return;
+    this.selectedIndex = this.selectedIndex <= 0 ? this.suggestions.length - 1 : this.selectedIndex - 1;
+    this.updateSelection();
+  }
+
+  updateSelection() {
+    const suggestions = this.dropdown.querySelectorAll(".mention-suggestion:not(.mention-no-results)");
+
+    suggestions.forEach((suggestion, index) => {
+      const isSelected = index === this.selectedIndex;
+      suggestion.classList.toggle("selected", isSelected);
+      suggestion.setAttribute('aria-selected', isSelected);
+    });
+
+    if (this.selectedIndex >= 0 && this.selectedIndex < suggestions.length) {
+      const selected = suggestions[this.selectedIndex];
+      if (selected) {
+        selected.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }
+  }
+
+  insertSelectedMention() {
+    if (this.selectedIndex < 0 || this.selectedIndex >= this.suggestions.length) {
+      return;
+    }
+
+    const user = this.suggestions[this.selectedIndex];
+    const { value } = this.input;
+
+    const beforeMention = value.substring(0, this.mentionStartPos);
+    const afterMention = value.substring(this.input.selectionStart);
+
+    const mentionText = `@${user.email}`;
+    const newValue = beforeMention + mentionText + " " + afterMention;
+    const newCursorPos = beforeMention.length + mentionText.length + 1;
+
+    this.input.value = newValue;
+    this.input.setSelectionRange(newCursorPos, newCursorPos);
+    this.input.dispatchEvent(new Event("input", { bubbles: true }));
+    this.hide();
+    this.input.focus();
+  }
+
+  show() {
+    if (this.isVisible || this.destroyed) return;
+
+    this.isVisible = true;
+    this.dropdown.classList.remove("hidden");
+    this.positionDropdown();
+    this.input.setAttribute('aria-expanded', 'true');
+    this.input.setAttribute('aria-controls', this.dropdown.id);
+  }
+
+  hide() {
+    if (!this.isVisible) return;
+
+    this.isVisible = false;
+    this.isLoading = false;
+    this.dropdown.classList.add("hidden");
+    this.selectedIndex = -1;
+    this.suggestions = [];
+
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+
+    this.input.setAttribute('aria-expanded', 'false');
+  }
+
+  positionDropdown() {
+    if (!this.dropdown || !this.input) return;
+
+    const inputRect = this.input.getBoundingClientRect();
+    const parentRect = this.input.parentNode.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const dropdownHeight = 250;
+
+    const spaceBelow = viewportHeight - inputRect.bottom;
+    const spaceAbove = inputRect.top;
+    const showAbove = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+
+    if (showAbove) {
+      this.dropdown.style.bottom = `${parentRect.bottom - inputRect.top + 5}px`;
+      this.dropdown.style.top = 'auto';
+    } else {
+      this.dropdown.style.top = `${inputRect.bottom - parentRect.top + 5}px`;
+      this.dropdown.style.bottom = 'auto';
+    }
+
+    this.dropdown.style.left = `${inputRect.left - parentRect.left}px`;
+    this.dropdown.style.width = `${Math.max(inputRect.width, 280)}px`;
+    this.dropdown.style.maxWidth = '400px';
+  }
+
+  destroy() {
+    this.destroyed = true;
+
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+
+    this.input.removeEventListener("input", this._handleInput);
+    this.input.removeEventListener("keydown", this._handleKeydown);
+    this.input.removeEventListener("blur", this._handleBlur);
+    this.input.removeEventListener("focus", this._handleFocus);
+    this.dropdown.removeEventListener("mousedown", this._handleMouseDown);
+    this.dropdown.removeEventListener("click", this._handleClick);
+    document.removeEventListener("click", this._handleDocumentClick);
+    window.removeEventListener("scroll", this._handleScroll, true);
+
+    if (this.dropdown && this.dropdown.parentNode) {
+      this.dropdown.parentNode.removeChild(this.dropdown);
+    }
+
+    this.dropdown = null;
+    this.suggestions = [];
+  }
+}
+</script>

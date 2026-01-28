@@ -1,0 +1,391 @@
+<div id="dependencyPickerModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[1070] hidden"
+  onclick="DependencyPicker.handleOverlayClick(event)">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+    onclick="event.stopPropagation()">
+    <div class="modal-header flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
+          <i class="fas fa-link text-white text-lg"></i>
+        </div>
+        <div>
+          <h2 id="dependencyPickerTitle" class="text-lg font-semibold text-gray-900">Add Dependency</h2>
+          <p id="dependencyPickerSubtitle" class="text-xs text-gray-500">Select a task to create dependency</p>
+        </div>
+      </div>
+      <button
+        onclick="DependencyPicker.close()"
+        class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+        title="Close (Esc)"
+      >
+        <i class="fas fa-times text-xl"></i>
+      </button>
+    </div>
+
+    <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+      <div class="flex items-center gap-3">
+        <div class="flex-1 relative">
+          <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+          <input
+            type="text"
+            id="dependencyPickerSearch"
+            placeholder="Search tasks by title or ID..."
+            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            oninput="DependencyPicker.filterTasks()"
+          />
+        </div>
+        <select
+          id="dependencyPickerProjectFilter"
+          class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onchange="DependencyPicker.filterTasks()"
+        >
+          <option value="">All Projects</option>
+        </select>
+        <select
+          id="dependencyPickerStatusFilter"
+          class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onchange="DependencyPicker.filterTasks()"
+        >
+          <option value="">All Statuses</option>
+          <option value="To Do">To Do</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Review">Review</option>
+          <option value="Done">Done</option>
+        </select>
+      </div>
+
+      <div class="mt-3 flex items-center gap-2">
+        <label class="text-sm font-medium text-gray-700">Dependency Type:</label>
+        <select
+          id="dependencyPickerType"
+          class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="finish_to_start">Finish to Start (default)</option>
+          <option value="start_to_start">Start to Start</option>
+          <option value="finish_to_finish">Finish to Finish</option>
+          <option value="start_to_finish">Start to Finish</option>
+        </select>
+        <button
+          onclick="DependencyPicker.showTypeHelp()"
+          class="text-gray-400 hover:text-gray-600"
+          title="Show dependency type explanations"
+        >
+          <i class="fas fa-question-circle"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto px-6 py-4">
+      <div id="dependencyPickerLoading" class="flex items-center justify-center py-12">
+        <div class="text-center">
+          <i class="fas fa-spinner fa-spin text-3xl text-blue-500 mb-3"></i>
+          <p class="text-sm text-gray-500">Loading tasks...</p>
+        </div>
+      </div>
+
+      <div id="dependencyPickerTaskList" class="space-y-2 hidden"></div>
+
+      <div id="dependencyPickerEmpty" class="hidden flex items-center justify-center py-12">
+        <div class="text-center">
+          <i class="fas fa-search text-3xl text-gray-300 mb-3"></i>
+          <p class="text-sm text-gray-500">No tasks found</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50">
+      <div class="text-xs text-gray-500">
+        <span id="dependencyPickerResultCount">0 tasks</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          onclick="DependencyPicker.close()"
+          class="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dependencyTypeHelpModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-[1080] hidden"
+  onclick="DependencyPicker.hideTypeHelp()">
+  <div class="bg-white rounded-lg shadow-xl max-w-lg p-6" onclick="event.stopPropagation()">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Dependency Types</h3>
+    <div class="space-y-3 text-sm">
+      <div>
+        <div class="font-semibold text-blue-600">Finish to Start (FS)</div>
+        <p class="text-gray-600">Task B cannot start until Task A finishes. Most common dependency.</p>
+        <p class="text-xs text-gray-500 mt-1">Example: Code review cannot start until coding finishes</p>
+      </div>
+      <div>
+        <div class="font-semibold text-green-600">Start to Start (SS)</div>
+        <p class="text-gray-600">Task B cannot start until Task A starts.</p>
+        <p class="text-xs text-gray-500 mt-1">Example: Testing cannot start until development starts</p>
+      </div>
+      <div>
+        <div class="font-semibold text-purple-600">Finish to Finish (FF)</div>
+        <p class="text-gray-600">Task B cannot finish until Task A finishes.</p>
+        <p class="text-xs text-gray-500 mt-1">Example: QA cannot finish until documentation finishes</p>
+      </div>
+      <div>
+        <div class="font-semibold text-orange-600">Start to Finish (SF)</div>
+        <p class="text-gray-600">Task B cannot finish until Task A starts. Rare.</p>
+        <p class="text-xs text-gray-500 mt-1">Example: Old system shutdown cannot finish until new system starts</p>
+      </div>
+    </div>
+    <button
+      onclick="DependencyPicker.hideTypeHelp()"
+      class="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+    >
+      Got it
+    </button>
+  </div>
+</div>
+
+<script>
+const DependencyPicker = {
+  isOpen: false,
+  currentTaskId: null,
+  dependencyType: null,
+  allTasks: [],
+  filteredTasks: [],
+  projects: [],
+
+  open(taskId, type) {
+    this.currentTaskId = taskId;
+    this.dependencyType = type;
+
+    const modal = document.getElementById('dependencyPickerModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      this.isOpen = true;
+    }
+
+    const title = document.getElementById('dependencyPickerTitle');
+    const subtitle = document.getElementById('dependencyPickerSubtitle');
+
+    if (type === 'predecessor') {
+      if (title) title.textContent = 'Add Blocking Task';
+      if (subtitle) subtitle.textContent = 'Select a task that must complete first';
+    } else {
+      if (title) title.textContent = 'Add Dependent Task';
+      if (subtitle) subtitle.textContent = 'Select a task that depends on this one';
+    }
+
+    this.loadTasks();
+    document.addEventListener('keydown', this.handleKeydown);
+  },
+
+  close() {
+    const modal = document.getElementById('dependencyPickerModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      this.isOpen = false;
+    }
+    document.removeEventListener('keydown', this.handleKeydown);
+  },
+
+  handleOverlayClick(event) {
+    if (event.target.id === 'dependencyPickerModal') {
+      this.close();
+    }
+  },
+
+  handleKeydown(event) {
+    if (event.key === 'Escape' && DependencyPicker.isOpen) {
+      DependencyPicker.close();
+    }
+  },
+
+  loadTasks() {
+    document.getElementById('dependencyPickerLoading').classList.remove('hidden');
+    document.getElementById('dependencyPickerTaskList').classList.add('hidden');
+    document.getElementById('dependencyPickerEmpty').classList.add('hidden');
+
+    google.script.run
+      .withSuccessHandler((result) => {
+        this.allTasks = result.tasks || [];
+        this.projects = result.projects || [];
+        this.populateProjectFilter();
+        this.filterTasks();
+        document.getElementById('dependencyPickerLoading').classList.add('hidden');
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to load tasks:', error);
+        toast('Failed to load tasks', 'error');
+        document.getElementById('dependencyPickerLoading').classList.add('hidden');
+      })
+      .getTasksForDependencyPicker(this.currentTaskId);
+  },
+
+  populateProjectFilter() {
+    const select = document.getElementById('dependencyPickerProjectFilter');
+    if (!select) return;
+
+    const currentValue = select.value;
+    select.innerHTML = '<option value="">All Projects</option>' +
+      this.projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    select.value = currentValue;
+  },
+
+  filterTasks() {
+    const searchQuery = document.getElementById('dependencyPickerSearch')?.value.toLowerCase() || '';
+    const projectFilter = document.getElementById('dependencyPickerProjectFilter')?.value || '';
+    const statusFilter = document.getElementById('dependencyPickerStatusFilter')?.value || '';
+
+    this.filteredTasks = this.allTasks.filter(task => {
+      if (task.id === this.currentTaskId) return false;
+
+      if (searchQuery) {
+        const searchable = `${task.id} ${task.title}`.toLowerCase();
+        if (!searchable.includes(searchQuery)) return false;
+      }
+
+      if (projectFilter && task.projectId !== projectFilter) return false;
+      if (statusFilter && task.status !== statusFilter) return false;
+
+      return true;
+    });
+
+    this.renderTasks();
+  },
+
+  renderTasks() {
+    const container = document.getElementById('dependencyPickerTaskList');
+    const emptyState = document.getElementById('dependencyPickerEmpty');
+    const resultCount = document.getElementById('dependencyPickerResultCount');
+    if (!container || !emptyState) return;
+
+    if (resultCount) {
+      resultCount.textContent = `${this.filteredTasks.length} task${this.filteredTasks.length !== 1 ? 's' : ''}`;
+    }
+
+    if (this.filteredTasks.length === 0) {
+      container.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+      return;
+    }
+
+    container.classList.remove('hidden');
+    emptyState.classList.add('hidden');
+    container.innerHTML = this.filteredTasks.map(task => this.renderTaskCard(task)).join('');
+  },
+
+  renderTaskCard(task) {
+    const projectName = this.projects.find(p => p.id === task.projectId)?.name || 'No Project';
+
+    return `
+      <div
+        class="task-picker-card flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all"
+        onclick="DependencyPicker.selectTask('${task.id}')"
+      >
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-mono text-gray-600">${escapeHtml(task.id)}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded ${this.getStatusBadgeClass(task.status)}">
+              ${escapeHtml(task.status)}
+            </span>
+            <span class="text-xs px-1.5 py-0.5 rounded ${this.getPriorityBadgeClass(task.priority)}">
+              ${escapeHtml(task.priority)}
+            </span>
+          </div>
+          <div class="text-sm font-medium text-gray-900 mb-1">${escapeHtml(task.title)}</div>
+          <div class="text-xs text-gray-500">
+            <i class="fas fa-folder mr-1"></i>${escapeHtml(projectName)}
+            ${task.assignee ? `<i class="fas fa-user ml-2 mr-1"></i>${escapeHtml(task.assignee)}` : ''}
+          </div>
+        </div>
+        <div class="ml-4">
+          <i class="fas fa-chevron-right text-gray-400"></i>
+        </div>
+      </div>
+    `;
+  },
+
+  selectTask(selectedTaskId) {
+    const dependencyType = document.getElementById('dependencyPickerType')?.value || 'finish_to_start';
+
+    let successorId, predecessorId;
+
+    if (this.dependencyType === 'predecessor') {
+      successorId = this.currentTaskId;
+      predecessorId = selectedTaskId;
+    } else {
+      successorId = selectedTaskId;
+      predecessorId = this.currentTaskId;
+    }
+
+    toast('Creating dependency...', 'info');
+
+    google.script.run
+      .withSuccessHandler((result) => {
+        if (result.success) {
+          toast('Dependency created', 'success');
+          this.close();
+
+          if (typeof TaskDetailPanel !== 'undefined' && TaskDetailPanel.isOpen) {
+            TaskDetailPanel.loadDependencies();
+          }
+
+          if (typeof loadModalDependencies === 'function' && document.getElementById('simpleTaskModal')) {
+            loadModalDependencies(this.currentTaskId);
+          }
+
+          if (typeof TaskEditModal !== 'undefined' && TaskEditModal.isOpen) {
+            TaskEditModal.loadDependencies();
+          }
+
+          if (typeof loadBoard === 'function') {
+            loadBoard();
+          }
+        } else {
+          toast(result.error || 'Failed to create dependency', 'error');
+        }
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to create dependency:', error);
+        toast('Failed to create dependency', 'error');
+      })
+      .addDependency(successorId, predecessorId, dependencyType, 0);
+  },
+
+  showTypeHelp() {
+    const modal = document.getElementById('dependencyTypeHelpModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+  },
+
+  hideTypeHelp() {
+    const modal = document.getElementById('dependencyTypeHelpModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+  },
+
+  getStatusBadgeClass(status) {
+    const classes = {
+      'Backlog': 'bg-gray-100 text-gray-700',
+      'To Do': 'bg-blue-100 text-blue-700',
+      'In Progress': 'bg-yellow-100 text-yellow-700',
+      'Review': 'bg-purple-100 text-purple-700',
+      'Testing': 'bg-cyan-100 text-cyan-700',
+      'Done': 'bg-green-100 text-green-700'
+    };
+    return classes[status] || 'bg-gray-100 text-gray-700';
+  },
+
+  getPriorityBadgeClass(priority) {
+    const classes = {
+      'Lowest': 'bg-gray-100 text-gray-600',
+      'Low': 'bg-green-100 text-green-600',
+      'Medium': 'bg-yellow-100 text-yellow-600',
+      'High': 'bg-orange-100 text-orange-600',
+      'Highest': 'bg-red-100 text-red-600',
+      'Critical': 'bg-red-200 text-red-800'
+    };
+    return classes[priority] || 'bg-gray-100 text-gray-600';
+  }
+};
+</script>

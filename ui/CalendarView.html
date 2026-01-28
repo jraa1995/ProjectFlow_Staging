@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendar View - ProjectFlow</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root {
+  --primary-yellow: #fbbf24;
+  --primary-yellow-dark: #f59e0b;
+  --primary-yellow-light: #fef3c7;
+}
+
+.fc {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.fc .fc-button-primary {
+  background-color: var(--primary-yellow);
+  border-color: var(--primary-yellow);
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.fc .fc-button-primary:hover:not(:disabled) {
+  background-color: var(--primary-yellow-dark);
+  border-color: var(--primary-yellow-dark);
+  color: #1f2937;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active {
+  background-color: var(--primary-yellow-dark);
+  border-color: var(--primary-yellow-dark);
+  color: #fff;
+}
+
+.fc .fc-button-primary:focus {
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.3);
+}
+
+.fc-day-today {
+  background-color: var(--primary-yellow-light) !important;
+}
+
+.fc-event {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 0.875rem;
+}
+
+.fc-event:hover {
+  opacity: 0.85;
+}
+
+.fc-daygrid-event {
+  white-space: normal;
+}
+
+.event-milestone {
+  border-left: 4px solid #f59e0b !important;
+  font-weight: 600;
+}
+
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.9);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.loading-overlay.active {
+  display: flex;
+}
+
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+</style>
+</head>
+<body class="bg-gray-50">
+
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="text-center">
+    <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-yellow-400 border-t-transparent"></div>
+    <p class="mt-4 text-gray-600 font-medium">Loading calendar...</p>
+  </div>
+</div>
+
+<div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+<div class="min-h-screen p-6">
+  <div class="mb-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">
+          <i class="fas fa-calendar-alt text-yellow-400 mr-3"></i>
+          Calendar View
+        </h1>
+        <p class="text-gray-600 mt-1">Visualize tasks, deadlines, and milestones</p>
+      </div>
+      <button onclick="window.location.href='index.html'" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+        <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+      </button>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
+    <div class="flex flex-wrap items-center gap-4">
+      <div class="flex items-center space-x-2">
+        <label class="text-sm font-medium text-gray-700">Color by:</label>
+        <div class="inline-flex rounded-lg border border-gray-300 bg-gray-50">
+          <button id="colorByProject" onclick="CalendarViewPage.updateColorMode('project')" class="px-4 py-2 text-sm font-medium rounded-l-lg transition-colors bg-yellow-400 text-gray-900">
+            <i class="fas fa-folder mr-1"></i>Project
+          </button>
+          <button id="colorByAssignee" onclick="CalendarViewPage.updateColorMode('assignee')" class="px-4 py-2 text-sm font-medium rounded-r-lg transition-colors text-gray-700 hover:bg-gray-100">
+            <i class="fas fa-user mr-1"></i>Assignee
+          </button>
+        </div>
+      </div>
+
+      <div class="h-8 w-px bg-gray-300"></div>
+
+      <div class="flex items-center space-x-2">
+        <label for="projectFilter" class="text-sm font-medium text-gray-700">
+          <i class="fas fa-folder mr-1"></i>Project:
+        </label>
+        <select id="projectFilter" onchange="CalendarViewPage.filterEvents()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <label for="assigneeFilter" class="text-sm font-medium text-gray-700">
+          <i class="fas fa-user mr-1"></i>Assignee:
+        </label>
+        <select id="assigneeFilter" onchange="CalendarViewPage.filterEvents()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
+          <option value="">All Assignees</option>
+        </select>
+      </div>
+
+      <button onclick="CalendarViewPage.loadCalendarData()" class="ml-auto px-4 py-2 bg-yellow-400 text-gray-900 rounded-lg hover:bg-yellow-500 transition-colors font-medium">
+        <i class="fas fa-sync-alt mr-2"></i>Refresh
+      </button>
+    </div>
+
+    <div class="mt-4 pt-4 border-t border-gray-200">
+      <div class="flex items-center flex-wrap gap-4 text-sm">
+        <span class="font-medium text-gray-700">Legend:</span>
+        <div class="flex items-center">
+          <div class="w-4 h-4 rounded bg-blue-500 mr-2"></div>
+          <span class="text-gray-600">Task</span>
+        </div>
+        <div class="flex items-center">
+          <div class="w-4 h-4 rounded bg-amber-500 mr-2 border-l-4 border-amber-700"></div>
+          <span class="text-gray-600">Milestone</span>
+        </div>
+        <div class="flex items-center">
+          <div class="w-4 h-4 rounded bg-green-500 mr-2"></div>
+          <span class="text-gray-600">Start Date</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-lg p-6">
+    <div id="calendar"></div>
+  </div>
+</div>
+
+<div id="quickAddModal" class="fixed inset-0 z-50 hidden">
+  <div class="modal-backdrop absolute inset-0" onclick="CalendarViewPage.closeQuickAddModal()"></div>
+  <div class="relative flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative z-10 transform transition-all">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold text-gray-900">
+          <i class="fas fa-plus-circle text-yellow-400 mr-2"></i>
+          Quick Add Task
+        </h2>
+        <button onclick="CalendarViewPage.closeQuickAddModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+
+      <form id="quickAddForm" onsubmit="CalendarViewPage.saveQuickTask(event)" class="space-y-4">
+        <div>
+          <label for="quickTaskTitle" class="block text-sm font-medium text-gray-700 mb-1">Task Title *</label>
+          <input type="text" id="quickTaskTitle" required placeholder="Enter task title" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
+        </div>
+
+        <div>
+          <label for="quickTaskDueDate" class="block text-sm font-medium text-gray-700 mb-1">Due Date *</label>
+          <input type="date" id="quickTaskDueDate" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
+        </div>
+
+        <div>
+          <label for="quickTaskProject" class="block text-sm font-medium text-gray-700 mb-1">Project *</label>
+          <select id="quickTaskProject" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
+            <option value="">Select Project</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="quickTaskAssignee" class="block text-sm font-medium text-gray-700 mb-1">Assignee</label>
+          <select id="quickTaskAssignee" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent">
+            <option value="">Unassigned</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="quickTaskDescription" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <textarea id="quickTaskDescription" rows="3" placeholder="Optional task description" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none"></textarea>
+        </div>
+
+        <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+          <button type="button" onclick="CalendarViewPage.closeQuickAddModal()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium">
+            Cancel
+          </button>
+          <button type="submit" class="px-4 py-2 bg-yellow-400 text-gray-900 rounded-lg hover:bg-yellow-500 transition-colors font-medium">
+            <i class="fas fa-check mr-2"></i>Create Task
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div id="taskDetailPanel" class="fixed inset-y-0 right-0 w-96 bg-white shadow-2xl transform translate-x-full transition-transform duration-300 z-50 overflow-y-auto custom-scrollbar">
+  <div class="p-6">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-xl font-bold text-gray-900">Task Details</h2>
+      <button onclick="CalendarViewPage.closeTaskDetailPanel()" class="text-gray-400 hover:text-gray-600 transition-colors">
+        <i class="fas fa-times text-xl"></i>
+      </button>
+    </div>
+    <div id="taskDetailContent"></div>
+  </div>
+</div>
+
+<script>
+const CalendarState = {
+  calendar: null,
+  allEvents: [],
+  filteredEvents: [],
+  colorMode: 'project',
+  filters: {
+    project: '',
+    assignee: ''
+  },
+  projectColors: {},
+  assigneeColors: {}
+};
+
+function generateColorFromString(str) {
+  if (!str) return '#6b7280';
+
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const colors = [
+    '#3b82f6',
+    '#10b981',
+    '#8b5cf6',
+    '#ec4899',
+    '#f59e0b',
+    '#06b6d4',
+    '#ef4444',
+    '#84cc16',
+    '#f97316',
+    '#6366f1'
+  ];
+
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function formatDate(dateString) {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatDateForInput(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toISOString().split('T')[0];
+}
+
+const CalendarViewPage = {
+  hasInitialized: false,
+
+  init() {
+    if (this.hasInitialized && CalendarState.calendar) {
+      CalendarState.calendar.render();
+      showLoading(false);
+      return;
+    }
+
+    if (this.tryInstantRender()) {
+      this.hasInitialized = true;
+      return;
+    }
+
+    this.loadCalendarData();
+    this.hasInitialized = true;
+  },
+
+  tryInstantRender() {
+    let tasks = null;
+
+    if (typeof State !== 'undefined') {
+      if (State.cache?.tasks?.data?.length > 0) {
+        tasks = State.cache.tasks.data;
+        State.projects = State.cache.projects?.data || [];
+        State.users = State.cache.users?.data || [];
+      } else if (State.tasks?.length > 0) {
+        tasks = State.tasks;
+      }
+    }
+
+    if (tasks && tasks.length > 0) {
+      State.tasks = tasks;
+      this.initializeData();
+      return true;
+    }
+
+    return false;
+  },
+
+  refresh() {
+    this.hasInitialized = false;
+    this.loadCalendarData();
+  },
+
+  async loadCalendarData() {
+    showLoading(true);
+
+    try {
+      if (typeof State !== 'undefined' && State.cache && State.cache.tasks && State.cache.tasks.data) {
+        State.tasks = State.cache.tasks.data || [];
+        State.projects = State.cache.projects?.data || [];
+        State.users = State.cache.users?.data || [];
+        this.initializeData();
+        return;
+      }
+
+      if (typeof loadAllData !== 'undefined') {
+        const data = await loadAllData();
+        State.tasks = data.tasks || [];
+        State.projects = data.projects || [];
+        State.users = data.users || [];
+        this.initializeData();
+      } else {
+        console.warn('CalendarView: Fallback to direct API call');
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run
+            .withSuccessHandler((data) => {
+              State.tasks = data.tasks || [];
+              State.projects = data.projects || [];
+              State.users = data.users || [];
+              this.initializeData();
+            })
+            .withFailureHandler((error) => {
+              console.error('Error loading data:', error);
+              toast('Failed to load calendar data', 'error');
+              showLoading(false);
+            })
+            .getCalendarData();
+        } else {
+          await this.loadMockData();
+          this.initializeData();
+        }
+      }
+    } catch (error) {
+      console.error('Error loading calendar data:', error);
+      toast('Failed to load calendar data', 'error');
+      showLoading(false);
+    }
+  },
+
+  async loadMockData() {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    State.projects = [
+      { id: 'p1', name: 'Website Redesign', color: '#3b82f6', status: 'Active' },
+      { id: 'p2', name: 'Mobile App', color: '#10b981', status: 'Active' },
+      { id: 'p3', name: 'Marketing Campaign', color: '#8b5cf6', status: 'Active' },
+      { id: 'p4', name: 'Infrastructure Upgrade', color: '#ec4899', status: 'Planning' }
+    ];
+
+    State.users = [
+      { email: 'john@example.com', name: 'John Doe' },
+      { email: 'sarah@example.com', name: 'Sarah Smith' },
+      { email: 'mike@example.com', name: 'Mike Johnson' },
+      { email: 'emma@example.com', name: 'Emma Wilson' }
+    ];
+
+    const today = new Date();
+    const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const nextMonth = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    State.tasks = [
+      {
+        id: 't1',
+        title: 'Design Homepage Mockup',
+        description: 'Create high-fidelity mockup for new homepage',
+        projectId: 'p1',
+        assignee: 'sarah@example.com',
+        status: 'In Progress',
+        priority: 'High',
+        dueDate: nextWeek.toISOString().split('T')[0],
+        startDate: today.toISOString().split('T')[0],
+        isMilestone: false
+      },
+      {
+        id: 't2',
+        title: 'Complete UI Development',
+        description: 'Finish all UI components',
+        projectId: 'p1',
+        assignee: 'john@example.com',
+        status: 'To Do',
+        priority: 'High',
+        dueDate: new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        isMilestone: true
+      },
+      {
+        id: 't3',
+        title: 'Implement User Authentication',
+        description: 'Set up OAuth and session management',
+        projectId: 'p2',
+        assignee: 'mike@example.com',
+        status: 'In Progress',
+        priority: 'Critical',
+        dueDate: new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        startDate: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        isMilestone: false
+      },
+      {
+        id: 't4',
+        title: 'Launch Beta Version',
+        description: 'Deploy beta to test users',
+        projectId: 'p2',
+        assignee: 'john@example.com',
+        status: 'To Do',
+        priority: 'High',
+        dueDate: nextMonth.toISOString().split('T')[0],
+        isMilestone: true
+      },
+      {
+        id: 't5',
+        title: 'Create Social Media Content',
+        description: 'Design posts for Q1 campaign',
+        projectId: 'p3',
+        assignee: 'emma@example.com',
+        status: 'To Do',
+        priority: 'Medium',
+        dueDate: new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        isMilestone: false
+      },
+      {
+        id: 't6',
+        title: 'Server Migration',
+        description: 'Move all services to new infrastructure',
+        projectId: 'p4',
+        assignee: 'mike@example.com',
+        status: 'Planning',
+        priority: 'High',
+        dueDate: new Date(today.getTime() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        startDate: new Date(today.getTime() + 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        isMilestone: true
+      },
+      {
+        id: 't7',
+        title: 'Code Review Session',
+        description: 'Review pull requests from team',
+        projectId: 'p2',
+        assignee: 'john@example.com',
+        status: 'To Do',
+        priority: 'Medium',
+        dueDate: new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        isMilestone: false
+      },
+      {
+        id: 't8',
+        title: 'Analytics Integration',
+        description: 'Set up Google Analytics and tracking',
+        projectId: 'p1',
+        assignee: 'sarah@example.com',
+        status: 'To Do',
+        priority: 'Low',
+        dueDate: new Date(today.getTime() + 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        isMilestone: false
+      }
+    ];
+
+    State.user = { email: 'admin@example.com', name: 'Admin User' };
+  },
+
+  initializeData() {
+    State.projects.forEach(project => {
+      CalendarState.projectColors[project.id] = project.color || '#6b7280';
+    });
+
+    State.users.forEach(user => {
+      CalendarState.assigneeColors[user.email] = generateColorFromString(user.email);
+    });
+
+    this.populateFilters();
+    this.transformTasksToEvents();
+    this.renderCalendar();
+    showLoading(false);
+    toast('Calendar loaded successfully', 'success');
+  },
+
+  populateFilters() {
+    const projectFilter = document.getElementById('projectFilter');
+    projectFilter.innerHTML = '<option value="">All Projects</option>';
+
+    State.projects.forEach(project => {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      projectFilter.appendChild(option);
+    });
+
+    const assigneeFilter = document.getElementById('assigneeFilter');
+    assigneeFilter.innerHTML = '<option value="">All Assignees</option>';
+
+    State.users.forEach(user => {
+      const option = document.createElement('option');
+      option.value = user.email;
+      option.textContent = user.name;
+      assigneeFilter.appendChild(option);
+    });
+
+    const quickProjectSelect = document.getElementById('quickTaskProject');
+    quickProjectSelect.innerHTML = '<option value="">Select Project</option>';
+
+    State.projects.forEach(project => {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      quickProjectSelect.appendChild(option);
+    });
+
+    const quickAssigneeSelect = document.getElementById('quickTaskAssignee');
+    quickAssigneeSelect.innerHTML = '<option value="">Unassigned</option>';
+
+    State.users.forEach(user => {
+      const option = document.createElement('option');
+      option.value = user.email;
+      option.textContent = user.name;
+      quickAssigneeSelect.appendChild(option);
+    });
+  },
+
+  transformTasksToEvents() {
+    CalendarState.allEvents = [];
+
+    State.tasks.forEach(task => {
+      const project = State.projects.find(p => p.id === task.projectId);
+      let color;
+
+      if (CalendarState.colorMode === 'project') {
+        color = CalendarState.projectColors[task.projectId] || '#6b7280';
+      } else {
+        color = CalendarState.assigneeColors[task.assignee] || '#6b7280';
+      }
+
+      if (task.isMilestone) {
+        color = '#f59e0b';
+      }
+
+      if (task.dueDate) {
+        CalendarState.allEvents.push({
+          id: task.id,
+          title: task.title,
+          start: task.dueDate,
+          backgroundColor: color,
+          borderColor: color,
+          className: task.isMilestone ? 'event-milestone' : '',
+          extendedProps: {
+            task: task,
+            project: project,
+            eventType: 'dueDate'
+          }
+        });
+      }
+
+      if (task.startDate && task.startDate !== task.dueDate) {
+        CalendarState.allEvents.push({
+          id: `${task.id}-start`,
+          title: `${task.title}`,
+          start: task.startDate,
+          backgroundColor: '#10b981',
+          borderColor: '#10b981',
+          extendedProps: {
+            task: task,
+            project: project,
+            eventType: 'startDate'
+          }
+        });
+      }
+    });
+
+    this.filterEvents();
+  },
+
+  filterEvents() {
+    const projectFilter = document.getElementById('projectFilter').value;
+    const assigneeFilter = document.getElementById('assigneeFilter').value;
+
+    CalendarState.filters.project = projectFilter;
+    CalendarState.filters.assignee = assigneeFilter;
+
+    CalendarState.filteredEvents = CalendarState.allEvents.filter(event => {
+      const task = event.extendedProps.task;
+
+      if (projectFilter && task.projectId !== projectFilter) {
+        return false;
+      }
+
+      if (assigneeFilter && task.assignee !== assigneeFilter) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (CalendarState.calendar) {
+      CalendarState.calendar.removeAllEvents();
+      CalendarState.calendar.addEventSource(CalendarState.filteredEvents);
+    }
+  },
+
+  renderCalendar() {
+    const calendarEl = document.getElementById('calendar');
+
+    CalendarState.calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+      },
+      buttonText: {
+        today: 'Today',
+        month: 'Month',
+        week: 'Week',
+        day: 'Day',
+        list: 'Agenda'
+      },
+      editable: true,
+      droppable: true,
+      eventDurationEditable: false,
+      events: CalendarState.filteredEvents,
+      eventClick: (info) => this.handleEventClick(info),
+      dateClick: (info) => this.handleDateClick(info),
+      eventDrop: (info) => this.handleEventDrop(info),
+      eventDidMount: (info) => {
+        const task = info.event.extendedProps.task;
+        const project = info.event.extendedProps.project;
+        const assignee = State.users.find(u => u.email === task.assignee);
+        info.el.title = `${task.title}\n${project ? project.name : 'No Project'}\n${assignee ? assignee.name : 'Unassigned'}\nStatus: ${task.status}`;
+      },
+      height: 'auto',
+      firstDay: 0
+    });
+
+    CalendarState.calendar.render();
+  },
+
+  handleEventClick(info) {
+    info.jsEvent.preventDefault();
+    const task = info.event.extendedProps.task;
+    const project = info.event.extendedProps.project;
+    const assignee = State.users.find(u => u.email === task.assignee);
+    this.openTaskDetailPanel(task, project, assignee);
+  },
+
+  handleDateClick(info) {
+    this.openQuickAddModal(info.dateStr);
+  },
+
+  handleEventDrop(info) {
+    const task = info.event.extendedProps.task;
+    const newDate = info.event.startStr;
+    const eventType = info.event.extendedProps.eventType;
+    const dateField = eventType === 'startDate' ? 'startDate' : 'dueDate';
+
+    const taskIndex = State.tasks.findIndex(t => t.id === task.id);
+    if (taskIndex !== -1) {
+      State.tasks[taskIndex][dateField] = newDate;
+    }
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(() => {
+          toast(`Task ${dateField === 'startDate' ? 'start date' : 'due date'} updated successfully`, 'success');
+          this.transformTasksToEvents();
+        })
+        .withFailureHandler((error) => {
+          console.error('Error updating task:', error);
+          toast('Failed to update task date', 'error');
+          info.revert();
+        })
+        .updateTask(task.id, { [dateField]: newDate });
+    } else {
+      toast(`Task ${dateField === 'startDate' ? 'start date' : 'due date'} updated successfully`, 'success');
+      this.transformTasksToEvents();
+    }
+  },
+
+  updateColorMode(mode) {
+    CalendarState.colorMode = mode;
+    const projectBtn = document.getElementById('colorByProject');
+    const assigneeBtn = document.getElementById('colorByAssignee');
+
+    if (mode === 'project') {
+      projectBtn.className = 'px-4 py-2 text-sm font-medium rounded-l-lg transition-colors bg-yellow-400 text-gray-900';
+      assigneeBtn.className = 'px-4 py-2 text-sm font-medium rounded-r-lg transition-colors text-gray-700 hover:bg-gray-100';
+    } else {
+      projectBtn.className = 'px-4 py-2 text-sm font-medium rounded-l-lg transition-colors text-gray-700 hover:bg-gray-100';
+      assigneeBtn.className = 'px-4 py-2 text-sm font-medium rounded-r-lg transition-colors bg-yellow-400 text-gray-900';
+    }
+
+    this.transformTasksToEvents();
+  },
+
+  openQuickAddModal(date) {
+    document.getElementById('quickAddModal').classList.remove('hidden');
+    document.getElementById('quickTaskDueDate').value = date;
+    document.getElementById('quickTaskTitle').focus();
+  },
+
+  closeQuickAddModal() {
+    document.getElementById('quickAddModal').classList.add('hidden');
+    document.getElementById('quickAddForm').reset();
+  },
+
+  saveQuickTask(event) {
+    event.preventDefault();
+
+    const title = document.getElementById('quickTaskTitle').value.trim();
+    const dueDate = document.getElementById('quickTaskDueDate').value;
+    const projectId = document.getElementById('quickTaskProject').value;
+    const assignee = document.getElementById('quickTaskAssignee').value;
+    const description = document.getElementById('quickTaskDescription').value.trim();
+
+    if (!title || !dueDate || !projectId) {
+      toast('Please fill in all required fields', 'warning');
+      return;
+    }
+
+    const taskData = {
+      title,
+      description,
+      projectId,
+      assignee,
+      dueDate,
+      status: 'To Do',
+      priority: 'Medium',
+      isMilestone: false
+    };
+
+    showLoading(true);
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler((newTask) => {
+          State.tasks.push(newTask);
+          this.transformTasksToEvents();
+          this.closeQuickAddModal();
+          toast('Task created successfully', 'success');
+          showLoading(false);
+        })
+        .withFailureHandler((error) => {
+          console.error('Error creating task:', error);
+          toast('Failed to create task', 'error');
+          showLoading(false);
+        })
+        .createTask(taskData);
+    } else {
+      setTimeout(() => {
+        const newTask = {
+          id: 't' + (State.tasks.length + 1),
+          ...taskData
+        };
+        State.tasks.push(newTask);
+        this.transformTasksToEvents();
+        this.closeQuickAddModal();
+        toast('Task created successfully', 'success');
+        showLoading(false);
+      }, 500);
+    }
+  },
+
+  openTaskDetailPanel(task, project, assignee) {
+    const panel = document.getElementById('taskDetailPanel');
+    const content = document.getElementById('taskDetailContent');
+
+    const statusColors = {
+      'To Do': 'bg-gray-100 text-gray-800',
+      'In Progress': 'bg-blue-100 text-blue-800',
+      'Done': 'bg-green-100 text-green-800',
+      'Blocked': 'bg-red-100 text-red-800',
+      'Planning': 'bg-purple-100 text-purple-800'
+    };
+
+    const priorityColors = {
+      'Low': 'bg-gray-100 text-gray-800',
+      'Medium': 'bg-yellow-100 text-yellow-800',
+      'High': 'bg-orange-100 text-orange-800',
+      'Critical': 'bg-red-100 text-red-800'
+    };
+
+    content.innerHTML = `
+      <div class="space-y-4">
+        <div>
+          <h3 class="text-2xl font-bold text-gray-900">${task.title}</h3>
+          ${task.isMilestone ? '<span class="inline-block mt-2 px-3 py-1 bg-amber-100 text-amber-800 text-sm font-medium rounded-full"><i class="fas fa-flag mr-1"></i>Milestone</span>' : ''}
+        </div>
+
+        <div class="flex space-x-2">
+          <span class="px-3 py-1 ${statusColors[task.status] || 'bg-gray-100 text-gray-800'} text-sm font-medium rounded-full">
+            ${task.status}
+          </span>
+          <span class="px-3 py-1 ${priorityColors[task.priority] || 'bg-gray-100 text-gray-800'} text-sm font-medium rounded-full">
+            ${task.priority} Priority
+          </span>
+        </div>
+
+        ${project ? `
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-folder text-gray-400"></i>
+            <span class="font-medium text-gray-700">Project:</span>
+            <span class="text-gray-900">${project.name}</span>
+          </div>
+        ` : ''}
+
+        <div class="flex items-center space-x-2">
+          <i class="fas fa-user text-gray-400"></i>
+          <span class="font-medium text-gray-700">Assignee:</span>
+          <span class="text-gray-900">${assignee ? assignee.name : 'Unassigned'}</span>
+        </div>
+
+        ${task.startDate ? `
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-calendar-check text-gray-400"></i>
+            <span class="font-medium text-gray-700">Start Date:</span>
+            <span class="text-gray-900">${formatDate(task.startDate)}</span>
+          </div>
+        ` : ''}
+
+        ${task.dueDate ? `
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-calendar-times text-gray-400"></i>
+            <span class="font-medium text-gray-700">Due Date:</span>
+            <span class="text-gray-900">${formatDate(task.dueDate)}</span>
+          </div>
+        ` : ''}
+
+        ${task.description ? `
+          <div class="pt-4 border-t border-gray-200">
+            <h4 class="font-medium text-gray-700 mb-2">Description</h4>
+            <p class="text-gray-600 whitespace-pre-wrap">${task.description}</p>
+          </div>
+        ` : ''}
+
+        <div class="pt-4 border-t border-gray-200 flex space-x-2">
+          <button onclick="CalendarViewPage.editTask('${task.id}')" class="flex-1 px-4 py-2 bg-yellow-400 text-gray-900 rounded-lg hover:bg-yellow-500 transition-colors font-medium">
+            <i class="fas fa-edit mr-2"></i>Edit Task
+          </button>
+          <button onclick="CalendarViewPage.deleteTask('${task.id}')" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium">
+            <i class="fas fa-trash mr-2"></i>Delete
+          </button>
+        </div>
+      </div>
+    `;
+
+    panel.style.transform = 'translateX(0)';
+  },
+
+  closeTaskDetailPanel() {
+    const panel = document.getElementById('taskDetailPanel');
+    panel.style.transform = 'translateX(100%)';
+  },
+
+  editTask(taskId) {
+    toast('Edit task feature - integrate with task edit form', 'info');
+  },
+
+  deleteTask(taskId) {
+    if (!confirm('Are you sure you want to delete this task?')) {
+      return;
+    }
+
+    showLoading(true);
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(() => {
+          State.tasks = State.tasks.filter(t => t.id !== taskId);
+          this.transformTasksToEvents();
+          this.closeTaskDetailPanel();
+          toast('Task deleted successfully', 'success');
+          showLoading(false);
+        })
+        .withFailureHandler((error) => {
+          console.error('Error deleting task:', error);
+          toast('Failed to delete task', 'error');
+          showLoading(false);
+        })
+        .deleteTask(taskId);
+    } else {
+      setTimeout(() => {
+        State.tasks = State.tasks.filter(t => t.id !== taskId);
+        this.transformTasksToEvents();
+        this.closeTaskDetailPanel();
+        toast('Task deleted successfully', 'success');
+        showLoading(false);
+      }, 500);
+    }
+  }
+};
+
+function showLoading(show) {
+  const overlay = document.getElementById('loadingOverlay');
+  if (show) {
+    overlay.classList.add('active');
+  } else {
+    overlay.classList.remove('active');
+  }
+}
+
+function toast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+
+  const bgColors = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    warning: 'bg-yellow-500',
+    info: 'bg-blue-500'
+  };
+
+  toast.className = `${bgColors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2`;
+  toast.innerHTML = `
+    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
+    <span>${message}</span>
+  `;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+</script>
+</body>
+</html>

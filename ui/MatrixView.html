@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Matrix View - ProjectFlow</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f9fafb;
+}
+
+.matrix-grid {
+  display: grid;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 16px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.matrix-cell {
+  min-height: 120px;
+  padding: 12px;
+  background: #fafafa;
+  border: 2px dashed #e5e7eb;
+  border-radius: 8px;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.matrix-cell.has-tasks {
+  border-style: solid;
+  border-color: #d1d5db;
+  background: white;
+}
+
+.matrix-cell.drag-over {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  border-style: solid;
+  transform: scale(1.02);
+}
+
+.cell-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cell-aggregation {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.agg-light {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.agg-medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.agg-heavy {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.task-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 6px;
+  cursor: move;
+  transition: all 0.2s;
+  font-size: 13px;
+}
+
+.task-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.task-card.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+}
+
+.task-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.task-id {
+  font-size: 10px;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.task-title {
+  font-weight: 500;
+  color: #1f2937;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-assignee-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.project-indicator {
+  width: 4px;
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.row-header, .col-header {
+  font-weight: 600;
+  color: #374151;
+  padding: 8px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.empty-cell-hint {
+  color: #9ca3af;
+  font-size: 12px;
+  text-align: center;
+  padding: 20px 10px;
+  font-style: italic;
+}
+
+.config-panel {
+  background: white;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 16px;
+}
+
+.select-input {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #374151;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.select-input:hover {
+  border-color: #f59e0b;
+}
+
+.select-input:focus {
+  outline: none;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 16px;
+  font-size: 13px;
+  color: #92400e;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-chip:hover {
+  background: #fde68a;
+}
+
+.btn-primary {
+  background: #f59e0b;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  background: #d97706;
+}
+
+.btn-secondary {
+  background: white;
+  color: #374151;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  border: 1px solid #d1d5db;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #f3f4f6;
+  border-top-color: #f59e0b;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.task-count-compact {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.scroll-container {
+  overflow-x: auto;
+  max-width: 100%;
+}
+</style>
+</head>
+<body class="p-6">
+<div class="max-w-[calc(100vw-48px)] mx-auto">
+  <div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">Matrix View</h1>
+    <p class="text-gray-600">Visualize tasks in a 2D grid with customizable dimensions</p>
+  </div>
+
+  <div class="config-panel">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Matrix Preset</label>
+        <select id="matrixPresetSelect" class="select-input w-full">
+          <option value="priority-status">Priority Matrix</option>
+          <option value="workload">Workload Matrix</option>
+          <option value="project-type">Project Breakdown</option>
+          <option value="custom">Custom Matrix</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Row Dimension</label>
+        <select id="rowDimensionSelect" class="select-input w-full">
+          <option value="priority">Priority</option>
+          <option value="status">Status</option>
+          <option value="type">Type</option>
+          <option value="assignee">Assignee</option>
+          <option value="project">Project</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Column Dimension</label>
+        <select id="colDimensionSelect" class="select-input w-full">
+          <option value="status">Status</option>
+          <option value="priority">Priority</option>
+          <option value="type">Type</option>
+          <option value="assignee">Assignee</option>
+          <option value="project">Project</option>
+          <option value="week">Week</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Aggregation</label>
+        <select id="aggregationModeSelect" class="select-input w-full">
+          <option value="count">Count</option>
+          <option value="storyPoints">Story Points</option>
+          <option value="estimatedHours">Estimated Hours</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Project Filter</label>
+        <select id="projectFilterSelect" class="select-input w-full" multiple size="3">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Date Range</label>
+        <div class="flex gap-2">
+          <input type="date" id="dateFromInput" class="select-input flex-1" placeholder="From">
+          <input type="date" id="dateToInput" class="select-input flex-1" placeholder="To">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Search</label>
+        <input type="text" id="searchInput" class="select-input w-full" placeholder="Search tasks...">
+      </div>
+    </div>
+
+    <div class="flex gap-3 mt-4">
+      <button onclick="MatrixViewPage.applyFilters()" class="btn-primary">
+        <i class="fas fa-filter mr-2"></i>Apply Filters
+      </button>
+      <button onclick="MatrixViewPage.resetFilters()" class="btn-secondary">
+        <i class="fas fa-redo mr-2"></i>Reset
+      </button>
+      <button onclick="MatrixViewPage.refreshMatrix()" class="btn-secondary">
+        <i class="fas fa-sync mr-2"></i>Refresh
+      </button>
+    </div>
+  </div>
+
+  <div class="scroll-container">
+    <div id="matrixContainer" class="matrix-grid"></div>
+  </div>
+
+  <div id="emptyState" class="text-center py-16 hidden">
+    <i class="fas fa-table text-6xl text-gray-300 mb-4"></i>
+    <p class="text-xl font-semibold text-gray-600 mb-2">No tasks to display</p>
+    <p class="text-gray-500">Try adjusting your filters or create some tasks</p>
+  </div>
+</div>
+
+<div id="loadingOverlay" class="loading-overlay hidden">
+  <div class="bg-white p-6 rounded-lg shadow-xl text-center">
+    <div class="spinner mx-auto mb-4"></div>
+    <p class="text-gray-700 font-semibold">Loading matrix data...</p>
+  </div>
+</div>
+
+<script>
+const MatrixViewPage = {
+  hasInitialized: false,
+  allTasks: [],
+  filteredTasks: [],
+  projects: [],
+  users: [],
+  config: {
+    preset: 'priority-status',
+    rowDimension: 'priority',
+    colDimension: 'status',
+    aggregationMode: 'count'
+  },
+  filters: {
+    projects: [],
+    dateFrom: null,
+    dateTo: null,
+    searchText: ''
+  },
+  dimensions: {
+    priority: ['Lowest', 'Low', 'Medium', 'High', 'Highest', 'Critical'],
+    status: ['Backlog', 'To Do', 'In Progress', 'Review', 'Testing', 'Done'],
+    type: ['Task', 'Bug', 'Feature', 'Story', 'Epic', 'Spike'],
+    assignee: [],
+    project: [],
+    week: []
+  },
+  draggedTask: null,
+  draggedFromCell: null,
+
+  init: function() {
+    if (this.hasInitialized && this.allTasks.length > 0) {
+      this.renderMatrix();
+      return;
+    }
+
+    if (this.tryInstantRender()) {
+      if (!this.hasInitialized) {
+        this.setupEventListeners();
+        this.hasInitialized = true;
+      }
+      return;
+    }
+
+    this.setupEventListeners();
+    this.loadMatrixData();
+    this.hasInitialized = true;
+  },
+
+  tryInstantRender: function() {
+    let tasks = null;
+    let users = null;
+    let projects = null;
+
+    if (typeof State !== 'undefined' && State.cache?.tasks?.data?.length > 0) {
+      tasks = State.cache.tasks.data;
+      users = State.cache.users?.data || [];
+      projects = State.cache.projects?.data || [];
+    } else if (typeof State !== 'undefined' && State.tasks?.length > 0) {
+      tasks = State.tasks;
+      users = State.users || [];
+      projects = State.projects || [];
+    }
+
+    if (tasks && tasks.length > 0) {
+      this.allTasks = tasks;
+      this.users = users;
+      this.projects = projects;
+      this.dimensions.assignee = this.users.map(u => u.name);
+      this.dimensions.project = this.projects.map(p => p.name);
+      this.dimensions.week = this.calculateWeeks();
+      this.populateProjectFilter();
+      this.applyFilters();
+      this.showLoading(false);
+      return true;
+    }
+
+    return false;
+  },
+
+  refresh: function() {
+    this.loadMatrixData();
+  },
+
+  setupEventListeners: function() {
+    document.getElementById('matrixPresetSelect').addEventListener('change', (e) => {
+      this.switchMatrixPreset(e.target.value);
+    });
+
+    document.getElementById('rowDimensionSelect').addEventListener('change', (e) => {
+      this.config.rowDimension = e.target.value;
+      this.renderMatrix();
+    });
+
+    document.getElementById('colDimensionSelect').addEventListener('change', (e) => {
+      this.config.colDimension = e.target.value;
+      this.renderMatrix();
+    });
+
+    document.getElementById('aggregationModeSelect').addEventListener('change', (e) => {
+      this.config.aggregationMode = e.target.value;
+      this.renderMatrix();
+    });
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      this.filters.searchText = e.target.value;
+    });
+  },
+
+  loadMatrixData: async function() {
+    this.showLoading(true);
+
+    try {
+      if (typeof loadAllData !== 'undefined') {
+        const data = await loadAllData();
+        this.allTasks = data.tasks || [];
+        this.projects = data.projects || [];
+        this.users = data.users || [];
+      } else {
+        console.warn('loadAllData not available, using mock data');
+        const [tasks, projects, users] = await Promise.all([
+          this.mockGetAllTasks(),
+          this.mockGetProjects(),
+          this.mockGetUsers()
+        ]);
+
+        this.allTasks = tasks;
+        this.projects = projects;
+        this.users = users;
+      }
+
+      this.dimensions.assignee = this.users.map(u => u.name);
+      this.dimensions.project = this.projects.map(p => p.name);
+      this.dimensions.week = this.calculateWeeks();
+      this.populateProjectFilter();
+      this.applyFilters();
+      this.showLoading(false);
+    } catch (error) {
+      console.error('Error loading matrix data:', error);
+      this.showLoading(false);
+      this.showToast('Error loading data', 'error');
+    }
+  },
+
+  calculateWeeks: function() {
+    const weeks = [];
+    const today = new Date();
+
+    for (let i = 0; i < 4; i++) {
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() + (i * 7));
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      const formatDate = (d) => `${d.getMonth()+1}/${d.getDate()}`;
+      weeks.push(`${formatDate(weekStart)}-${formatDate(weekEnd)}`);
+    }
+
+    return weeks;
+  },
+
+  populateProjectFilter: function() {
+    const select = document.getElementById('projectFilterSelect');
+    select.innerHTML = '<option value="">All Projects</option>';
+
+    this.projects.forEach(project => {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      select.appendChild(option);
+    });
+  },
+
+  switchMatrixPreset: function(preset) {
+    this.config.preset = preset;
+    const presets = {
+      'priority-status': { row: 'priority', col: 'status' },
+      'workload': { row: 'assignee', col: 'week' },
+      'project-type': { row: 'project', col: 'type' },
+      'custom': { row: 'priority', col: 'status' }
+    };
+
+    const config = presets[preset] || presets['custom'];
+    this.config.rowDimension = config.row;
+    this.config.colDimension = config.col;
+
+    document.getElementById('rowDimensionSelect').value = config.row;
+    document.getElementById('colDimensionSelect').value = config.col;
+
+    this.renderMatrix();
+  },
+
+  applyFilters: function() {
+    const projectSelect = document.getElementById('projectFilterSelect');
+    const selectedProjects = Array.from(projectSelect.selectedOptions)
+      .map(opt => opt.value)
+      .filter(v => v !== '');
+
+    this.filters.projects = selectedProjects;
+    this.filters.dateFrom = document.getElementById('dateFromInput').value;
+    this.filters.dateTo = document.getElementById('dateToInput').value;
+
+    this.filteredTasks = this.filterTasks();
+    this.renderMatrix();
+    this.showToast('Filters applied', 'success');
+  },
+
+  resetFilters: function() {
+    document.getElementById('projectFilterSelect').selectedIndex = 0;
+    document.getElementById('dateFromInput').value = '';
+    document.getElementById('dateToInput').value = '';
+    document.getElementById('searchInput').value = '';
+
+    this.filters = {
+      projects: [],
+      dateFrom: null,
+      dateTo: null,
+      searchText: ''
+    };
+
+    this.applyFilters();
+  },
+
+  filterTasks: function() {
+    return this.allTasks.filter(task => {
+      if (this.filters.projects.length > 0 && !this.filters.projects.includes(task.projectId)) {
+        return false;
+      }
+
+      if (this.filters.dateFrom && task.dueDate) {
+        const dueDate = new Date(task.dueDate);
+        const fromDate = new Date(this.filters.dateFrom);
+        if (dueDate < fromDate) return false;
+      }
+
+      if (this.filters.dateTo && task.dueDate) {
+        const dueDate = new Date(task.dueDate);
+        const toDate = new Date(this.filters.dateTo);
+        if (dueDate > toDate) return false;
+      }
+
+      if (this.filters.searchText) {
+        const searchLower = this.filters.searchText.toLowerCase();
+        const titleMatch = task.title.toLowerCase().includes(searchLower);
+        const idMatch = task.id.toLowerCase().includes(searchLower);
+        if (!titleMatch && !idMatch) return false;
+      }
+
+      return true;
+    });
+  },
+
+  refreshMatrix: function() {
+    this.loadMatrixData();
+  },
+
+  getMatrixDimensions: function() {
+    const rowValues = this.dimensions[this.config.rowDimension] || [];
+    const colValues = this.dimensions[this.config.colDimension] || [];
+    return { rowValues, colValues };
+  },
+
+  renderMatrix: function() {
+    const { rowValues, colValues } = this.getMatrixDimensions();
+    const container = document.getElementById('matrixContainer');
+    const emptyState = document.getElementById('emptyState');
+
+    if (rowValues.length === 0 || colValues.length === 0) {
+      container.innerHTML = '<div class="col-span-full text-center py-8 text-gray-500">Invalid matrix configuration</div>';
+      return;
+    }
+
+    if (this.filteredTasks.length === 0) {
+      container.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+      return;
+    } else {
+      container.classList.remove('hidden');
+      emptyState.classList.add('hidden');
+    }
+
+    container.style.gridTemplateColumns = `150px repeat(${colValues.length}, minmax(200px, 1fr))`;
+    container.style.gridTemplateRows = `auto repeat(${rowValues.length}, auto)`;
+    container.innerHTML = '';
+
+    const corner = document.createElement('div');
+    corner.className = 'row-header';
+    corner.style.background = '#e5e7eb';
+    container.appendChild(corner);
+
+    colValues.forEach(colValue => {
+      const header = document.createElement('div');
+      header.className = 'col-header';
+      header.textContent = colValue;
+      container.appendChild(header);
+    });
+
+    rowValues.forEach(rowValue => {
+      const rowHeader = document.createElement('div');
+      rowHeader.className = 'row-header';
+      rowHeader.textContent = rowValue;
+      container.appendChild(rowHeader);
+
+      colValues.forEach(colValue => {
+        const cellTasks = this.getTasksForCell(rowValue, colValue);
+        const cell = this.renderCell(rowValue, colValue, cellTasks);
+        container.appendChild(cell);
+      });
+    });
+  },
+
+  getTasksForCell: function(rowValue, colValue) {
+    return this.filteredTasks.filter(task => {
+      const rowMatch = this.getTaskDimensionValue(task, this.config.rowDimension) === rowValue;
+      const colMatch = this.getTaskDimensionValue(task, this.config.colDimension) === colValue;
+      return rowMatch && colMatch;
+    });
+  },
+
+  getTaskDimensionValue: function(task, dimension) {
+    if (dimension === 'week') {
+      if (!task.dueDate) return null;
+      const dueDate = new Date(task.dueDate);
+      const today = new Date();
+      const diffDays = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
+      const weekIndex = Math.floor(diffDays / 7);
+      return this.dimensions.week[weekIndex] || null;
+    }
+
+    if (dimension === 'assignee') {
+      const user = this.users.find(u => u.id === task.assigneeId);
+      return user ? user.name : 'Unassigned';
+    }
+
+    if (dimension === 'project') {
+      const project = this.projects.find(p => p.id === task.projectId);
+      return project ? project.name : 'Unknown';
+    }
+
+    return task[dimension] || 'None';
+  },
+
+  renderCell: function(rowValue, colValue, tasks) {
+    const cell = document.createElement('div');
+    cell.className = 'matrix-cell';
+    cell.dataset.row = rowValue;
+    cell.dataset.col = colValue;
+
+    if (tasks.length > 0) {
+      cell.classList.add('has-tasks');
+    }
+
+    cell.addEventListener('dragover', (e) => this.handleCellDragOver(e, cell));
+    cell.addEventListener('dragleave', (e) => this.handleCellDragLeave(e, cell));
+    cell.addEventListener('drop', (e) => this.handleCellDrop(e, cell));
+
+    const header = document.createElement('div');
+    header.className = 'cell-header';
+
+    const aggregation = this.calculateCellAggregation(tasks, this.config.aggregationMode);
+    const aggBadge = document.createElement('span');
+    aggBadge.className = 'cell-aggregation ' + this.getAggregationClass(aggregation);
+    aggBadge.textContent = this.formatAggregation(aggregation);
+    header.appendChild(aggBadge);
+
+    cell.appendChild(header);
+
+    if (tasks.length === 0) {
+      const hint = document.createElement('div');
+      hint.className = 'empty-cell-hint';
+      hint.innerHTML = '<i class="fas fa-hand-point-up mb-2"></i><br>Drag tasks here';
+      cell.appendChild(hint);
+    } else {
+      const tasksContainer = document.createElement('div');
+      tasks.slice(0, 10).forEach(task => {
+        const taskCard = this.createTaskCard(task);
+        tasksContainer.appendChild(taskCard);
+      });
+
+      if (tasks.length > 10) {
+        const moreCount = document.createElement('div');
+        moreCount.className = 'task-count-compact';
+        moreCount.textContent = `+${tasks.length - 10} more`;
+        tasksContainer.appendChild(moreCount);
+      }
+
+      cell.appendChild(tasksContainer);
+    }
+
+    return cell;
+  },
+
+  createTaskCard: function(task) {
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.draggable = true;
+    card.dataset.taskId = task.id;
+
+    const project = this.projects.find(p => p.id === task.projectId);
+    const indicator = document.createElement('div');
+    indicator.className = 'project-indicator';
+    indicator.style.background = project ? project.color : '#9ca3af';
+    card.appendChild(indicator);
+
+    const header = document.createElement('div');
+    header.className = 'task-card-header';
+
+    const id = document.createElement('span');
+    id.className = 'task-id';
+    id.textContent = task.id;
+
+    const title = document.createElement('span');
+    title.className = 'task-title';
+    title.textContent = task.title;
+
+    header.appendChild(id);
+    header.appendChild(title);
+
+    if (task.assigneeId) {
+      const user = this.users.find(u => u.id === task.assigneeId);
+      if (user) {
+        const avatar = document.createElement('div');
+        avatar.className = 'task-assignee-avatar';
+        avatar.textContent = user.name.charAt(0).toUpperCase();
+        avatar.title = user.name;
+        header.appendChild(avatar);
+      }
+    }
+
+    card.appendChild(header);
+
+    card.addEventListener('dragstart', (e) => this.handleTaskDragStart(e, task, card));
+    card.addEventListener('dragend', (e) => this.handleTaskDragEnd(e, card));
+    card.addEventListener('click', () => this.openTaskDetail(task.id));
+
+    return card;
+  },
+
+  calculateCellAggregation: function(tasks, mode) {
+    if (mode === 'count') {
+      return tasks.length;
+    }
+
+    if (mode === 'storyPoints') {
+      return tasks.reduce((sum, task) => sum + (task.storyPoints || 0), 0);
+    }
+
+    if (mode === 'estimatedHours') {
+      return tasks.reduce((sum, task) => sum + (task.estimatedHours || 0), 0);
+    }
+
+    return 0;
+  },
+
+  getAggregationClass: function(value) {
+    if (value === 0) return 'agg-light';
+    if (value <= 3) return 'agg-light';
+    if (value <= 7) return 'agg-medium';
+    return 'agg-heavy';
+  },
+
+  formatAggregation: function(value) {
+    const mode = this.config.aggregationMode;
+
+    if (mode === 'count') {
+      return `${value}`;
+    }
+
+    if (mode === 'storyPoints') {
+      return `${value} pts`;
+    }
+
+    if (mode === 'estimatedHours') {
+      return `${value}h`;
+    }
+
+    return value;
+  },
+
+  handleTaskDragStart: function(e, task, card) {
+    this.draggedTask = task;
+    this.draggedFromCell = card.closest('.matrix-cell');
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', card.innerHTML);
+  },
+
+  handleTaskDragEnd: function(e, card) {
+    card.classList.remove('dragging');
+  },
+
+  handleCellDragOver: function(e, cell) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    cell.classList.add('drag-over');
+  },
+
+  handleCellDragLeave: function(e, cell) {
+    cell.classList.remove('drag-over');
+  },
+
+  handleCellDrop: function(e, cell) {
+    e.preventDefault();
+    cell.classList.remove('drag-over');
+
+    if (!this.draggedTask) return;
+
+    const rowValue = cell.dataset.row;
+    const colValue = cell.dataset.col;
+
+    this.updateTaskFromCellDrop(this.draggedTask, rowValue, colValue);
+
+    this.draggedTask = null;
+    this.draggedFromCell = null;
+  },
+
+  updateTaskFromCellDrop: function(task, newRowValue, newColValue) {
+    const updates = {};
+    updates[this.config.rowDimension] = newRowValue;
+    updates[this.config.colDimension] = newColValue;
+
+    if (this.config.rowDimension === 'assignee' || this.config.colDimension === 'assignee') {
+      const assigneeName = this.config.rowDimension === 'assignee' ? newRowValue : newColValue;
+      const user = this.users.find(u => u.name === assigneeName);
+      if (user) {
+        updates.assigneeId = user.id;
+        delete updates.assignee;
+      }
+    }
+
+    if (this.config.rowDimension === 'project' || this.config.colDimension === 'project') {
+      const projectName = this.config.rowDimension === 'project' ? newRowValue : newColValue;
+      const project = this.projects.find(p => p.name === projectName);
+      if (project) {
+        updates.projectId = project.id;
+        delete updates.project;
+      }
+    }
+
+    Object.assign(task, updates);
+
+    this.showLoading(true);
+    setTimeout(() => {
+      this.showLoading(false);
+      this.showToast('Task updated successfully', 'success');
+      this.renderMatrix();
+    }, 500);
+  },
+
+  openTaskDetail: function(taskId) {
+    if (typeof openTaskDetailPanel !== 'undefined') {
+      openTaskDetailPanel(taskId);
+    } else if (typeof TaskDetailPanel !== 'undefined') {
+      TaskDetailPanel.open(taskId);
+    } else {
+      this.showToast('Task detail panel not available', 'error');
+    }
+  },
+
+  showLoading: function(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (show) {
+      overlay.classList.remove('hidden');
+    } else {
+      overlay.classList.add('hidden');
+    }
+  },
+
+  showToast: function(message, type = 'info') {
+  },
+
+  mockGetAllTasks: function() {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        const tasks = [];
+        const priorities = ['Low', 'Medium', 'High', 'Highest'];
+        const statuses = ['Backlog', 'To Do', 'In Progress', 'Review', 'Done'];
+        const types = ['Task', 'Bug', 'Feature', 'Story'];
+
+        for (let i = 1; i <= 50; i++) {
+          tasks.push({
+            id: `TASK-${i}`,
+            title: `Task ${i}: ${['Fix login bug', 'Add dashboard', 'Update API', 'Review PR', 'Write tests'][i % 5]}`,
+            priority: priorities[Math.floor(Math.random() * priorities.length)],
+            status: statuses[Math.floor(Math.random() * statuses.length)],
+            type: types[Math.floor(Math.random() * types.length)],
+            projectId: `proj-${Math.floor(Math.random() * 3) + 1}`,
+            assigneeId: `user-${Math.floor(Math.random() * 5) + 1}`,
+            storyPoints: Math.floor(Math.random() * 8) + 1,
+            estimatedHours: Math.floor(Math.random() * 16) + 2,
+            dueDate: new Date(Date.now() + Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
+          });
+        }
+
+        resolve(tasks);
+      }, 500);
+    });
+  },
+
+  mockGetProjects: function() {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve([
+          { id: 'proj-1', name: 'ProjectFlow', color: '#f59e0b' },
+          { id: 'proj-2', name: 'Mobile App', color: '#3b82f6' },
+          { id: 'proj-3', name: 'API Refactor', color: '#10b981' }
+        ]);
+      }, 300);
+    });
+  },
+
+  mockGetUsers: function() {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve([
+          { id: 'user-1', name: 'Alice Johnson' },
+          { id: 'user-2', name: 'Bob Smith' },
+          { id: 'user-3', name: 'Carol Williams' },
+          { id: 'user-4', name: 'David Brown' },
+          { id: 'user-5', name: 'Eve Davis' }
+        ]);
+      }, 300);
+    });
+  }
+};
+</script>
+</body>
+</html>
