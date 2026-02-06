@@ -1196,8 +1196,8 @@ function formatCommentContent(content, mentionedUserEmails) {
 
 function getCurrentUserEmailOptimized() {
   try {
-    const email = PropertiesService.getScriptProperties().getProperty('CURRENT_USER_EMAIL');
-    const timestamp = PropertiesService.getScriptProperties().getProperty('LOGIN_TIMESTAMP');
+    const email = PropertiesService.getUserProperties().getProperty('CURRENT_USER_EMAIL');
+    const timestamp = PropertiesService.getUserProperties().getProperty('LOGIN_TIMESTAMP');
 
     if (email && timestamp) {
       const loginTime = parseInt(timestamp);
@@ -1218,8 +1218,8 @@ function getCurrentUserEmailOptimized() {
 
 function setCurrentUserEmailOptimized(email) {
   try {
-    PropertiesService.getScriptProperties().setProperty('CURRENT_USER_EMAIL', email);
-    PropertiesService.getScriptProperties().setProperty('LOGIN_TIMESTAMP', new Date().getTime().toString());
+    PropertiesService.getUserProperties().setProperty('CURRENT_USER_EMAIL', email);
+    PropertiesService.getUserProperties().setProperty('LOGIN_TIMESTAMP', new Date().getTime().toString());
   } catch (error) {
     console.error('setCurrentUserEmailOptimized failed:', error);
   }
@@ -1440,8 +1440,8 @@ function logout() {
       AuthService.invalidateAllUserSessions(userEmail);
     }
 
-    PropertiesService.getScriptProperties().deleteProperty('CURRENT_USER_EMAIL');
-    PropertiesService.getScriptProperties().deleteProperty('LOGIN_TIMESTAMP');
+    PropertiesService.getUserProperties().deleteProperty('CURRENT_USER_EMAIL');
+    PropertiesService.getUserProperties().deleteProperty('LOGIN_TIMESTAMP');
     clearAllCaches();
 
     return { success: true };
@@ -1555,8 +1555,8 @@ function logoutAllDevices() {
       AuthService.invalidateAllUserSessions(userEmail);
     }
 
-    PropertiesService.getScriptProperties().deleteProperty('CURRENT_USER_EMAIL');
-    PropertiesService.getScriptProperties().deleteProperty('LOGIN_TIMESTAMP');
+    PropertiesService.getUserProperties().deleteProperty('CURRENT_USER_EMAIL');
+    PropertiesService.getUserProperties().deleteProperty('LOGIN_TIMESTAMP');
     clearAllCaches();
 
     return { success: true };

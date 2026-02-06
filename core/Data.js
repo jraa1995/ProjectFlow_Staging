@@ -875,7 +875,7 @@ function getCurrentUserEmail() {
     if (manualEmail) {
       return manualEmail;
     }
-    return Session.getActiveUser().getEmail() || 'anonymous@example.com';
+    return Session.getEffectiveUser().getEmail() || 'anonymous@example.com';
   } catch (e) {
     return 'anonymous@example.com';
   }

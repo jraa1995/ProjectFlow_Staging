@@ -358,7 +358,7 @@ function diagnose() {
   });
 
   try {
-    const email = Session.getActiveUser().getEmail();
+    const email = Session.getEffectiveUser().getEmail();
     const user = getUserByEmail(email);
     if (!user) {
       issues.push('User not in Users sheet');
