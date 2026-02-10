@@ -1045,10 +1045,26 @@ const TaskEditModal = {
     google.script.run
       .withSuccessHandler(() => {
         toast('Task updated successfully', 'success');
+        this.close();
+        // Invalidate caches and force fresh board fetch
+        if (typeof State !== 'undefined') {
+          State.invalidateCache();
+          State.board = null;
+        }
+        if (typeof LocalCache !== 'undefined') {
+          LocalCache.remove('board');
+          LocalCache.remove('tasks');
+        }
+        if (typeof CacheService !== 'undefined') {
+          CacheService.invalidate(['tasks', 'projects', 'users', 'board']).catch(() => {});
+        }
+        if (typeof lastBoardView !== 'undefined') {
+          lastBoardView = null;
+          lastBoardProjectFilter = null;
+        }
         if (typeof loadBoard === 'function') {
           loadBoard();
         }
-        this.close();
         if (TaskDetailPanel.isOpen && TaskDetailPanel.task?.id === this.task.id) {
           TaskDetailPanel.loadTask(this.task.id);
         }

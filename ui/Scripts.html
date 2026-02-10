@@ -440,7 +440,7 @@
     }
   };
   async function loadAllData(forceRefresh = false) {
-    if (State.loading) {
+    if (State.loading && !forceRefresh) {
       return new Promise((resolve) => {
         const checkInterval = setInterval(() => {
           if (!State.loading) {
@@ -733,6 +733,32 @@
         if (emailInput) {
           setTimeout(() => emailInput.focus(), 100);
         }
+      }
+    },
+    async attemptAutoLogin() {
+      try {
+        this.setLoading(true);
+        google.script.run
+          .withSuccessHandler((result) => this.handleAutoLoginResult(result))
+          .withFailureHandler((error) => {
+            console.warn('Auto-login failed:', error);
+            this.setLoading(false);
+            this.show();
+          })
+          .autoLoginWithBackendEmail();
+      } catch (error) {
+        console.warn('Auto-login error:', error);
+        this.setLoading(false);
+        this.show();
+      }
+    },
+    handleAutoLoginResult(result) {
+      this.setLoading(false);
+      if (result.success) {
+        this.handleLoginSuccess(result);
+      } else {
+        console.warn('Auto-login result:', result.error);
+        this.show();
       }
     },
     hide() {
@@ -1043,12 +1069,10 @@
       showLoading(false);
       return;
     }
-    if (State.board && State.board.columns) {
-      renderBoard();
-      updateStats();
-    } else {
-      showLoading(true);
-    }
+
+    // Show loading spinner
+    showLoading(true);
+
     lastBoardView = State.view;
     lastBoardProjectFilter = projectId;
     if (State.view === "master") {
@@ -1075,7 +1099,7 @@
           col.tasks.forEach(task => {
             flatTasks.push({
               ...task,
-              status: col.id
+              status: col.name || col.id
             });
           });
         }
@@ -2907,26 +2931,48 @@
       estimatedHrs: parseFloat($("taskEstimatedHrs").value) || 0,
       storyPoints: parseInt($("taskStoryPoints").value) || 0,
     };
-    showLoading(true);
+
+    const saveBtn = $("saveTaskBtn");
+    const originalBtnHtml = saveBtn ? saveBtn.innerHTML : '';
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Saving...';
+    }
+
+    function restoreBtn() {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalBtnHtml;
+      }
+    }
+
+    function onSaveSuccess(action) {
+      closeTaskModal();
+      restoreBtn();
+      // Invalidate all client caches
+      State.invalidateCache();
+      LocalCache.remove('board');
+      LocalCache.remove('tasks');
+      if (typeof CacheService !== 'undefined') {
+        CacheService.invalidate(['tasks', 'projects', 'users', 'board']).catch(() => {});
+      }
+      // Force fresh server fetch
+      State.board = null;
+      lastBoardView = null;
+      lastBoardProjectFilter = null;
+      loadBoard();
+      toast(action, "success");
+    }
+
     if (State.editingTask) {
       google.script.run
-        .withSuccessHandler(async () => {
-          closeTaskModal();
-          await refreshAllData();
-          loadBoard();
-          toast("Task updated", "success");
-        })
-        .withFailureHandler(handleError)
+        .withSuccessHandler(() => onSaveSuccess("Task updated"))
+        .withFailureHandler((err) => { restoreBtn(); handleError(err); })
         .saveTaskUpdate(State.editingTask.id, taskData);
     } else {
       google.script.run
-        .withSuccessHandler(async () => {
-          closeTaskModal();
-          await refreshAllData();
-          loadBoard();
-          toast("Task created", "success");
-        })
-        .withFailureHandler(handleError)
+        .withSuccessHandler(() => onSaveSuccess("Task created"))
+        .withFailureHandler((err) => { restoreBtn(); handleError(err); })
         .saveNewTask(taskData);
     }
   }
@@ -2936,9 +2982,18 @@
     if (!confirm("Are you sure you want to delete this task?")) return;
     showLoading(true);
     google.script.run
-      .withSuccessHandler(async () => {
+      .withSuccessHandler(() => {
         closeTaskModal();
-        await refreshAllData();
+        showLoading(false);
+        State.invalidateCache();
+        LocalCache.remove('board');
+        LocalCache.remove('tasks');
+        if (typeof CacheService !== 'undefined') {
+          CacheService.invalidate(['tasks', 'projects', 'users', 'board']).catch(() => {});
+        }
+        State.board = null;
+        lastBoardView = null;
+        lastBoardProjectFilter = null;
         loadBoard();
         toast("Task deleted", "success");
       })
@@ -3082,14 +3137,15 @@
       State.setTasks(localTasks);
       State.setProjects(State.projects);
       if (State.board && State.config) State.board.config = State.config;
-      showLoading(false);
       updateUserDisplay();
       if (State.config) populateFormOptions(State.config);
-      renderBoard();
-      updateStats();
       updateProjectNav();
       SyncManager.init();
-      setTimeout(() => fetchFreshDataInBackground(), 100);
+      // Force fresh server fetch on initial load (same as switching tabs)
+      lastBoardView = null;
+      lastBoardProjectFilter = null;
+      State.board = null;
+      loadBoard();
       return;
     }
     showLoading(true);
@@ -3115,14 +3171,15 @@
           LocalCache.set('user', cachedUser);
           LocalCache.set('tasks', State.cache.tasks.data || []);
           LocalCache.set('projects', State.projects);
-          showLoading(false);
           updateUserDisplay();
           populateFormOptions(cachedConfig);
-          renderBoard();
-          updateStats();
           updateProjectNav();
           SyncManager.init();
-          setTimeout(() => fetchFreshDataInBackground(), 500);
+          // Force fresh server fetch on initial load
+          lastBoardView = null;
+          lastBoardProjectFilter = null;
+          State.board = null;
+          loadBoard();
           return;
         }
       } catch (cacheErr) {
@@ -3133,7 +3190,7 @@
       console.error("❌ Timeout after 15 seconds");
       showLoading(false);
       toast("Loading timed out. Please refresh.", "error");
-      LoginModal.show();
+      LoginModal.attemptAutoLogin();
     }, 15000);
     try {
       loadExternalLibraries().catch(err => console.warn('Library load warning:', err));
@@ -3152,7 +3209,7 @@
       console.error("❌ Init error:", error);
       showLoading(false);
       toast("Initialization failed", "error");
-      LoginModal.show();
+      LoginModal.attemptAutoLogin();
     }
   }
 
@@ -3249,12 +3306,12 @@
       errorMessage.includes("user not found") ||
       !errorMessage
     ) {
-      LoginModal.show();
+      LoginModal.attemptAutoLogin();
     } else {
-      console.warn("Unexpected init error, showing login modal as fallback:", errorMessage);
-      toast("Session error. Please login.", "warning");
+      console.warn("Unexpected init error, attempting auto-login:", errorMessage);
+      toast("Session error. Attempting automatic login.", "info");
       setTimeout(() => {
-        LoginModal.show();
+        LoginModal.attemptAutoLogin();
       }, 500);
     }
   }
