@@ -20,12 +20,46 @@ function buildBoardData(allTasks, projectId, options = {}) {
     tasks = tasks.filter((t) => t.projectId === projectId);
   }
 
+  // Build a task lookup map from allTasks to avoid per-task sheet reads
+  const taskMap = new Map();
+  allTasks.forEach(t => taskMap.set(t.id, t));
+
+  // Read the entire dependencies sheet ONCE instead of per-task
+  let allDeps = [];
+  try {
+    const depSheet = getTaskDependenciesSheet();
+    const depData = depSheet.getDataRange().getValues();
+    if (depData.length > 1) {
+      const depColumns = CONFIG.TASK_DEPENDENCY_COLUMNS;
+      for (let i = 1; i < depData.length; i++) {
+        allDeps.push(rowToObject(depData[i], depColumns));
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load dependencies sheet:', e);
+  }
+
+  // Build predecessor/successor maps keyed by taskId
+  const predecessorMap = new Map(); // taskId -> [dep objects where task is successor]
+  const successorMap = new Map();   // taskId -> [dep objects where task is predecessor]
+  allDeps.forEach(dep => {
+    if (dep.successorId) {
+      if (!predecessorMap.has(dep.successorId)) predecessorMap.set(dep.successorId, []);
+      predecessorMap.get(dep.successorId).push(dep);
+    }
+    if (dep.predecessorId) {
+      if (!successorMap.has(dep.predecessorId)) successorMap.set(dep.predecessorId, []);
+      successorMap.get(dep.predecessorId).push(dep);
+    }
+  });
+
   tasks = tasks.map(task => {
     try {
-      const dependencies = getTaskDependencies(task.id);
-      const hasDependencies = dependencies.predecessors.length > 0 || dependencies.successors.length > 0;
-      const blockedBy = dependencies.predecessors.filter(dep => {
-        const predecessorTask = getTaskById(dep.predecessorId);
+      const predecessors = predecessorMap.get(task.id) || [];
+      const successors = successorMap.get(task.id) || [];
+      const hasDependencies = predecessors.length > 0 || successors.length > 0;
+      const blockedBy = predecessors.filter(dep => {
+        const predecessorTask = taskMap.get(dep.predecessorId);
         return predecessorTask && predecessorTask.status !== 'Done';
       });
       const isBlocked = blockedBy.length > 0;
@@ -34,12 +68,12 @@ function buildBoardData(allTasks, projectId, options = {}) {
         hasDependencies: hasDependencies,
         isBlocked: isBlocked,
         blockedByCount: blockedBy.length,
-        blockingCount: dependencies.successors.length,
+        blockingCount: successors.length,
         dependencyMetadata: {
-          predecessorCount: dependencies.predecessors.length,
-          successorCount: dependencies.successors.length,
+          predecessorCount: predecessors.length,
+          successorCount: successors.length,
           blockedByTasks: blockedBy.map(dep => {
-            const t = getTaskById(dep.predecessorId);
+            const t = taskMap.get(dep.predecessorId);
             return t ? { id: t.id, title: t.title, status: t.status } : null;
           }).filter(Boolean)
         }
