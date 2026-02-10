@@ -716,8 +716,8 @@ function createTask(taskData) {
     status: taskData.status || 'To Do',
     priority: taskData.priority || 'Medium',
     type: taskData.type || 'Task',
-    assignee: taskData.assignee || currentUser,
-    reporter: taskData.reporter || currentUser,
+    assignee: taskData.assignee !== undefined && taskData.assignee !== null ? taskData.assignee : currentUser,
+    reporter: taskData.reporter !== undefined && taskData.reporter !== null ? taskData.reporter : currentUser,
     dueDate: taskData.dueDate || '',
     startDate: taskData.startDate || '',
     sprint: taskData.sprint || '',
@@ -883,7 +883,7 @@ function getCurrentUserEmail() {
 
 function setCurrentUserEmail(email) {
   try {
-    const properties = PropertiesService.getScriptProperties();
+    const properties = PropertiesService.getUserProperties();
     properties.setProperty('CURRENT_USER_EMAIL', email);
     return true;
   } catch (e) {
@@ -894,7 +894,7 @@ function setCurrentUserEmail(email) {
 
 function getManualUserEmail() {
   try {
-    const properties = PropertiesService.getScriptProperties();
+    const properties = PropertiesService.getUserProperties();
     return properties.getProperty('CURRENT_USER_EMAIL');
   } catch (e) {
     return null;
@@ -903,7 +903,7 @@ function getManualUserEmail() {
 
 function clearCurrentUserEmail() {
   try {
-    const properties = PropertiesService.getScriptProperties();
+    const properties = PropertiesService.getUserProperties();
     properties.deleteProperty('CURRENT_USER_EMAIL');
     return true;
   } catch (e) {

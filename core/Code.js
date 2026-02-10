@@ -1209,6 +1209,13 @@ function getCurrentUserEmailOptimized() {
       }
     }
 
+    // Fallback to Google session email
+    const sessionEmail = Session.getEffectiveUser().getEmail();
+    if (sessionEmail) {
+      setCurrentUserEmailOptimized(sessionEmail);
+      return sessionEmail;
+    }
+
     return null;
   } catch (error) {
     console.error('getCurrentUserEmailOptimized failed:', error);
@@ -1306,12 +1313,17 @@ function getInitialDataFast() {
       task.assignee && task.assignee.toLowerCase() === userEmail.toLowerCase()
     );
 
-    const columns = CONFIG.STATUSES.map(status => ({
-      id: status.toLowerCase().replace(/\s+/g, '-'),
-      title: status,
-      color: CONFIG.COLORS[status] || '#6B7280',
-      tasks: userTasks.filter(t => t.status === status)
-    }));
+    const columns = CONFIG.STATUSES.map((status, index) => {
+      const columnTasks = userTasks.filter(t => t.status === status);
+      return {
+        id: status.toLowerCase().replace(/\s+/g, '_'),
+        name: status,
+        color: CONFIG.COLORS[status] || '#6B7280',
+        order: index,
+        tasks: columnTasks,
+        count: columnTasks.length
+      };
+    });
 
     const total = userTasks.length;
     const completed = userTasks.filter(t => t.status === 'Done').length;
@@ -1396,6 +1408,76 @@ function getCalendarData() {
       tasks: [],
       projects: [],
       users: []
+    };
+  }
+}
+
+function getBackendUserEmail() {
+  try {
+    const userEmail = Session.getEffectiveUser().getEmail();
+    
+    if (!userEmail) {
+      return {
+        success: false,
+        email: null,
+        message: 'No user session found'
+      };
+    }
+
+    return {
+      success: true,
+      email: userEmail.toLowerCase().trim()
+    };
+  } catch (error) {
+    console.error('getBackendUserEmail failed:', error);
+    return {
+      success: false,
+      email: null,
+      message: error.message
+    };
+  }
+}
+
+function autoLoginWithBackendEmail() {
+  try {
+    const backendEmail = Session.getEffectiveUser().getEmail();
+    
+    if (!backendEmail) {
+      return {
+        success: false,
+        error: 'No user session found. Please check your Google account.'
+      };
+    }
+
+    const email = backendEmail.toLowerCase().trim();
+    const user = getUserByEmailOptimized(email);
+
+    if (!user) {
+      return {
+        success: false,
+        error: 'User not found in ProjectFlow. Please contact your administrator for access.'
+      };
+    }
+
+    setCurrentUserEmailOptimized(email);
+    const boardData = getMyBoardOptimized(null, email);
+
+    return {
+      success: true,
+      user: user,
+      board: boardData,
+      config: {
+        statuses: CONFIG.STATUSES,
+        priorities: CONFIG.PRIORITIES,
+        types: CONFIG.TYPES,
+        colors: CONFIG.COLORS
+      }
+    };
+  } catch (error) {
+    console.error('autoLoginWithBackendEmail failed:', error);
+    return {
+      success: false,
+      error: error.message
     };
   }
 }
