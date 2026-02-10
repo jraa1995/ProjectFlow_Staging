@@ -108,7 +108,7 @@
 </head>
 <body class="bg-gray-50">
 
-<div id="loadingOverlay" class="loading-overlay">
+<div id="calendarLoadingOverlay" class="loading-overlay">
   <div class="text-center">
     <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-yellow-400 border-t-transparent"></div>
     <p class="mt-4 text-gray-600 font-medium">Loading calendar...</p>
@@ -321,7 +321,7 @@ const CalendarViewPage = {
   init() {
     if (this.hasInitialized && CalendarState.calendar) {
       CalendarState.calendar.render();
-      showLoading(false);
+      showCalendarLoading(false);
       return;
     }
 
@@ -362,7 +362,7 @@ const CalendarViewPage = {
   },
 
   async loadCalendarData() {
-    showLoading(true);
+    showCalendarLoading(true);
 
     try {
       if (typeof State !== 'undefined' && State.cache && State.cache.tasks && State.cache.tasks.data) {
@@ -392,7 +392,7 @@ const CalendarViewPage = {
             .withFailureHandler((error) => {
               console.error('Error loading data:', error);
               toast('Failed to load calendar data', 'error');
-              showLoading(false);
+              showCalendarLoading(false);
             })
             .getCalendarData();
         } else {
@@ -403,7 +403,7 @@ const CalendarViewPage = {
     } catch (error) {
       console.error('Error loading calendar data:', error);
       toast('Failed to load calendar data', 'error');
-      showLoading(false);
+      showCalendarLoading(false);
     }
   },
 
@@ -537,7 +537,7 @@ const CalendarViewPage = {
     this.populateFilters();
     this.transformTasksToEvents();
     this.renderCalendar();
-    showLoading(false);
+    showCalendarLoading(false);
     toast('Calendar loaded successfully', 'success');
   },
 
@@ -792,7 +792,7 @@ const CalendarViewPage = {
       isMilestone: false
     };
 
-    showLoading(true);
+    showCalendarLoading(true);
 
     if (typeof google !== 'undefined' && google.script && google.script.run) {
       google.script.run
@@ -801,12 +801,12 @@ const CalendarViewPage = {
           this.transformTasksToEvents();
           this.closeQuickAddModal();
           toast('Task created successfully', 'success');
-          showLoading(false);
+          showCalendarLoading(false);
         })
         .withFailureHandler((error) => {
           console.error('Error creating task:', error);
           toast('Failed to create task', 'error');
-          showLoading(false);
+          showCalendarLoading(false);
         })
         .createTask(taskData);
     } else {
@@ -819,7 +819,7 @@ const CalendarViewPage = {
         this.transformTasksToEvents();
         this.closeQuickAddModal();
         toast('Task created successfully', 'success');
-        showLoading(false);
+        showCalendarLoading(false);
       }, 500);
     }
   },
@@ -924,7 +924,7 @@ const CalendarViewPage = {
       return;
     }
 
-    showLoading(true);
+    showCalendarLoading(true);
 
     if (typeof google !== 'undefined' && google.script && google.script.run) {
       google.script.run
@@ -933,12 +933,12 @@ const CalendarViewPage = {
           this.transformTasksToEvents();
           this.closeTaskDetailPanel();
           toast('Task deleted successfully', 'success');
-          showLoading(false);
+          showCalendarLoading(false);
         })
         .withFailureHandler((error) => {
           console.error('Error deleting task:', error);
           toast('Failed to delete task', 'error');
-          showLoading(false);
+          showCalendarLoading(false);
         })
         .deleteTask(taskId);
     } else {
@@ -947,18 +947,20 @@ const CalendarViewPage = {
         this.transformTasksToEvents();
         this.closeTaskDetailPanel();
         toast('Task deleted successfully', 'success');
-        showLoading(false);
+        showCalendarLoading(false);
       }, 500);
     }
   }
 };
 
-function showLoading(show) {
-  const overlay = document.getElementById('loadingOverlay');
-  if (show) {
-    overlay.classList.add('active');
-  } else {
-    overlay.classList.remove('active');
+function showCalendarLoading(show) {
+  const overlay = document.getElementById('calendarLoadingOverlay');
+  if (overlay) {
+    if (show) {
+      overlay.classList.add('active');
+    } else {
+      overlay.classList.remove('active');
+    }
   }
 }
 

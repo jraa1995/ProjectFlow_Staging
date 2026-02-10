@@ -379,7 +379,7 @@ body {
   </div>
 </div>
 
-<div id="loadingOverlay" class="loading-overlay hidden">
+<div id="matrixLoadingOverlay" class="loading-overlay hidden">
   <div class="bg-white p-6 rounded-lg shadow-xl text-center">
     <div class="spinner mx-auto mb-4"></div>
     <p class="text-gray-700 font-semibold">Loading matrix data...</p>
@@ -945,11 +945,13 @@ const MatrixViewPage = {
   },
 
   showLoading: function(show) {
-    const overlay = document.getElementById('loadingOverlay');
-    if (show) {
-      overlay.classList.remove('hidden');
-    } else {
-      overlay.classList.add('hidden');
+    const overlay = document.getElementById('matrixLoadingOverlay');
+    if (overlay) {
+      if (show) {
+        overlay.classList.remove('hidden');
+      } else {
+        overlay.classList.add('hidden');
+      }
     }
   },
 
