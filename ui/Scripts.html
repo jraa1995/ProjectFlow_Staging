@@ -2,7 +2,7 @@
   const $ = (id) => document.getElementById(id);
   const $$ = (selector) => document.querySelectorAll(selector);
   const LocalCache = {
-    prefix: 'pf_',
+    prefix: 'co_',
     get(key) {
       try {
         const item = localStorage.getItem(this.prefix + key);
@@ -26,7 +26,6 @@
         };
         localStorage.setItem(this.prefix + key, JSON.stringify(item));
       } catch (e) {
-        console.warn('LocalCache set failed:', e);
       }
     },
     remove(key) {
@@ -184,6 +183,7 @@
     view: "my",
     projectFilter: null,
     loading: false,
+    initialLoadComplete: false,
     editingTask: null,
     draggedTask: null,
     currentView: "my",
@@ -332,9 +332,9 @@
       this.batchTimer = null;
       google.script.run
         .withSuccessHandler((results) => {
-          results.results?.forEach((result, index) => {
+          results.results?.forEach((result) => {
             if (!result.success) {
-              console.warn(`Batch operation ${index} failed:`, result.error);
+              console.error('Batch operation failed:', result.error);
             }
           });
         })
@@ -358,52 +358,98 @@
   };
   const SyncManager = {
     lastSyncVersion: 0,
-    pollInterval: 30000,
     pollTimer: null,
     lastActivity: Date.now(),
     isEnabled: true,
+    consecutiveNoChange: 0,
+    currentInterval: 15000,
+    INTERVALS: {
+      ACTIVE: 15000,
+      IDLE: 60000,
+      VERY_IDLE: 120000,
+      BACKOFF_MAX: 120000
+    },
+    IDLE_THRESHOLD: 2 * 60 * 1000,
+    VERY_IDLE_THRESHOLD: 5 * 60 * 1000,
+    BACKOFF_THRESHOLD: 3,
+    _immediateDebounce: null,
     init() {
-      ['mousemove', 'keypress', 'click', 'scroll'].forEach(event => {
-        document.addEventListener(event, () => this.markActive(), {
-          passive: true
-        });
+      ['mousemove', 'keypress', 'scroll'].forEach(event => {
+        document.addEventListener(event, () => this.markActive(), { passive: true });
       });
+      document.addEventListener('click', () => this._onUserAction(), { passive: true });
+      document.addEventListener('submit', () => this._onUserAction(), { passive: true });
+      document.addEventListener('dragend', () => this._onUserAction(), { passive: true });
+      document.addEventListener('visibilitychange', () => this._onVisibilityChange());
       this.startPolling();
     },
     markActive() {
       this.lastActivity = Date.now();
     },
-    isUserActive() {
-      return Date.now() - this.lastActivity < 60000;
-    },
-    startPolling() {
-      if (this.pollTimer) {
-        clearInterval(this.pollTimer);
-      }
-      this.pollTimer = setInterval(() => {
-        if (this.isEnabled && this.isUserActive()) {
+    _onUserAction() {
+      this.lastActivity = Date.now();
+      if (this._immediateDebounce) clearTimeout(this._immediateDebounce);
+      this._immediateDebounce = setTimeout(() => {
+        if (this.isEnabled && !document.hidden) {
           this.checkForUpdates();
         }
-      }, this.pollInterval);
+      }, 300);
+    },
+    _onVisibilityChange() {
+      if (document.hidden) {
+        this.stopPolling();
+      } else {
+        this.lastActivity = Date.now();
+        this.currentInterval = this.INTERVALS.ACTIVE;
+        this.consecutiveNoChange = 0;
+        this.checkForUpdates();
+        this.startPolling();
+      }
+    },
+    _getTargetInterval() {
+      const idle = Date.now() - this.lastActivity;
+      if (idle >= this.VERY_IDLE_THRESHOLD) return this.INTERVALS.VERY_IDLE;
+      if (idle >= this.IDLE_THRESHOLD) return this.INTERVALS.IDLE;
+      return this.INTERVALS.ACTIVE;
+    },
+    startPolling() {
+      if (this.pollTimer) clearTimeout(this.pollTimer);
+      const schedule = () => {
+        if (!this.isEnabled || document.hidden) return;
+        this.checkForUpdates();
+        this.pollTimer = setTimeout(schedule, this.currentInterval);
+      };
+      this.pollTimer = setTimeout(schedule, this.currentInterval);
     },
     stopPolling() {
       if (this.pollTimer) {
-        clearInterval(this.pollTimer);
+        clearTimeout(this.pollTimer);
         this.pollTimer = null;
       }
     },
     checkForUpdates() {
       google.script.run
         .withSuccessHandler((result) => {
-          if (result.version > this.lastSyncVersion) {
+          const hasChanges = result.version > this.lastSyncVersion;
+          if (hasChanges) {
             if (result.changedIds.length > 0) {
               this.fetchChangedItems(result.changedIds);
             }
             this.lastSyncVersion = result.version;
+            this.consecutiveNoChange = 0;
+            this.currentInterval = this._getTargetInterval();
+          } else {
+            this.consecutiveNoChange++;
+            const base = this._getTargetInterval();
+            if (this.consecutiveNoChange >= this.BACKOFF_THRESHOLD) {
+              this.currentInterval = Math.min(this.currentInterval * 2, this.INTERVALS.BACKOFF_MAX);
+            } else {
+              this.currentInterval = base;
+            }
           }
         })
         .withFailureHandler((error) => {
-          console.warn('SyncManager checkForUpdates failed:', error);
+          console.error('SyncManager checkForUpdates failed:', error);
         })
         .getChangesSince(this.lastSyncVersion);
     },
@@ -425,12 +471,14 @@
           updateColumnCounts();
         })
         .withFailureHandler((error) => {
-          console.warn('SyncManager fetchChangedItems failed:', error);
+          console.error('SyncManager fetchChangedItems failed:', error);
         })
         .getTasksByIds(taskIds);
     },
     forceFullSync() {
       this.lastSyncVersion = 0;
+      this.consecutiveNoChange = 0;
+      this.currentInterval = this.INTERVALS.ACTIVE;
       this.checkForUpdates();
     },
     setVersion(version) {
@@ -507,7 +555,7 @@
           };
         }
       } catch (cacheError) {
-        console.warn('IndexedDB cache read failed, loading from server:', cacheError);
+        console.error('IndexedDB cache read failed, loading from server:', cacheError);
       }
     }
     State.loading = true;
@@ -552,7 +600,7 @@
         CacheService.set('tasks', data.tasks || []),
         CacheService.set('projects', data.projects || []),
         CacheService.set('users', data.users || [])
-      ]).catch(err => console.warn('Background cache persist failed:', err));
+      ]).catch(err => console.error('Background cache persist failed:', err));
     }
   }
 
@@ -567,13 +615,13 @@
           SyncManager.fetchChangedItems(result.changedIds);
         }
       })
-      .withFailureHandler((err) => console.warn('Version check failed:', err))
+      .withFailureHandler((err) => console.error('Version check failed:', err))
       .getChangesSince(SyncManager.lastSyncVersion || 0);
 
     google.script.run
       .withSuccessHandler((data) => {
         if (!data || !data.success) {
-          console.warn('Background fetch returned invalid data');
+          console.error('Background fetch returned invalid data');
           return;
         }
         const currentUsers = State.cache.users.data || [];
@@ -587,7 +635,7 @@
           State.setUsers(newUsers);
           LocalCache.set('users', newUsers);
           if (typeof CacheService !== 'undefined') {
-            CacheService.set('users', newUsers).catch(err => console.warn('User cache persist failed:', err));
+            CacheService.set('users', newUsers).catch(err => console.error('User cache persist failed:', err));
           }
         }
         // Update tasks and re-render if changed
@@ -604,7 +652,7 @@
         if (!hasTaskChanges && !hasUserChanges) {}
       })
       .withFailureHandler((error) => {
-        console.warn('Background fetch failed:', error);
+        console.error('Background fetch failed:', error);
       })
       .getListViewData();
   }
@@ -723,6 +771,7 @@
     isVisible: false,
     isLoading: false,
     errorMessage: null,
+    pendingEmail: null,
     show() {
       const modal = $("loginModal");
       if (modal) {
@@ -747,25 +796,48 @@
     handleLogin(event) {
       event.preventDefault();
       const emailInput = $("loginEmail");
+      const passwordInput = $("loginPassword");
       const email = emailInput ? emailInput.value.trim() : "";
+      const password = passwordInput ? passwordInput.value : "";
       if (!this.validateEmail(email)) {
         this.showError("Please enter a valid email address");
         return;
       }
       this.setLoading(true);
       this.clearError();
-      google.script.run
-        .withSuccessHandler((data) => this.handleLoginSuccess(data))
-        .withFailureHandler((error) => this.handleLoginFailure(error))
-        .loginWithEmail(email);
+      this.pendingEmail = email;
+
+      if (password) {
+        // Password provided - use loginWithPassword
+        google.script.run
+          .withSuccessHandler((data) => this.handlePasswordLoginSuccess(data))
+          .withFailureHandler((error) => this.handleLoginFailure(error))
+          .loginWithPassword(email, password, {});
+      } else {
+        // No password - try loginWithEmail (will fail if user has a password set)
+        google.script.run
+          .withSuccessHandler((data) => this.handleEmailLoginSuccess(data))
+          .withFailureHandler((error) => this.handleEmailLoginFailure(error))
+          .loginWithEmail(email);
+      }
     },
     validateEmail(email) {
       if (!email) return false;
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       return emailRegex.test(email);
     },
-    handleLoginSuccess(data) {
+    handlePasswordLoginSuccess(data) {
       this.setLoading(false);
+      if (!data.success) {
+        // Handle passwordNotSet case - show set password modal
+        if (data.passwordNotSet) {
+          this.hide();
+          openSetPasswordModal(this.pendingEmail);
+          return;
+        }
+        this.showError(data.error || "Login failed.");
+        return;
+      }
       this.hide();
       State.user = data.user;
       State.board = data.board;
@@ -778,6 +850,37 @@
       updateProjectNav();
       toast("Welcome back, " + (data.user.name || data.user.email) + "!", "success");
     },
+    handleEmailLoginSuccess(data) {
+      // Email-only login succeeded (user has no password set) - prompt to set one
+      this.setLoading(false);
+      this.hide();
+      State.user = data.user;
+      State.board = data.board;
+      State.projects = data.board?.projects || [];
+      State.users = data.board?.users || [];
+      updateUserDisplay();
+      populateFormOptions(data.config);
+      renderBoard();
+      updateStats();
+      updateProjectNav();
+      // Prompt user to set a password
+      openSetPasswordModal(data.user.email);
+      toast("Welcome! Please set a password to secure your account.", "info");
+    },
+    handleEmailLoginFailure(error) {
+      this.setLoading(false);
+      var message = error && error.message ? error.message : "Login failed.";
+      if (message.includes("Password required")) {
+        // User has a password - show hint and re-focus password field
+        this.showError("This account requires a password. Please enter your password.");
+        var hint = $("passwordHint");
+        if (hint) hint.classList.add("hidden");
+        var pwInput = $("loginPassword");
+        if (pwInput) setTimeout(function() { pwInput.focus(); }, 100);
+      } else {
+        this.handleLoginFailure(error);
+      }
+    },
     handleLoginFailure(error) {
       console.error("Login failed:", error);
       this.setLoading(false);
@@ -787,8 +890,8 @@
       }
       if (message.includes("not found")) {
         message = "User not found. Please contact your administrator for access.";
-      } else if (message.includes("invalid")) {
-        message = "Please enter a valid email address.";
+      } else if (message.includes("Invalid email or password")) {
+        message = "Invalid email or password. Please try again.";
       }
       this.showError(message);
     },
@@ -818,6 +921,7 @@
       const btnText = $("loginBtnText");
       const spinner = $("loginSpinner");
       const emailInput = $("loginEmail");
+      const passwordInput = $("loginPassword");
       if (submitBtn) {
         submitBtn.disabled = loading;
       }
@@ -830,10 +934,20 @@
       if (emailInput) {
         emailInput.disabled = loading;
       }
+      if (passwordInput) {
+        passwordInput.disabled = loading;
+      }
     }
   };
 
   function switchView(view) {
+    // Permission check for restricted views
+    var restrictedViews = { master: 'manager', analytics: 'manager', funnel: 'manager' };
+    if (restrictedViews[view] && !hasMinRole(restrictedViews[view])) {
+      toast('Access denied: You do not have permission to view this page.', 'error');
+      return;
+    }
+
     State.view = view;
     State.currentView = view;
     $$(".nav-link[data-view]").forEach((link) => {
@@ -845,16 +959,12 @@
     const analyticsView = $("analyticsView");
     const funnelView = $("funnelView");
     const listView = $("listView");
-    const calendarView = $("calendarView");
-    const matrixView = $("matrixView");
     const milestoneView = $("milestoneViewContainer");
     if (boardView) boardView.classList.add("hidden");
     if (timelineView) timelineView.classList.add("hidden");
     if (analyticsView) analyticsView.classList.add("hidden");
     if (funnelView) funnelView.classList.add("hidden");
     if (listView) listView.classList.add("hidden");
-    if (calendarView) calendarView.classList.add("hidden");
-    if (matrixView) matrixView.classList.add("hidden");
     if (milestoneView) milestoneView.classList.add("hidden");
     const viewTitle = $("viewTitle");
     switch (view) {
@@ -908,36 +1018,6 @@
           toast("List view not available", "error");
         }
         break;
-      case "calendar":
-        if (viewTitle) viewTitle.textContent = "Calendar View";
-        if (calendarView) {
-          calendarView.classList.remove("hidden");
-          if (typeof CalendarViewPage !== 'undefined') {
-            CalendarViewPage.init();
-          } else {
-            console.error("CalendarViewPage not loaded");
-            toast("Calendar view not available", "error");
-          }
-        } else {
-          console.error("Calendar view element not found");
-          toast("Calendar view not available", "error");
-        }
-        break;
-      case "matrix":
-        if (viewTitle) viewTitle.textContent = "Matrix View";
-        if (matrixView) {
-          matrixView.classList.remove("hidden");
-          if (typeof MatrixViewPage !== 'undefined') {
-            MatrixViewPage.init();
-          } else {
-            console.error("MatrixViewPage not loaded");
-            toast("Matrix view not available", "error");
-          }
-        } else {
-          console.error("Matrix view element not found");
-          toast("Matrix view not available", "error");
-        }
-        break;
       case "milestones":
         if (viewTitle) viewTitle.textContent = "Milestones Dashboard";
         if (milestoneView) {
@@ -987,26 +1067,6 @@
         }
         if (typeof ListViewPage !== 'undefined' && ListViewPage.applyFilters) {
           ListViewPage.applyFilters();
-        }
-        break;
-      case "calendar":
-        const calProjectFilter = document.getElementById('projectFilter');
-        if (calProjectFilter) {
-          calProjectFilter.value = projectId || '';
-        }
-        if (typeof CalendarViewPage !== 'undefined' && CalendarViewPage.filterEvents) {
-          CalendarViewPage.filterEvents();
-        }
-        break;
-      case "matrix":
-        const matrixProjectFilter = document.getElementById('projectFilterSelect');
-        if (matrixProjectFilter) {
-          Array.from(matrixProjectFilter.options).forEach(opt => {
-            opt.selected = opt.value === projectId;
-          });
-        }
-        if (typeof MatrixViewPage !== 'undefined' && MatrixViewPage.applyFilters) {
-          MatrixViewPage.applyFilters();
         }
         break;
       case "milestones":
@@ -1093,7 +1153,6 @@
   function updateTaskInDOM(taskId, changes) {
     const card = document.querySelector(`[data-task-id="${taskId}"]`);
     if (!card) {
-      console.warn(`Task card not found for surgical update: ${taskId}`);
       return false;
     }
     if (changes.status) {
@@ -1154,7 +1213,7 @@
       const colorMap = {
         'Critical': 'bg-red-100 text-red-800',
         'High': 'bg-orange-100 text-orange-800',
-        'Medium': 'bg-yellow-100 text-yellow-800',
+        'Medium': 'bg-gray-100 text-gray-800',
         'Low': 'bg-green-100 text-green-800'
       };
       badge.className = badge.className
@@ -1252,7 +1311,7 @@
                 renderTimeline(freshData);
               }
             })
-            .withFailureHandler((error) => console.warn("Timeline background refresh failed:", error))
+            .withFailureHandler((error) => console.error("Timeline background refresh failed:", error))
             .getTimelineData(projectId);
           return;
         }
@@ -1346,7 +1405,7 @@
             custom_class: getTaskClass(task, isCritical),
           };
         });
-        new Gantt(ganttContainer, ganttTasks, {
+        State.ganttInstance = new Gantt(ganttContainer, ganttTasks, {
           view_mode: "Week",
           date_format: "YYYY-MM-DD",
           arrow_curve: 5,
@@ -1553,6 +1612,14 @@
     if ($("timelineSearch")) $("timelineSearch").value = "";
     loadTimelineData();
   }
+
+  function setTimelineViewMode(mode) {
+    if (State.ganttInstance) {
+      try { State.ganttInstance.change_view_mode(mode); }
+      catch (e) { console.error('Error changing timeline view mode:', e); }
+    }
+  }
+
   let lastAnalyticsDateRange = null;
 
   function loadAnalyticsData() {
@@ -1616,11 +1683,9 @@
   function updateCompletionChart(data) {
     const canvas = $("completionTrendCanvas");
     if (!canvas || !data) {
-      console.warn('Canvas or data not available for completion chart');
       return;
     }
     if (!window.Chart) {
-      console.warn('Chart.js not available');
       if (canvas && canvas.parentElement) {
         canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><div class="text-center"><i class="fas fa-chart-line text-4xl mb-2 text-gray-300"></i><p>Chart library unavailable</p></div></div>';
       }
@@ -1638,8 +1703,8 @@
           datasets: [{
             label: "Tasks Completed",
             data: data.map((item) => item.completed || 0),
-            borderColor: "#f59e0b",
-            backgroundColor: "rgba(245, 158, 11, 0.1)",
+            borderColor: "#525252",
+            backgroundColor: "rgba(82, 82, 82, 0.1)",
             fill: true,
             tension: 0.3,
           }, ],
@@ -1670,11 +1735,9 @@
   function updatePriorityChart(data) {
     const canvas = $("priorityChartCanvas");
     if (!canvas || !data) {
-      console.warn('Canvas or data not available for priority chart');
       return;
     }
     if (!window.Chart) {
-      console.warn('Chart.js not available');
       if (canvas && canvas.parentElement) {
         canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><div class="text-center"><i class="fas fa-chart-pie text-4xl mb-2 text-gray-300"></i><p>Chart library unavailable</p></div></div>';
       }
@@ -1773,7 +1836,7 @@
     const healthColors = {
       excellent: "bg-green-100 text-green-800",
       good: "bg-blue-100 text-blue-800",
-      "at-risk": "bg-yellow-100 text-yellow-800",
+      "at-risk": "bg-gray-100 text-gray-800",
       poor: "bg-red-100 text-red-800",
     };
     container.innerHTML = data
@@ -1877,7 +1940,7 @@
     const priorityColors = {
       Critical: "bg-red-100 text-red-700 border-red-200",
       High: "bg-orange-100 text-orange-700 border-orange-200",
-      Medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
+      Medium: "bg-gray-100 text-gray-700 border-gray-200",
       Low: "bg-green-100 text-green-700 border-green-200",
     };
     const priorityClass =
@@ -2092,7 +2155,7 @@
         </div>
         <div style="color: #dc2626; font-size: 16px; font-weight: 600; margin-bottom: 8px;">Task Not Found</div>
         <div style="color: #6b7280; font-size: 13px; margin-bottom: 20px;">The task may have been deleted or you don't have access.</div>
-        <button onclick="closeSimpleTaskModal()" style="padding: 10px 24px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">Close</button>
+        <button onclick="closeSimpleTaskModal()" style="padding: 10px 24px; background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">Close</button>
         </div>
         `;
           }
@@ -2105,7 +2168,7 @@
     </div>
     <div style="color: #dc2626; font-size: 16px; font-weight: 600; margin-bottom: 8px;">Failed to Load Task</div>
     <div style="color: #6b7280; font-size: 13px; margin-bottom: 20px;">Please check your connection and try again.</div>
-    <button onclick="closeSimpleTaskModal()" style="padding: 10px 24px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">Close</button>
+    <button onclick="closeSimpleTaskModal()" style="padding: 10px 24px; background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">Close</button>
     </div>
     `;
         })
@@ -2134,7 +2197,7 @@
       },
       'High': {
         bg: '#fffbeb',
-        color: '#d97706',
+        color: '#404040',
         icon: '🟡'
       },
       'Medium': {
@@ -2163,8 +2226,8 @@
         color: '#1d4ed8'
       },
       'In Progress': {
-        bg: '#fef3c7',
-        color: '#b45309'
+        bg: '#f5f5f5',
+        color: '#262626'
       },
       'Review': {
         bg: '#f3e8ff',
@@ -2205,14 +2268,13 @@
     const status = statusConfig[task.status] || statusConfig['To Do'];
     const type = typeConfig[task.type] || typeConfig['Task'];
     return `
-  <!-- Header with gradient -->
   <div style="background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%); padding: 20px 24px; border-radius: 12px 12px 0 0;">
   <div style="display: flex; justify-content: space-between; align-items: flex-start;">
   <div style="flex: 1;">
   <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
   <span style="font-size: 11px; font-family: 'SF Mono', monospace; color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 4px;">${escapeHtml(task.id)}</span>
   <span style="font-size: 11px; padding: 3px 10px; border-radius: 12px; background: ${priority.bg}; color: ${priority.color}; font-weight: 600;">${priority.icon} ${escapeHtml(task.priority)}</span>
-  ${task.isMilestone ? '<span style="font-size: 11px; padding: 3px 10px; border-radius: 12px; background: #fef3c7; color: #92400e; font-weight: 600;">🏁 Milestone</span>' : ''}
+  ${task.isMilestone ? '<span style="font-size: 11px; padding: 3px 10px; border-radius: 12px; background: #f5f5f5; color: #171717; font-weight: 600;">🏁 Milestone</span>' : ''}
   </div>
   <h2 style="font-size: 18px; font-weight: 600; color: white; margin: 0; line-height: 1.4;">${escapeHtml(task.title)}</h2>
   </div>
@@ -2220,7 +2282,6 @@
   </div>
   </div>
   <div style="padding: 20px 24px;">
-  <!-- Status & Type Row -->
   <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
   <div style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: ${status.bg}; border-radius: 8px;">
   <div style="width: 8px; height: 8px; border-radius: 50%; background: ${status.color};"></div>
@@ -2231,7 +2292,6 @@
   <span style="font-size: 13px; font-weight: 500; color: ${type.color};">${escapeHtml(task.type || 'Task')}</span>
   </div>
   </div>
-  <!-- Details Grid -->
   <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px;">
   <div style="background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0;">
   <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
@@ -2265,7 +2325,6 @@
     </div>
     ` : ''}
   </div>
-  <!-- Description -->
   ${task.description ? `
     <div style="margin-bottom: 20px;">
     <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
@@ -2275,7 +2334,6 @@
     <div style="font-size: 14px; color: #475569; line-height: 1.7; white-space: pre-wrap; background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0;">${escapeHtml(task.description)}</div>
     </div>
     ` : ''}
-  <!-- Dependencies Section -->
   <div id="taskModalDependencies" style="margin-bottom: 20px;">
   <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
   <div style="display: flex; align-items: center; gap: 6px;">
@@ -2292,9 +2350,8 @@
   </div>
   <div id="dependenciesList" style="display: none;"></div>
   </div>
-  <!-- Action Buttons -->
   <div style="display: flex; gap: 10px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-  <button onclick="openEditFromSimpleModal('${task.id}')" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(245,158,11,0.3);" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 8px rgba(245,158,11,0.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 2px 4px rgba(245,158,11,0.3)'">
+  <button onclick="openEditFromSimpleModal('${task.id}')" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(82,82,82,0.3);" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 8px rgba(82,82,82,0.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 2px 4px rgba(82,82,82,0.3)'">
   <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
   Edit Task
   </button>
@@ -2418,6 +2475,17 @@
     } else {
       toast('Edit modal not available', 'error');
     }
+  }
+
+  function updateSidebarDate() {
+    const el = $('sidebarDate');
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    }) + ' ' + now.toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit'
+    });
   }
 
   function updateStats() {
@@ -2907,8 +2975,8 @@
       estimatedHrs: parseFloat($("taskEstimatedHrs").value) || 0,
       storyPoints: parseInt($("taskStoryPoints").value) || 0,
     };
-    showLoading(true);
     if (State.editingTask) {
+      showLoading(true);
       google.script.run
         .withSuccessHandler(async () => {
           closeTaskModal();
@@ -2919,15 +2987,36 @@
         .withFailureHandler(handleError)
         .saveTaskUpdate(State.editingTask.id, taskData);
     } else {
-      google.script.run
-        .withSuccessHandler(async () => {
-          closeTaskModal();
-          await refreshAllData();
-          loadBoard();
-          toast("Task created", "success");
+      const tempId = 'temp_' + Date.now();
+      const status = taskData.status || 'To Do';
+      const tempTask = { ...taskData, id: tempId, createdAt: new Date().toISOString() };
+      closeTaskModal();
+      OptimisticUI.apply(
+        'createTask',
+        { taskId: tempId, id: tempId },
+        () => {
+          const taskList = document.querySelector(`.task-list[data-status="${status}"]`);
+          if (taskList) {
+            taskList.insertAdjacentHTML('afterbegin', renderTaskCard(tempTask, status));
+          }
+          updateColumnCounts();
+        },
+        () => {
+          if (State.tasks) State.tasks.push(tempTask);
+          if (State.cache?.tasks?.data) State.cache.tasks.data.push(tempTask);
+        },
+        () => new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(async (result) => {
+              await refreshAllData();
+              loadBoard();
+              toast('Task created', 'success');
+              resolve(result);
+            })
+            .withFailureHandler(reject)
+            .saveNewTask(taskData);
         })
-        .withFailureHandler(handleError)
-        .saveNewTask(taskData);
+      );
     }
   }
 
@@ -2982,12 +3071,97 @@
   function showLoading(show) {
     State.loading = show;
     const overlay = $("loadingOverlay");
-    if (overlay) {
-      if (show) {
-        overlay.classList.remove("hidden");
+    if (!overlay) return;
+    if (show) {
+      if (State.initialLoadComplete) {
+        overlay.style.background = "rgba(0,0,0,0.5)";
+        const canvas = $("loaderCanvas");
+        const loaderUI = $("loaderUI");
+        if (canvas) canvas.style.display = "none";
+        if (loaderUI) loaderUI.innerHTML = '<div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow-xl"><i class="fas fa-spinner fa-spin text-primary-600 text-2xl"></i><span class="text-gray-700 font-medium">Loading...</span></div>';
       } else {
-        overlay.classList.add("hidden");
+        overlay.style.background = "#111827";
+        const canvas = $("loaderCanvas");
+        if (canvas) canvas.style.display = "block";
+        startLoaderAnimation();
       }
+      overlay.classList.remove("hidden");
+      overlay.style.opacity = "1";
+      overlay.style.visibility = "visible";
+    } else {
+      overlay.style.opacity = "0";
+      setTimeout(() => {
+        overlay.classList.add("hidden");
+        overlay.style.visibility = "hidden";
+        stopLoaderAnimation();
+      }, State.initialLoadComplete ? 0 : 300);
+    }
+  }
+
+  function updateLoaderProgress(percent, statusText) {
+    const bar = $("loaderProgress");
+    const status = $("loaderStatus");
+    if (bar) bar.style.width = percent + "%";
+    if (status) status.textContent = statusText;
+  }
+
+  let loaderAnimationId = null;
+
+  function startLoaderAnimation() {
+    const canvas = $("loaderCanvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const nodes = [];
+    for (let i = 0; i < 40; i++) {
+      nodes.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5
+      });
+    }
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      nodes.forEach(n => {
+        n.x += n.vx;
+        n.y += n.vy;
+        if (n.x < 0) n.x = canvas.width;
+        if (n.x > canvas.width) n.x = 0;
+        if (n.y < 0) n.y = canvas.height;
+        if (n.y > canvas.height) n.y = 0;
+      });
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x;
+          const dy = nodes[i].y - nodes[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 120) {
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.strokeStyle = "rgba(82,82,82," + (1 - dist / 120) * 0.5 + ")";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+      }
+      nodes.forEach(n => {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = "#737373";
+        ctx.fill();
+      });
+      loaderAnimationId = requestAnimationFrame(animate);
+    }
+    animate();
+  }
+
+  function stopLoaderAnimation() {
+    if (loaderAnimationId) {
+      cancelAnimationFrame(loaderAnimationId);
+      loaderAnimationId = null;
     }
   }
 
@@ -3060,14 +3234,31 @@
     const classes = {
       Backlog: "bg-gray-100 text-gray-800",
       "To Do": "bg-blue-100 text-blue-800",
-      "In Progress": "bg-yellow-100 text-yellow-800",
+      "In Progress": "bg-gray-100 text-gray-800",
       Review: "bg-purple-100 text-purple-800",
       Testing: "bg-indigo-100 text-indigo-800",
       Done: "bg-green-100 text-green-800",
     };
     return classes[status] || "bg-gray-100 text-gray-800";
   }
+  async function runLoaderSequence() {
+    const stages = [
+      [10, "Initializing..."],
+      [25, "Checking local cache..."],
+      [45, "Loading configuration..."],
+      [65, "Preparing workspace..."],
+      [85, "Rendering board..."],
+      [100, "Ready"]
+    ];
+    for (const [pct, text] of stages) {
+      updateLoaderProgress(pct, text);
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+
   async function init() {
+    showLoading(true);
+    const loaderDone = runLoaderSequence();
     const localBoard = LocalCache.get('board');
     const localConfig = LocalCache.get('config');
     const localUser = LocalCache.get('user');
@@ -3082,17 +3273,20 @@
       State.setTasks(localTasks);
       State.setProjects(State.projects);
       if (State.board && State.config) State.board.config = State.config;
+      await loaderDone;
+      State.initialLoadComplete = true;
       showLoading(false);
       updateUserDisplay();
       if (State.config) populateFormOptions(State.config);
       renderBoard();
       updateStats();
       updateProjectNav();
+      updateSidebarDate();
+      setInterval(updateSidebarDate, 60000);
       SyncManager.init();
       setTimeout(() => fetchFreshDataInBackground(), 100);
       return;
     }
-    showLoading(true);
     let hasCachedData = false;
     if (typeof CacheService !== 'undefined') {
       try {
@@ -3115,28 +3309,33 @@
           LocalCache.set('user', cachedUser);
           LocalCache.set('tasks', State.cache.tasks.data || []);
           LocalCache.set('projects', State.projects);
+          await loaderDone;
+          State.initialLoadComplete = true;
           showLoading(false);
           updateUserDisplay();
           populateFormOptions(cachedConfig);
           renderBoard();
           updateStats();
           updateProjectNav();
+          updateSidebarDate();
+          setInterval(updateSidebarDate, 60000);
           SyncManager.init();
           setTimeout(() => fetchFreshDataInBackground(), 500);
           return;
         }
       } catch (cacheErr) {
-        console.warn('Cache load failed:', cacheErr);
+        console.error('Cache load failed:', cacheErr);
       }
     }
     const initTimeout = setTimeout(() => {
       console.error("❌ Timeout after 15 seconds");
+      State.initialLoadComplete = true;
       showLoading(false);
       toast("Loading timed out. Please refresh.", "error");
       LoginModal.show();
     }, 15000);
     try {
-      loadExternalLibraries().catch(err => console.warn('Library load warning:', err));
+      loadExternalLibraries().catch(err => console.error('Library load warning:', err));
       google.script.run
         .withSuccessHandler((data) => {
           clearTimeout(initTimeout);
@@ -3150,6 +3349,7 @@
     } catch (error) {
       clearTimeout(initTimeout);
       console.error("❌ Init error:", error);
+      State.initialLoadComplete = true;
       showLoading(false);
       toast("Initialization failed", "error");
       LoginModal.show();
@@ -3196,11 +3396,12 @@
         CacheService.set('projects', data.board?.projects || []),
         CacheService.set('users', data.board?.users || [])
       ]).then(() => {}).catch(err => {
-        console.warn('IndexedDB cache failed:', err);
+        console.error('IndexedDB cache failed:', err);
       });
     }
     updateUserDisplay();
     populateFormOptions(data.config);
+    State.initialLoadComplete = true;
     showLoading(false);
     try {
       renderBoard();
@@ -3218,13 +3419,16 @@
     } catch (navError) {
       console.error("❌ Error updating project nav:", navError);
     }
+    updateSidebarDate();
+    setInterval(updateSidebarDate, 60000);
     try {
       SyncManager.init();
     } catch (syncError) {
-      console.warn("⚠️ SyncManager init failed:", syncError);
+      console.error("SyncManager init failed:", syncError);
     }
   } catch (error) {
     console.error("❌ Critical error in handleInitialData:", error);
+    State.initialLoadComplete = true;
     showLoading(false);
     toast("Error initializing app: " + error.message, "error");
     setTimeout(() => {
@@ -3237,6 +3441,7 @@
 
   function handleInitError(error) {
     console.error("Init error:", error);
+    State.initialLoadComplete = true;
     showLoading(false);
     const errorMessage = error && error.message ? error.message.toLowerCase() : "";
     State.user = null;
@@ -3251,7 +3456,7 @@
     ) {
       LoginModal.show();
     } else {
-      console.warn("Unexpected init error, showing login modal as fallback:", errorMessage);
+      console.error("Unexpected init error, showing login modal as fallback:", errorMessage);
       toast("Session error. Please login.", "warning");
       setTimeout(() => {
         LoginModal.show();
@@ -3268,6 +3473,46 @@
       avatar.textContent = getInitials(State.user.name || State.user.email);
     if (name) name.textContent = State.user.name || State.user.email;
     if (email) email.textContent = State.user.email;
+    applyRoleBasedVisibility();
+  }
+
+  function applyRoleBasedVisibility() {
+    if (!State.user) return;
+    var role = (State.user.role || 'member').toLowerCase();
+    var roleLevel = { admin: 3, manager: 2, member: 1, viewer: 0 };
+    var userLevel = roleLevel[role] !== undefined ? roleLevel[role] : 1;
+
+    // Show/hide nav items based on data-min-role attribute
+    $$('[data-min-role]').forEach(function(el) {
+      var requiredRole = el.getAttribute('data-min-role');
+      var requiredLevel = roleLevel[requiredRole] !== undefined ? roleLevel[requiredRole] : 2;
+      if (userLevel >= requiredLevel) {
+        el.style.display = '';
+      } else {
+        el.style.display = 'none';
+      }
+    });
+
+    // Show/hide "New Project" link (admin/manager only)
+    var newProjectLink = document.querySelector('[onclick="openProjectModal()"]');
+    if (newProjectLink) {
+      newProjectLink.style.display = (userLevel >= 2) ? '' : 'none';
+    }
+
+    // Show role badge next to user name
+    var roleDisplay = $("userRole");
+    if (roleDisplay) {
+      roleDisplay.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+    }
+  }
+
+  function hasMinRole(minRole) {
+    if (!State.user) return false;
+    var role = (State.user.role || 'member').toLowerCase();
+    var roleLevel = { admin: 3, manager: 2, member: 1, viewer: 0 };
+    var userLevel = roleLevel[role] !== undefined ? roleLevel[role] : 1;
+    var requiredLevel = roleLevel[minRole] !== undefined ? roleLevel[minRole] : 2;
+    return userLevel >= requiredLevel;
   }
 
   function populateFormOptions(config) {
@@ -3328,7 +3573,6 @@
     if (State.config) {
       populateFormOptions(State.config);
     } else {
-      console.warn('State.config not available, cannot populate select options');
     }
   }
 
@@ -3362,6 +3606,133 @@
       })
       .logout();
   }
+
+  function openChangePasswordModal() {
+    var modal = $("changePasswordModal");
+    if (!modal) return;
+    // Reset form
+    var form = $("changePasswordForm");
+    if (form) form.reset();
+    var errEl = $("changePasswordError");
+    var succEl = $("changePasswordSuccess");
+    if (errEl) errEl.classList.add("hidden");
+    if (succEl) succEl.classList.add("hidden");
+    // Show current password field (user already has a password)
+    var cpGroup = $("currentPasswordGroup");
+    if (cpGroup) cpGroup.style.display = "";
+    modal.classList.remove("hidden");
+  }
+
+  function closeChangePasswordModal() {
+    var modal = $("changePasswordModal");
+    if (modal) modal.classList.add("hidden");
+  }
+
+  function handleChangePassword(event) {
+    event.preventDefault();
+    var errEl = $("changePasswordError");
+    var succEl = $("changePasswordSuccess");
+    var btn = $("changePasswordBtn");
+    if (errEl) errEl.classList.add("hidden");
+    if (succEl) succEl.classList.add("hidden");
+
+    var currentPw = ($("currentPassword") || {}).value || "";
+    var newPw = ($("newPassword") || {}).value || "";
+    var confirmPw = ($("confirmPassword") || {}).value || "";
+
+    if (newPw.length < 8) {
+      if (errEl) { errEl.textContent = "Password must be at least 8 characters."; errEl.classList.remove("hidden"); }
+      return;
+    }
+    if (!/[A-Z]/.test(newPw) || !/[a-z]/.test(newPw) || !/[0-9]/.test(newPw)) {
+      if (errEl) { errEl.textContent = "Password must contain uppercase, lowercase, and a number."; errEl.classList.remove("hidden"); }
+      return;
+    }
+    if (newPw !== confirmPw) {
+      if (errEl) { errEl.textContent = "Passwords do not match."; errEl.classList.remove("hidden"); }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = "Updating..."; }
+    var email = State.user ? State.user.email : null;
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (btn) { btn.disabled = false; btn.textContent = "Update Password"; }
+        if (result && result.success) {
+          if (succEl) { succEl.textContent = "Password updated successfully!"; succEl.classList.remove("hidden"); }
+          setTimeout(function() { closeChangePasswordModal(); }, 1500);
+        } else {
+          if (errEl) { errEl.textContent = (result && result.error) || "Failed to update password."; errEl.classList.remove("hidden"); }
+        }
+      })
+      .withFailureHandler(function(error) {
+        if (btn) { btn.disabled = false; btn.textContent = "Update Password"; }
+        if (errEl) { errEl.textContent = error.message || "Failed to update password."; errEl.classList.remove("hidden"); }
+      })
+      .setUserPassword(email, newPw, currentPw);
+  }
+
+  var _pendingSetPasswordEmail = null;
+
+  function openSetPasswordModal(email) {
+    _pendingSetPasswordEmail = email || (State.user ? State.user.email : null);
+    var modal = $("setPasswordModal");
+    if (!modal) return;
+    var form = $("setPasswordForm");
+    if (form) form.reset();
+    var errEl = $("setPasswordError");
+    if (errEl) errEl.classList.add("hidden");
+    modal.classList.remove("hidden");
+  }
+
+  function closeSetPasswordModal() {
+    var modal = $("setPasswordModal");
+    if (modal) modal.classList.add("hidden");
+    _pendingSetPasswordEmail = null;
+  }
+
+  function handleSetPassword(event) {
+    event.preventDefault();
+    var errEl = $("setPasswordError");
+    var btn = $("setPasswordBtn");
+    if (errEl) errEl.classList.add("hidden");
+
+    var newPw = ($("setupNewPassword") || {}).value || "";
+    var confirmPw = ($("setupConfirmPassword") || {}).value || "";
+
+    if (newPw.length < 8) {
+      if (errEl) { errEl.textContent = "Password must be at least 8 characters."; errEl.classList.remove("hidden"); }
+      return;
+    }
+    if (!/[A-Z]/.test(newPw) || !/[a-z]/.test(newPw) || !/[0-9]/.test(newPw)) {
+      if (errEl) { errEl.textContent = "Password must contain uppercase, lowercase, and a number."; errEl.classList.remove("hidden"); }
+      return;
+    }
+    if (newPw !== confirmPw) {
+      if (errEl) { errEl.textContent = "Passwords do not match."; errEl.classList.remove("hidden"); }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = "Setting up..."; }
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (btn) { btn.disabled = false; btn.textContent = "Create Password & Continue"; }
+        if (result && result.success) {
+          closeSetPasswordModal();
+          toast("Password set successfully! Your account is now secured.", "success");
+        } else {
+          if (errEl) { errEl.textContent = (result && result.error) || "Failed to set password."; errEl.classList.remove("hidden"); }
+        }
+      })
+      .withFailureHandler(function(error) {
+        if (btn) { btn.disabled = false; btn.textContent = "Create Password & Continue"; }
+        if (errEl) { errEl.textContent = error.message || "Failed to set password."; errEl.classList.remove("hidden"); }
+      })
+      .setUserPassword(_pendingSetPasswordEmail, newPw, null);
+  }
+
   document.addEventListener("keydown", function(e) {
     if (e.key === "Escape") {
       if (typeof TaskDetailPanel !== 'undefined' && TaskDetailPanel.isOpen) {
@@ -3370,6 +3741,8 @@
       }
       closeTaskModal();
       closeProjectModal();
+      closeChangePasswordModal();
+      closeSetPasswordModal();
     }
     if ((e.ctrlKey || e.metaKey) && e.key === "n") {
       e.preventDefault();

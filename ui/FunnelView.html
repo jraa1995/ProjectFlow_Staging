@@ -1,8 +1,6 @@
-<!-- Funnel View HTML -->
 <div class="funnel-container">
-  <!-- Header -->
-  <div class="pf-card mb-6">
-    <div class="pf-card-body">
+  <div class="co-card mb-6">
+    <div class="co-card-body">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-900">
           <i class="fas fa-filter text-primary-500 mr-2"></i>
@@ -10,12 +8,11 @@
         </h2>
         <button
           onclick="FunnelPage.openImportDialog()"
-          class="pf-btn pf-btn-primary"
+          class="co-btn co-btn-primary"
         >
           <i class="fas fa-file-import"></i> Import Tickets
         </button>
       </div>
-      <!-- Stats -->
       <div class="grid grid-cols-4 gap-4">
         <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
           <div class="text-2xl font-bold text-gray-900" id="funnelStatPending">0</div>
@@ -37,15 +34,14 @@
     </div>
   </div>
 
-  <!-- Filters and Actions -->
-  <div class="pf-card mb-6">
-    <div class="pf-card-body">
+  <div class="co-card mb-6">
+    <div class="co-card-body">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-4">
           <select
             id="funnelStatusFilter"
             onchange="FunnelPage.filterTickets()"
-            class="pf-input w-48"
+            class="co-input w-48"
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending Review</option>
@@ -57,7 +53,7 @@
             type="text"
             id="funnelSearchInput"
             placeholder="Search tickets..."
-            class="pf-input w-64"
+            class="co-input w-64"
             oninput="FunnelPage.searchTickets()"
           />
         </div>
@@ -68,21 +64,21 @@
           <button
             id="funnelBulkAssignBtn"
             onclick="FunnelPage.openBulkAssignDialog()"
-            class="pf-btn pf-btn-secondary hidden"
+            class="co-btn co-btn-secondary hidden"
           >
             <i class="fas fa-user-plus"></i> Assign
           </button>
           <button
             id="funnelBulkImportBtn"
             onclick="FunnelPage.bulkImport()"
-            class="pf-btn pf-btn-primary hidden"
+            class="co-btn co-btn-primary hidden"
           >
             <i class="fas fa-check"></i> Import Selected
           </button>
           <button
             id="funnelBulkDeleteBtn"
             onclick="FunnelPage.bulkDelete()"
-            class="pf-btn pf-btn-secondary hidden"
+            class="co-btn co-btn-secondary hidden"
           >
             <i class="fas fa-trash"></i> Delete
           </button>
@@ -91,8 +87,7 @@
     </div>
   </div>
 
-  <!-- Tickets List -->
-  <div class="pf-card">
+  <div class="co-card">
     <div class="overflow-x-auto">
       <table class="w-full">
         <thead>
@@ -129,11 +124,9 @@
   </div>
 </div>
 
-<!-- Import Dialog Modal -->
 <div id="funnelImportDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-  <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden pf-animate-scale-in">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden co-animate-scale-in">
     <div id="funnelImportDialogContent">
-      <!-- Step 1: Select Workbook -->
       <div id="funnelImportStep1" class="funnel-import-step">
         <div class="flex items-center justify-between px-6 py-4 border-b">
           <h2 class="text-lg font-semibold">Import Tickets - Step 1 of 3</h2>
@@ -144,39 +137,37 @@
         <div class="p-6 space-y-4">
           <p class="text-gray-600">Enter the Google Sheets ID of the workbook containing your tickets.</p>
           <div>
-            <label class="pf-label">Workbook ID</label>
+            <label class="co-label">Workbook ID</label>
             <input
               type="text"
               id="funnelWorkbookId"
               placeholder="1ABC...XYZ (from Google Sheets URL)"
-              class="pf-input"
+              class="co-input"
             />
             <p class="text-xs text-gray-500 mt-1">
               Find this in the URL: https://docs.google.com/spreadsheets/d/<strong>WORKBOOK_ID</strong>/edit
             </p>
           </div>
           <div>
-            <label class="pf-label">Sheet Name</label>
+            <label class="co-label">Sheet Name</label>
             <input
               type="text"
               id="funnelSheetName"
               placeholder="Sheet1"
-              class="pf-input"
+              class="co-input"
             />
           </div>
         </div>
         <div class="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
-          <button onclick="FunnelPage.closeImportDialog()" class="pf-btn pf-btn-secondary">Cancel</button>
-          <button onclick="FunnelPage.loadWorkbookData()" class="pf-btn pf-btn-primary">
+          <button onclick="FunnelPage.closeImportDialog()" class="co-btn co-btn-secondary">Cancel</button>
+          <button onclick="FunnelPage.loadWorkbookData()" class="co-btn co-btn-primary">
             Next <i class="fas fa-arrow-right ml-1"></i>
           </button>
         </div>
       </div>
 
-      <!-- Step 2: Column Mapping (hidden initially) -->
       <div id="funnelImportStep2" class="funnel-import-step hidden"></div>
 
-      <!-- Step 3: Preview & Confirm (hidden initially) -->
       <div id="funnelImportStep3" class="funnel-import-step hidden"></div>
     </div>
   </div>
@@ -184,16 +175,16 @@
 
 <style>
 .funnel-ticket-row {
-  border-bottom: 1px solid var(--pf-gray-200);
-  transition: background-color var(--pf-transition-fast);
+  border-bottom: 1px solid var(--co-gray-200);
+  transition: background-color var(--co-transition-fast);
 }
 
 .funnel-ticket-row:hover {
-  background-color: var(--pf-gray-50);
+  background-color: var(--co-gray-50);
 }
 
 .funnel-ticket-row.selected {
-  background-color: var(--pf-primary-50);
+  background-color: var(--co-primary-50);
 }
 </style>
 
@@ -277,7 +268,7 @@ const FunnelPage = {
           <span class="font-medium text-gray-900">${this.escapeHtml(mappedData.title || 'Untitled')}</span>
         </td>
         <td class="px-4 py-3">
-          <span class="pf-badge pf-badge-primary">${this.escapeHtml(mappedData.status || 'To Do')}</span>
+          <span class="co-badge co-badge-primary">${this.escapeHtml(mappedData.status || 'To Do')}</span>
         </td>
         <td class="px-4 py-3">
           <span class="text-sm text-gray-600">${this.escapeHtml(mappedData.priority || 'Medium')}</span>
@@ -322,10 +313,10 @@ const FunnelPage = {
 
   renderImportStatus(status) {
     const badges = {
-      'pending': '<span class="pf-badge pf-badge-gray">Pending</span>',
-      'reviewed': '<span class="pf-badge pf-badge-info">Reviewed</span>',
-      'imported': '<span class="pf-badge pf-badge-success">Imported</span>',
-      'rejected': '<span class="pf-badge pf-badge-error">Rejected</span>'
+      'pending': '<span class="co-badge co-badge-gray">Pending</span>',
+      'reviewed': '<span class="co-badge co-badge-info">Reviewed</span>',
+      'imported': '<span class="co-badge co-badge-success">Imported</span>',
+      'rejected': '<span class="co-badge co-badge-error">Rejected</span>'
     };
     return badges[status] || badges['pending'];
   },
@@ -525,12 +516,12 @@ const FunnelPage = {
         </button>
       </div>
       <div class="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
-        <p class="text-gray-600">Map columns from your source sheet to ProjectFlow task fields.</p>
+        <p class="text-gray-600">Map columns from your source sheet to COLONY task fields.</p>
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
           <i class="fas fa-info-circle mr-1"></i>
           Found <strong>${this.importData.count}</strong> tickets in <strong>${this.importData.sheetName}</strong>
         </div>
-        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800 mb-4">
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-800 mb-4">
           <i class="fas fa-magic mr-1"></i>
           <strong>Smart Mapping Detected!</strong> Automatically mapped ${Object.keys(autoMapping).length} fields from Ad Hoc Request schema.
         </div>
@@ -565,13 +556,13 @@ const FunnelPage = {
             const mappedColumn = autoMapping[field.value] || '';
             return `
               <div>
-                <label class="pf-label">
+                <label class="co-label">
                   ${field.label}
                   ${mappedColumn ? '<span class="text-xs text-green-600 ml-1"><i class="fas fa-check-circle"></i> Auto-mapped</span>' : ''}
                 </label>
                 <select
                   id="mapping_${field.value}"
-                  class="pf-input ${mappedColumn ? 'border-green-500 bg-green-50' : ''}"
+                  class="co-input ${mappedColumn ? 'border-green-500 bg-green-50' : ''}"
                   ${field.required ? 'required' : ''}
                 >
                   <option value="">-- Not mapped --</option>
@@ -593,10 +584,10 @@ const FunnelPage = {
         </div>
       </div>
       <div class="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
-        <button onclick="FunnelPage.showImportStep(1)" class="pf-btn pf-btn-secondary">
+        <button onclick="FunnelPage.showImportStep(1)" class="co-btn co-btn-secondary">
           <i class="fas fa-arrow-left mr-1"></i> Back
         </button>
-        <button onclick="FunnelPage.previewImport()" class="pf-btn pf-btn-primary">
+        <button onclick="FunnelPage.previewImport()" class="co-btn co-btn-primary">
           Next <i class="fas fa-arrow-right ml-1"></i>
         </button>
       </div>
@@ -750,10 +741,10 @@ const FunnelPage = {
         ` : ''}
       </div>
       <div class="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
-        <button onclick="FunnelPage.showImportStep(2)" class="pf-btn pf-btn-secondary">
+        <button onclick="FunnelPage.showImportStep(2)" class="co-btn co-btn-secondary">
           <i class="fas fa-arrow-left mr-1"></i> Back
         </button>
-        <button onclick="FunnelPage.confirmImport()" class="pf-btn pf-btn-primary">
+        <button onclick="FunnelPage.confirmImport()" class="co-btn co-btn-primary">
           <i class="fas fa-file-import mr-1"></i> Import to Funnel
         </button>
       </div>

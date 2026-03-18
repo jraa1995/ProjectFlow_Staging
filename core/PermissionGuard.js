@@ -31,7 +31,14 @@ const PermissionGuard = {
     admin: {
       name: 'admin',
       description: 'Full system access',
-      permissions: Object.keys(this.PERMISSIONS || {}),
+      permissions: [
+        'task:create', 'task:read:own', 'task:read:all', 'task:update:own', 'task:update:all',
+        'task:delete:own', 'task:delete:all', 'task:assign',
+        'project:create', 'project:read', 'project:update', 'project:delete', 'project:manage_members',
+        'user:create', 'user:read', 'user:update', 'user:delete', 'user:manage_roles',
+        'analytics:view:own', 'analytics:view:team', 'analytics:view:all',
+        'admin:settings', 'admin:audit_log', 'admin:automation', 'admin:webhooks'
+      ],
       isSystemRole: true
     },
     manager: {

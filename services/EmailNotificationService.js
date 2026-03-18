@@ -1,8 +1,3 @@
-/**
- * EmailNotificationService - Enhanced Email Delivery System
- * Handles email template management, delivery, and error handling
- */
-
 class EmailNotificationService {
 
   static sendEmailNotification(notification) {
@@ -92,37 +87,37 @@ class EmailNotificationService {
   static getEmailTemplate(notificationType) {
     const templates = {
       mention: {
-        subject: 'You were mentioned in {{taskTitle}} - ProjectFlow',
+        subject: 'You were mentioned in {{taskTitle}} - COLONY',
         htmlBody: this.getMentionEmailTemplate(),
         textBody: this.getMentionTextTemplate()
       },
 
       task_assigned: {
-        subject: 'New task assigned: {{taskTitle}} - ProjectFlow',
+        subject: 'New task assigned: {{taskTitle}} - COLONY',
         htmlBody: this.getTaskAssignedEmailTemplate(),
         textBody: this.getTaskAssignedTextTemplate()
       },
 
       task_updated: {
-        subject: 'Task updated: {{taskTitle}} - ProjectFlow',
+        subject: 'Task updated: {{taskTitle}} - COLONY',
         htmlBody: this.getTaskUpdatedEmailTemplate(),
         textBody: this.getTaskUpdatedTextTemplate()
       },
 
       deadline_approaching: {
-        subject: '⚠️ Deadline approaching: {{taskTitle}} - ProjectFlow',
+        subject: '⚠️ Deadline approaching: {{taskTitle}} - COLONY',
         htmlBody: this.getDeadlineEmailTemplate(),
         textBody: this.getDeadlineTextTemplate()
       },
 
       project_update: {
-        subject: 'Project update: {{projectName}} - ProjectFlow',
+        subject: 'Project update: {{projectName}} - COLONY',
         htmlBody: this.getProjectUpdateEmailTemplate(),
         textBody: this.getProjectUpdateTextTemplate()
       },
 
       comment_added: {
-        subject: 'New comment on {{taskTitle}} - ProjectFlow',
+        subject: 'New comment on {{taskTitle}} - COLONY',
         htmlBody: this.getCommentEmailTemplate(),
         textBody: this.getCommentTextTemplate()
       }
@@ -199,7 +194,7 @@ class EmailNotificationService {
       projectDescription: project ? (project.description || '') : '',
       projectUrl: project ? this.getProjectUrl(project.id) : this.getSystemUrl(),
 
-      systemName: 'ProjectFlow',
+      systemName: 'COLONY',
       systemUrl: this.getSystemUrl(),
       unsubscribeUrl: this.getUnsubscribeUrl(notification.userId),
 
@@ -232,7 +227,7 @@ class EmailNotificationService {
       projectDescription: '',
       projectUrl: '',
 
-      systemName: 'ProjectFlow',
+      systemName: 'COLONY',
       systemUrl: this.getSystemUrl(),
       unsubscribeUrl: this.getUnsubscribeUrl(notification.userId),
 
@@ -315,7 +310,7 @@ class EmailNotificationService {
       try {
         const result = GmailApp.sendEmail(email, subject, textBody, {
           htmlBody: htmlBody,
-          name: 'ProjectFlow Notifications',
+          name: 'COLONY Notifications',
           replyTo: 'noreply@projectflow.com'
         });
 
@@ -363,7 +358,7 @@ class EmailNotificationService {
     try {
       return ScriptApp.getService().getUrl();
     } catch (error) {
-      return 'https://your-projectflow-instance.com';
+      return 'https://your-colony-instance.com';
     }
   }
 
@@ -404,7 +399,7 @@ class EmailNotificationService {
     const colors = {
       'Critical': '#dc2626',
       'Highest': '#ea580c',
-      'High': '#f59e0b',
+      'High': '#525252',
       'Medium': '#3b82f6',
       'Low': '#10b981',
       'Lowest': '#6b7280'
@@ -417,7 +412,7 @@ class EmailNotificationService {
     const colors = {
       'Backlog': '#6b7280',
       'To Do': '#3b82f6',
-      'In Progress': '#f59e0b',
+      'In Progress': '#525252',
       'Review': '#8b5cf6',
       'Testing': '#06b6d4',
       'Done': '#10b981'
@@ -433,25 +428,25 @@ class EmailNotificationService {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>You were mentioned - ProjectFlow</title>
+  <title>You were mentioned - COLONY</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
     .container { max-width: 600px; margin: 0 auto; background-color: white; }
-    .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+    .header { background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; padding: 30px; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
     .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
     .content { padding: 30px; }
-    .mention-box { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0; }
-    .mention-box strong { color: #92400e; }
+    .mention-box { background: #f5f5f5; border-left: 4px solid #525252; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0; }
+    .mention-box strong { color: #262626; }
     .task-info { background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; }
     .task-title { font-size: 18px; font-weight: 600; color: #1e293b; margin: 0 0 10px 0; }
     .task-meta { display: flex; gap: 20px; margin: 10px 0; flex-wrap: wrap; }
     .meta-item { font-size: 14px; color: #64748b; }
     .priority { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; color: white; }
     .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; color: white; }
-    .button { display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 500; margin: 20px 0; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3); }
-    .button:hover { background: linear-gradient(135deg, #d97706 0%, #b45309 100%); }
+    .button { display: inline-block; background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 500; margin: 20px 0; box-shadow: 0 2px 4px rgba(82, 82, 82, 0.3); }
+    .button:hover { background: linear-gradient(135deg, #404040 0%, #262626 100%); }
     .footer { background: #f1f5f9; padding: 20px; text-align: center; font-size: 12px; color: #64748b; }
-    .footer a { color: #f59e0b; text-decoration: none; font-weight: 500; }
+    .footer a { color: #525252; text-decoration: none; font-weight: 500; }
     .footer a:hover { text-decoration: underline; }
   </style>
 </head>
@@ -465,7 +460,7 @@ class EmailNotificationService {
     <div class="content">
       <div class="mention-box">
         <p style="margin: 0 0 10px 0;"><strong>{{mentionedByName}}</strong> mentioned you in a comment:</p>
-        <p style="font-style: italic; margin: 10px 0; color: #78350f; font-size: 15px;">"{{message}}"</p>
+        <p style="font-style: italic; margin: 10px 0; color: #404040; font-size: 15px;">"{{message}}"</p>
       </div>
 
       <div class="task-info">
@@ -498,8 +493,8 @@ class EmailNotificationService {
     </div>
 
     <div class="footer">
-      <p style="margin: 5px 0;">You're receiving this because you were mentioned in <strong>ProjectFlow</strong>.</p>
-      <p style="margin: 10px 0;"><a href="{{unsubscribeUrl}}">Manage notification preferences</a> | <a href="{{systemUrl}}">Open ProjectFlow</a></p>
+      <p style="margin: 5px 0;">You're receiving this because you were mentioned in <strong>COLONY</strong>.</p>
+      <p style="margin: 10px 0;"><a href="{{unsubscribeUrl}}">Manage notification preferences</a> | <a href="{{systemUrl}}">Open COLONY</a></p>
     </div>
   </div>
 </body>
@@ -507,7 +502,7 @@ class EmailNotificationService {
   }
 
   static getMentionTextTemplate() {
-    return `You were mentioned in ProjectFlow
+    return `You were mentioned in COLONY
 
 {{mentionedByName}} mentioned you in a comment on "{{taskTitle}}":
 
@@ -529,7 +524,7 @@ View and reply to this task: {{taskUrl}}
 This mention was posted on {{formattedDate}} in the {{projectName}} project.
 
 ---
-You're receiving this because you were mentioned in ProjectFlow.
+You're receiving this because you were mentioned in COLONY.
 Manage your notification preferences: {{unsubscribeUrl}}`;
   }
 
@@ -540,7 +535,7 @@ Manage your notification preferences: {{unsubscribeUrl}}`;
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>New Task Assigned - ProjectFlow</title>
+  <title>New Task Assigned - COLONY</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
     .container { max-width: 600px; margin: 0 auto; background-color: white; }
@@ -574,7 +569,7 @@ Manage your notification preferences: {{unsubscribeUrl}}`;
           <span class="meta-badge" style="background-color: {{priorityColor}};">{{taskPriority}} Priority</span>
           <span class="meta-badge" style="background-color: {{statusColor}};">{{taskStatus}}</span>
           {{#taskDueDate}}
-          <span class="meta-badge" style="background-color: #f59e0b;">Due {{taskDueDate}}</span>
+          <span class="meta-badge" style="background-color: #525252;">Due {{taskDueDate}}</span>
           {{/taskDueDate}}
         </div>
       </div>
@@ -587,8 +582,8 @@ Manage your notification preferences: {{unsubscribeUrl}}`;
     </div>
 
     <div class="footer">
-      <p>You're receiving this because a task was assigned to you in ProjectFlow.</p>
-      <p><a href="{{unsubscribeUrl}}">Manage notification preferences</a> | <a href="{{systemUrl}}">Open ProjectFlow</a></p>
+      <p>You're receiving this because a task was assigned to you in COLONY.</p>
+      <p><a href="{{unsubscribeUrl}}">Manage notification preferences</a> | <a href="{{systemUrl}}">Open COLONY</a></p>
     </div>
   </div>
 </body>
@@ -596,7 +591,7 @@ Manage your notification preferences: {{unsubscribeUrl}}`;
   }
 
   static getTaskAssignedTextTemplate() {
-    return `New Task Assigned - ProjectFlow
+    return `New Task Assigned - COLONY
 
 A new task has been assigned to you:
 
@@ -619,7 +614,7 @@ View task details: {{taskUrl}}
 This task was assigned on {{formattedDate}}.
 
 ---
-You're receiving this because a task was assigned to you in ProjectFlow.
+You're receiving this because a task was assigned to you in COLONY.
 Manage your notification preferences: {{unsubscribeUrl}}`;
   }
 
@@ -630,17 +625,17 @@ Manage your notification preferences: {{unsubscribeUrl}}`;
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Deadline Approaching - ProjectFlow</title>
+  <title>Deadline Approaching - COLONY</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
     .container { max-width: 600px; margin: 0 auto; background-color: white; }
-    .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; text-align: center; }
+    .header { background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; padding: 30px; text-align: center; }
     .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
     .content { padding: 30px; }
-    .warning-box { background: #fef3c7; border: 2px solid #f59e0b; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .warning-box { background: #f5f5f5; border: 2px solid #525252; padding: 20px; border-radius: 8px; margin: 20px 0; }
     .task-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 25px; border-radius: 12px; margin: 20px 0; }
     .deadline { font-size: 18px; font-weight: 600; color: #dc2626; }
-    .button { display: inline-block; background: #f59e0b; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 500; margin: 25px 0; }
+    .button { display: inline-block; background: #525252; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 500; margin: 25px 0; }
     .footer { background: #f1f5f9; padding: 20px; text-align: center; font-size: 12px; color: #64748b; }
   </style>
 </head>
@@ -680,7 +675,7 @@ Manage your notification preferences: {{unsubscribeUrl}}`;
 
     <div class="footer">
       <p>You're receiving this because you have a task with an approaching deadline.</p>
-      <p><a href="{{unsubscribeUrl}}">Manage notification preferences</a> | <a href="{{systemUrl}}">Open ProjectFlow</a></p>
+      <p><a href="{{unsubscribeUrl}}">Manage notification preferences</a> | <a href="{{systemUrl}}">Open COLONY</a></p>
     </div>
   </div>
 </body>
@@ -688,7 +683,7 @@ Manage your notification preferences: {{unsubscribeUrl}}`;
   }
 
   static getDeadlineTextTemplate() {
-    return `Deadline Approaching - ProjectFlow
+    return `Deadline Approaching - COLONY
 
 Your task deadline is approaching:
 

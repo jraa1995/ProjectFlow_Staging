@@ -1,7 +1,4 @@
-<!-- Phase 1: Milestone View Component -->
-<!-- Dedicated milestone tracking page with timeline visualization -->
 <div id="milestoneView" class="h-full flex flex-col">
-<!-- Header with Stats Cards -->
 <div class="bg-white border-b border-gray-200 px-6 py-5">
 <div class="flex items-center justify-between mb-4">
 <div>
@@ -10,7 +7,6 @@
 </h1>
 <p class="text-sm text-gray-500 mt-1">Track project milestones and critical deliverables</p>
 </div>
-<!-- Refresh Button -->
 <button
 onclick="MilestonePage.loadMilestones()"
 class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
@@ -19,9 +15,7 @@ class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:
 Refresh
 </button>
 </div>
-<!-- Stats Cards -->
 <div class="grid grid-cols-4 gap-4">
-<!-- Total Milestones -->
 <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
 <div class="flex items-center justify-between">
 <div>
@@ -33,19 +27,17 @@ Refresh
 </div>
 </div>
 </div>
-<!-- Upcoming Milestones -->
-<div class="bg-gradient-to-br from-amber-50 to-yellow-100 rounded-xl p-4 border border-amber-200">
+<div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
 <div class="flex items-center justify-between">
 <div>
-<p class="text-xs font-medium text-amber-700 uppercase tracking-wide">Upcoming (30d)</p>
-<p id="milestoneStatUpcoming" class="text-3xl font-bold text-amber-900 mt-1">0</p>
+<p class="text-xs font-medium text-gray-700 uppercase tracking-wide">Upcoming (30d)</p>
+<p id="milestoneStatUpcoming" class="text-3xl font-bold text-gray-900 mt-1">0</p>
 </div>
-<div class="w-12 h-12 rounded-lg bg-amber-200 flex items-center justify-center">
-<i class="fas fa-arrow-right text-amber-700 text-xl"></i>
+<div class="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center">
+<i class="fas fa-arrow-right text-gray-700 text-xl"></i>
 </div>
 </div>
 </div>
-<!-- Overdue Milestones -->
 <div class="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 border border-red-200">
 <div class="flex items-center justify-between">
 <div>
@@ -57,7 +49,6 @@ Refresh
 </div>
 </div>
 </div>
-<!-- Completed Milestones -->
 <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
 <div class="flex items-center justify-between">
 <div>
@@ -71,22 +62,18 @@ Refresh
 </div>
 </div>
 </div>
-<!-- Filters and Timeline -->
 <div class="bg-white border-b border-gray-200 px-6 py-4">
-<!-- Filters Row -->
 <div class="flex items-center gap-3 mb-4">
-<!-- Project Filter -->
 <select
 id="milestoneFilterProject"
-class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-600 focus:border-transparent"
 onchange="MilestonePage.applyFilters()"
 >
 <option value="">All Projects</option>
 </select>
-<!-- Status Filter -->
 <select
 id="milestoneFilterStatus"
-class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-600 focus:border-transparent"
 onchange="MilestonePage.applyFilters()"
 >
 <option value="">All Statuses</option>
@@ -94,10 +81,9 @@ onchange="MilestonePage.applyFilters()"
 <option value="overdue">Overdue</option>
 <option value="completed">Completed</option>
 </select>
-<!-- Type Filter -->
 <select
 id="milestoneFilterType"
-class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-600 focus:border-transparent"
 onchange="MilestonePage.applyFilters()"
 >
 <option value="">All Types</option>
@@ -107,7 +93,6 @@ onchange="MilestonePage.applyFilters()"
 <option value="launch">Launch/Release</option>
 <option value="other">Other</option>
 </select>
-<!-- Search -->
 <div class="flex-1">
 <div class="relative">
 <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
@@ -115,12 +100,11 @@ onchange="MilestonePage.applyFilters()"
 type="text"
 id="milestoneSearchInput"
 placeholder="Search milestones..."
-class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-600 focus:border-transparent"
 oninput="MilestonePage.applyFilters()"
 />
 </div>
 </div>
-<!-- Clear Filters -->
 <button
 onclick="MilestonePage.clearFilters()"
 class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -128,10 +112,9 @@ class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rou
 <i class="fas fa-times mr-1"></i> Clear
 </button>
 </div>
-<!-- Timeline Visualization -->
-<div class="bg-gradient-to-r from-gray-50 to-amber-50 rounded-xl p-4 border border-gray-200">
+<div class="bg-gradient-to-r from-gray-50 to-gray-50 rounded-xl p-4 border border-gray-200">
 <div class="flex items-center gap-2 mb-3">
-<i class="fas fa-chart-line text-amber-600"></i>
+<i class="fas fa-chart-line text-gray-600"></i>
 <h3 class="font-semibold text-gray-900">Milestone Timeline</h3>
 </div>
 <div id="milestoneTimeline" class="relative h-20 bg-white rounded-lg p-4 border border-gray-200">
@@ -141,10 +124,8 @@ Loading timeline...
 </div>
 </div>
 </div>
-<!-- Milestone List (Scrollable) -->
 <div class="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
 <div id="milestoneList">
-<!-- Milestones will be rendered here -->
 <div class="flex items-center justify-center h-64 text-gray-400">
 <div class="text-center">
 <i class="fas fa-flag text-4xl mb-3"></i>
@@ -152,19 +133,18 @@ Loading timeline...
 </div>
 </div>
 </div>
-<!-- Empty State -->
 <div id="milestoneEmptyState" class="hidden flex items-center justify-center h-64">
 <div class="text-center">
-<div class="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
-<i class="fas fa-flag text-3xl text-amber-600"></i>
+<div class="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+<i class="fas fa-flag text-3xl text-gray-600"></i>
 </div>
 <h3 class="text-lg font-semibold text-gray-900 mb-2">No Milestones Found</h3>
 <p class="text-gray-500 mb-4">
 Create your first milestone by editing a task and checking "Mark as Milestone"
 </p>
 <button
-onclick="switchView('board')"
-class="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+onclick="switchView('my')"
+class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
 >
 <i class="fas fa-plus mr-2"></i>Go to Board
 </button>
@@ -418,7 +398,7 @@ const MilestonePage = {
       const milestoneDate = new Date(m.milestoneDate);
       const position = ((milestoneDate - startDate) / (1000 * 60 * 60 * 24)) / totalDays * 100;
 
-      let markerClass = 'bg-amber-500';
+      let markerClass = 'bg-gray-600';
       let icon = '🏁';
       if (m.status === 'Done') {
         markerClass = 'bg-green-500';
@@ -477,7 +457,7 @@ const MilestonePage = {
         <div class="mb-6">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-3">
-              <i class="fas fa-folder text-amber-600"></i>
+              <i class="fas fa-folder text-gray-600"></i>
               <h2 class="text-lg font-bold text-gray-900">${escapeHtml(projectName)}</h2>
               <span class="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">${milestones.length} milestone${milestones.length !== 1 ? 's' : ''}</span>
             </div>
@@ -502,10 +482,10 @@ const MilestonePage = {
     const now = new Date();
     const milestoneDate = milestone.milestoneDate ? new Date(milestone.milestoneDate) : null;
 
-    let statusClass = 'from-amber-50 to-yellow-100 border-amber-200';
+    let statusClass = 'from-gray-50 to-gray-100 border-gray-200';
     let statusIcon = '🏁';
     let statusText = 'Upcoming';
-    let statusTextClass = 'text-amber-700';
+    let statusTextClass = 'text-gray-700';
 
     if (milestone.status === 'Done') {
       statusClass = 'from-green-50 to-green-100 border-green-200';

@@ -3,8 +3,8 @@ function doGet(e) {
     initializeSystem();
     const template = HtmlService.createTemplateFromFile('ui/Index');
     return template.evaluate()
-      .setTitle('ProjectFlow')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setTitle('COLONY')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
   } catch (error) {
     console.error('doGet error:', error);
@@ -22,28 +22,35 @@ function include(filename) {
 }
 
 function getErrorPage(message) {
+  const safeMessage = String(message || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+
   return `
   <!DOCTYPE html>
   <html>
   <head>
-  <title>ProjectFlow - Setup Required</title>
+  <title>COLONY - Setup Required</title>
   <style>
   body { font-family: -apple-system, sans-serif; padding: 40px; background: #f8fafc; }
   .container { max-width: 500px; margin: 0 auto; background: white; padding: 40px;
     border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
-  h1 { color: #f59e0b; }
+  h1 { color: #171717; }
   .error { color: #dc2626; font-size: 14px; background: #fef2f2; padding: 10px; border-radius: 4px; margin: 20px 0; }
-  button { padding: 12px 24px; background: #f59e0b; color: white; border: none;
+  button { padding: 12px 24px; background: #404040; color: white; border: none;
     border-radius: 8px; cursor: pointer; font-size: 16px; }
-  button:hover { background: #d97706; }
+  button:hover { background: #262626; }
   code { background: #f1f5f9; padding: 2px 8px; border-radius: 4px; }
   </style>
   </head>
   <body>
   <div class="container">
-  <h1>⚙️ Setup Required</h1>
+  <h1>Setup Required</h1>
   <p>Please run <code>quickSetup()</code> in the Apps Script editor.</p>
-  <div class="error">${message}</div>
+  <div class="error">${safeMessage}</div>
   <button onclick="location.reload()">Retry</button>
   </div>
   </body>
@@ -91,6 +98,7 @@ const RequestCache = {
   _projects: null,
   _users: null,
   _activity: null,
+  _dependencies: null,
 
   getTasks() {
     if (this._tasks === null) {
@@ -120,28 +128,46 @@ const RequestCache = {
     return this._activity;
   },
 
+  getDependencies() {
+    if (this._dependencies === null) {
+      this._dependencies = getAllDependenciesMap();
+    }
+    return this._dependencies;
+  },
+
   clear() {
     this._tasks = null;
     this._projects = null;
     this._users = null;
     this._activity = null;
+    this._dependencies = null;
   }
 };
+
+function getSpreadsheet() {
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
 
 function getBatchDataFast() {
   try {
     const cache = CacheService.getScriptCache();
-    const cacheKey = 'BATCH_DATA_CACHE';
-    const cached = cache.get(cacheKey);
-
+    const cached = cache.get('BATCH_DATA_CACHE');
     if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch (e) {
-        console.warn('Batch cache parse error');
-      }
+      try { return JSON.parse(cached); } catch (e) {}
     }
+    return rebuildBatchCache() || buildBatchDataFallback();
+  } catch (error) {
+    console.error('getBatchDataFast failed:', error);
+    return buildBatchDataFallback();
+  }
+}
 
+function rebuildBatchCache() {
+  const cache = CacheService.getScriptCache();
+  const lockKey = 'BATCH_REBUILD_LOCK';
+  if (cache.get(lockKey)) return null;
+  cache.put(lockKey, '1', 10);
+  try {
     const ss = getSpreadsheet();
     const tasksSheet = ss.getSheetByName(CONFIG.SHEETS.TASKS);
     const projectsSheet = ss.getSheetByName(CONFIG.SHEETS.PROJECTS);
@@ -206,30 +232,28 @@ function getBatchDataFast() {
       }
     };
 
-    try {
-      const jsonStr = JSON.stringify(result);
-      if (jsonStr.length < 100000) {
-        cache.put(cacheKey, jsonStr, 300);
-      }
-    } catch (e) {
-      console.warn('Batch cache write failed:', e);
+    const jsonStr = JSON.stringify(result);
+    if (jsonStr.length < 100000) {
+      cache.put('BATCH_DATA_CACHE', jsonStr, 300);
     }
-
     return result;
-  } catch (error) {
-    console.error('getBatchDataFast failed:', error);
-    return {
-      tasks: getAllTasks(),
-      projects: getAllProjects(),
-      users: getActiveUsers(),
-      config: {
-        statuses: CONFIG.STATUSES,
-        priorities: CONFIG.PRIORITIES,
-        types: CONFIG.TYPES,
-        colors: CONFIG.COLORS
-      }
-    };
+  } finally {
+    cache.remove(lockKey);
   }
+}
+
+function buildBatchDataFallback() {
+  return {
+    tasks: getAllTasks(),
+    projects: getAllProjects(),
+    users: getActiveUsers(),
+    config: {
+      statuses: CONFIG.STATUSES,
+      priorities: CONFIG.PRIORITIES,
+      types: CONFIG.TYPES,
+      colors: CONFIG.COLORS
+    }
+  };
 }
 
 function getAllTasksOptimized() {
@@ -242,7 +266,6 @@ function getAllTasksOptimized() {
       try {
         return JSON.parse(cached);
       } catch (e) {
-        console.warn('Cache parse error, fetching fresh data');
       }
     }
 
@@ -268,7 +291,6 @@ function getAllProjectsOptimized() {
       try {
         return JSON.parse(cached);
       } catch (e) {
-        console.warn('Cache parse error for projects');
       }
     }
 
@@ -292,7 +314,6 @@ function getActiveUsersOptimized(forceRefresh) {
         try {
           return JSON.parse(cached);
         } catch (e) {
-          console.warn('Cache parse error for users');
         }
       }
     }
@@ -313,7 +334,7 @@ function loadUsersFresh() {
 function clearAllCaches() {
   try {
     const cache = CacheService.getScriptCache();
-    cache.removeAll(['ALL_TASKS_CACHE', 'ALL_PROJECTS_CACHE', 'ACTIVE_USERS_CACHE', 'ALL_USERS_MENTIONS_CACHE']);
+    cache.removeAll(['ALL_TASKS_CACHE', 'ALL_PROJECTS_CACHE', 'ACTIVE_USERS_CACHE', 'ALL_USERS_MENTIONS_CACHE', 'BATCH_DATA_CACHE']);
     RequestCache.clear();
   } catch (error) {
     console.error('clearAllCaches failed:', error);
@@ -361,6 +382,31 @@ function patchTaskCache(taskId, updatedTask, changeType) {
     cache.remove(`row_Tasks_${taskId}`);
     logChange('task', taskId, changeType || 'update');
 
+    const batchCached = cache.get('BATCH_DATA_CACHE');
+    if (batchCached) {
+      try {
+        const batchData = JSON.parse(batchCached);
+        const batchIndex = batchData.tasks.findIndex(t => t.id === taskId);
+        if (changeType === 'delete') {
+          if (batchIndex >= 0) batchData.tasks.splice(batchIndex, 1);
+        } else if (changeType === 'create' && updatedTask) {
+          batchData.tasks.push(updatedTask);
+        } else if (updatedTask && batchIndex >= 0) {
+          batchData.tasks[batchIndex] = updatedTask;
+        }
+        const batchJson = JSON.stringify(batchData);
+        if (batchJson.length < 100000) {
+          cache.put('BATCH_DATA_CACHE', batchJson, 300);
+        } else {
+          cache.remove('BATCH_DATA_CACHE');
+        }
+      } catch (e) {
+        try { rebuildBatchCache(); } catch (e2) { cache.remove('BATCH_DATA_CACHE'); }
+      }
+    } else {
+      try { rebuildBatchCache(); } catch (e) {}
+    }
+
     if (RequestCache && RequestCache._tasks) {
       if (changeType === 'delete') {
         RequestCache._tasks = RequestCache._tasks.filter(t => t.id !== taskId);
@@ -381,7 +427,6 @@ function invalidateTaskCache(taskId, changeType) {
   try {
     const cache = CacheService.getScriptCache();
     cache.remove('ALL_TASKS_CACHE');
-    cache.remove('BATCH_DATA_CACHE');
 
     if (taskId) {
       cache.remove(`TASK_${taskId}`);
@@ -393,6 +438,12 @@ function invalidateTaskCache(taskId, changeType) {
 
     if (RequestCache && RequestCache._tasks) {
       RequestCache._tasks = null;
+    }
+
+    try {
+      rebuildBatchCache();
+    } catch (e) {
+      cache.remove('BATCH_DATA_CACHE');
     }
   } catch (error) {
     console.error('invalidateTaskCache failed:', error);
@@ -408,8 +459,8 @@ function invalidateProjectCache(projectId) {
       cache.remove(`PROJECT_${projectId}`);
     }
 
-    if (RequestCache && RequestCache.projects) {
-      RequestCache.projects = null;
+    if (RequestCache && RequestCache._projects !== undefined) {
+      RequestCache._projects = null;
     }
   } catch (error) {
     console.error('invalidateProjectCache failed:', error);
@@ -421,11 +472,21 @@ function invalidateUserCache() {
     const cache = CacheService.getScriptCache();
     cache.remove('ACTIVE_USERS_CACHE');
 
-    if (RequestCache && RequestCache.users) {
-      RequestCache.users = null;
+    if (RequestCache && RequestCache._users !== undefined) {
+      RequestCache._users = null;
     }
   } catch (error) {
     console.error('invalidateUserCache failed:', error);
+  }
+}
+
+function invalidateDependencyCache() {
+  try {
+    if (RequestCache) {
+      RequestCache._dependencies = null;
+    }
+  } catch (error) {
+    console.error('invalidateDependencyCache failed:', error);
   }
 }
 
@@ -555,6 +616,11 @@ function loadMyBoard(projectId) {
 
 function loadMasterBoard(projectId) {
   try {
+    var userRole = getCurrentUserRole();
+    if (userRole !== 'admin' && userRole !== 'manager') {
+      throw new Error('Permission denied: Master Board requires admin or manager access.');
+    }
+
     const allTasks = getAllTasksOptimized();
     const filteredTasks = projectId
       ? allTasks.filter(task => task.projectId === projectId)
@@ -615,6 +681,11 @@ function getMyBoardOptimized(projectId, userEmail) {
 
 function getAnalyticsData(days) {
   try {
+    var userRole = getCurrentUserRole();
+    if (userRole !== 'admin' && userRole !== 'manager') {
+      throw new Error('Permission denied: Analytics requires admin or manager access.');
+    }
+
     const endDate = new Date();
     const startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
     const now = new Date();
@@ -667,24 +738,24 @@ function getAnalyticsData(days) {
         }
       }
 
-      if (inDateRange) {
-        metrics.total++;
+      metrics.total++;
+      if (task.status === 'Done') {
+        metrics.completed++;
+      } else if (task.status === 'In Progress') {
+        metrics.inProgress++;
+      }
+      if (task.dueDate && task.status !== 'Done') {
+        if (new Date(task.dueDate) < now) {
+          metrics.overdue++;
+        }
+      }
 
+      if (inDateRange) {
         if (task.status === 'Done') {
-          metrics.completed++;
           const weekKey = getWeekKey(new Date(task.updatedAt || task.createdAt));
           weeklyData[weekKey] = weeklyData[weekKey] || { completed: 0, total: 0 };
           weeklyData[weekKey].completed++;
-        } else if (task.status === 'In Progress') {
-          metrics.inProgress++;
         }
-
-        if (task.dueDate && task.status !== 'Done') {
-          if (new Date(task.dueDate) < now) {
-            metrics.overdue++;
-          }
-        }
-
         const weekKey = getWeekKey(taskDate);
         weeklyData[weekKey] = weeklyData[weekKey] || { completed: 0, total: 0 };
         weeklyData[weekKey].total++;
@@ -854,7 +925,6 @@ function getFilteredTimeline(projectId, filters) {
     const timelineData = TimelineEngine.generateProjectTimeline(projectId || null);
 
     if (!timelineData) {
-      console.warn('getFilteredTimeline: TimelineEngine returned null data');
       return {
         tasks: [],
         milestones: [],
@@ -980,9 +1050,14 @@ function getMilestonesForView() {
 }
 
 function saveNewTask(taskData) {
-  const result = createTask(taskData);
-  patchTaskCache(result.id, result, 'create');
-  return result;
+  try {
+    const result = createTask(taskData);
+    patchTaskCache(result.id, result, 'create');
+    return result;
+  } catch (error) {
+    console.error('saveNewTask failed:', error);
+    throw error;
+  }
 }
 
 function saveTaskUpdate(taskId, updates) {
@@ -1007,7 +1082,6 @@ function removeTask(taskId) {
 function loadTask(taskId) {
   try {
     if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
-      console.warn('loadTask: Invalid taskId provided:', taskId);
       return null;
     }
 
@@ -1075,6 +1149,10 @@ function executeBatchOperations(operations) {
 function saveNewProject(projectData) {
   const result = createProject(projectData);
   invalidateProjectCache();
+  // Also invalidate BATCH_DATA_CACHE since it contains projects
+  try {
+    CacheService.getScriptCache().remove('BATCH_DATA_CACHE');
+  } catch (e) { /* best effort */ }
   return result;
 }
 
@@ -1097,7 +1175,6 @@ function getAllUsersForMentions(forceRefresh) {
         try {
           return JSON.parse(cached);
         } catch (e) {
-          console.warn('Cache parse error for mentions users');
         }
       }
     }
@@ -1196,17 +1273,20 @@ function formatCommentContent(content, mentionedUserEmails) {
 
 function getCurrentUserEmailOptimized() {
   try {
-    const email = PropertiesService.getScriptProperties().getProperty('CURRENT_USER_EMAIL');
-    const timestamp = PropertiesService.getScriptProperties().getProperty('LOGIN_TIMESTAMP');
-
-    if (email && timestamp) {
-      const loginTime = parseInt(timestamp);
-      const now = new Date().getTime();
-      const sessionDuration = 24 * 60 * 60 * 1000;
-
-      if (now - loginTime < sessionDuration) {
-        return email;
+    // Primary: use GAS built-in user identification (per-user, no crossover)
+    const activeUser = Session.getActiveUser();
+    if (activeUser) {
+      const email = activeUser.getEmail();
+      if (email) {
+        return email.toLowerCase().trim();
       }
+    }
+
+    // Fallback: check user-specific session in cache (keyed by session token)
+    const cache = CacheService.getScriptCache();
+    const sessionEmail = cache.get('ACTIVE_SESSION_EMAIL_' + Session.getTemporaryActiveUserKey());
+    if (sessionEmail) {
+      return sessionEmail;
     }
 
     return null;
@@ -1218,10 +1298,68 @@ function getCurrentUserEmailOptimized() {
 
 function setCurrentUserEmailOptimized(email) {
   try {
-    PropertiesService.getScriptProperties().setProperty('CURRENT_USER_EMAIL', email);
-    PropertiesService.getScriptProperties().setProperty('LOGIN_TIMESTAMP', new Date().getTime().toString());
+    // Store session keyed by temporary user key (per-user, no crossover)
+    const userKey = Session.getTemporaryActiveUserKey();
+    if (userKey) {
+      const cache = CacheService.getScriptCache();
+      const sessionDuration = 24 * 60 * 60; // 24 hours in seconds
+      cache.put('ACTIVE_SESSION_EMAIL_' + userKey, email.toLowerCase().trim(), sessionDuration);
+    }
   } catch (error) {
     console.error('setCurrentUserEmailOptimized failed:', error);
+  }
+}
+
+function sanitizeUserForClient(user) {
+  if (!user) return null;
+  return {
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    active: user.active,
+    avatar: user.avatar,
+    organizationId: user.organizationId,
+    teamId: user.teamId,
+    mfaEnabled: user.mfaEnabled || false
+  };
+}
+
+function filterTasksByUserRole(tasks, userEmail, userRole) {
+  if (!userRole || userRole === 'admin' || userRole === 'manager') {
+    return tasks;
+  }
+  // Members and viewers only see tasks assigned to them or created by them
+  return tasks.filter(function(task) {
+    return (task.assignee && task.assignee.toLowerCase() === userEmail.toLowerCase()) ||
+           (task.reporter && task.reporter.toLowerCase() === userEmail.toLowerCase());
+  });
+}
+
+function filterProjectsByUserRole(projects, tasks, userEmail, userRole) {
+  if (!userRole || userRole === 'admin' || userRole === 'manager') {
+    return projects;
+  }
+  // Members and viewers only see projects they have tasks in
+  var userProjectIds = {};
+  tasks.forEach(function(task) {
+    if (task.projectId) {
+      userProjectIds[task.projectId] = true;
+    }
+  });
+  return projects.filter(function(project) {
+    return userProjectIds[project.id];
+  });
+}
+
+function getCurrentUserRole() {
+  try {
+    var email = getCurrentUserEmailOptimized();
+    if (!email) return null;
+    var user = getUserByEmailOptimized(email);
+    return user ? (user.role || 'member') : null;
+  } catch (e) {
+    console.error('getCurrentUserRole failed:', e);
+    return null;
   }
 }
 
@@ -1271,7 +1409,7 @@ function getInitialData() {
     const boardData = getMyBoardOptimized(null, userEmail);
 
     return {
-      user: user,
+      user: sanitizeUserForClient(user),
       board: boardData,
       config: {
         statuses: CONFIG.STATUSES,
@@ -1306,12 +1444,17 @@ function getInitialDataFast() {
       task.assignee && task.assignee.toLowerCase() === userEmail.toLowerCase()
     );
 
-    const columns = CONFIG.STATUSES.map(status => ({
-      id: status.toLowerCase().replace(/\s+/g, '-'),
-      title: status,
-      color: CONFIG.COLORS[status] || '#6B7280',
-      tasks: userTasks.filter(t => t.status === status)
-    }));
+    const columns = CONFIG.STATUSES.map((status, index) => {
+      const columnTasks = userTasks.filter(t => t.status === status);
+      return {
+        id: status.toLowerCase().replace(/\s+/g, '_'),
+        name: status,
+        color: CONFIG.COLORS[status] || '#6B7280',
+        order: index,
+        tasks: columnTasks,
+        count: columnTasks.length
+      };
+    });
 
     const total = userTasks.length;
     const completed = userTasks.filter(t => t.status === 'Done').length;
@@ -1330,7 +1473,7 @@ function getInitialDataFast() {
     }).length;
 
     return {
-      user: user,
+      user: sanitizeUserForClient(user),
       board: {
         columns: columns,
         projects: batchData.projects,
@@ -1354,42 +1497,23 @@ function getInitialDataFast() {
 
 function getListViewData() {
   try {
-    const tasks = getAllTasksOptimized();
-    const projects = getAllProjectsOptimized();
-    const users = getActiveUsersOptimized();
+    var userEmail = getCurrentUserEmailOptimized();
+    var userRole = getCurrentUserRole();
+    var allTasks = getAllTasksOptimized();
+    var tasks = filterTasksByUserRole(allTasks, userEmail, userRole);
+    var allProjects = getAllProjectsOptimized();
+    var projects = filterProjectsByUserRole(allProjects, tasks, userEmail, userRole);
+    var users = getActiveUsersOptimized();
 
     return {
       success: true,
       tasks: tasks,
       projects: projects,
-      users: users
+      users: users,
+      userRole: userRole
     };
   } catch (error) {
     console.error('getListViewData failed:', error);
-    return {
-      success: false,
-      error: error.message,
-      tasks: [],
-      projects: [],
-      users: []
-    };
-  }
-}
-
-function getCalendarData() {
-  try {
-    const tasks = getAllTasksOptimized();
-    const projects = getAllProjectsOptimized();
-    const users = getActiveUsersOptimized();
-
-    return {
-      success: true,
-      tasks: tasks,
-      projects: projects,
-      users: users
-    };
-  } catch (error) {
-    console.error('getCalendarData failed:', error);
     return {
       success: false,
       error: error.message,
@@ -1413,11 +1537,19 @@ function loginWithEmail(email) {
       throw new Error('User not found. Please contact your administrator for access.');
     }
 
+    // If AuthService is available and user has a password set, require password login
+    if (typeof AuthService !== 'undefined') {
+      const userWithPw = AuthService.getUserWithPassword(email);
+      if (userWithPw && userWithPw.passwordHash && userWithPw.passwordSalt) {
+        throw new Error('Password required. Please use the password login.');
+      }
+    }
+
     setCurrentUserEmailOptimized(email);
     const boardData = getMyBoardOptimized(null, email);
 
     return {
-      user: user,
+      user: sanitizeUserForClient(user),
       board: boardData,
       config: {
         statuses: CONFIG.STATUSES,
@@ -1440,8 +1572,13 @@ function logout() {
       AuthService.invalidateAllUserSessions(userEmail);
     }
 
-    PropertiesService.getScriptProperties().deleteProperty('CURRENT_USER_EMAIL');
-    PropertiesService.getScriptProperties().deleteProperty('LOGIN_TIMESTAMP');
+    // Clear per-user session cache
+    const userKey = Session.getTemporaryActiveUserKey();
+    if (userKey) {
+      const cache = CacheService.getScriptCache();
+      cache.remove('ACTIVE_SESSION_EMAIL_' + userKey);
+    }
+
     clearAllCaches();
 
     return { success: true };
@@ -1468,7 +1605,7 @@ function loginWithPassword(email, password, options) {
 
     return {
       success: true,
-      user: result.user,
+      user: sanitizeUserForClient(result.user),
       session: result.session,
       board: boardData,
       config: {
@@ -1555,8 +1692,13 @@ function logoutAllDevices() {
       AuthService.invalidateAllUserSessions(userEmail);
     }
 
-    PropertiesService.getScriptProperties().deleteProperty('CURRENT_USER_EMAIL');
-    PropertiesService.getScriptProperties().deleteProperty('LOGIN_TIMESTAMP');
+    // Clear per-user session cache
+    const userKey = Session.getTemporaryActiveUserKey();
+    if (userKey) {
+      const cache = CacheService.getScriptCache();
+      cache.remove('ACTIVE_SESSION_EMAIL_' + userKey);
+    }
+
     clearAllCaches();
 
     return { success: true };
@@ -2247,6 +2389,7 @@ function getBasicUserSuggestions(query, excludeUsers) {
 function addDependency(successorId, predecessorId, dependencyType, lag) {
   try {
     const result = DependencyEngine.addDependency(successorId, predecessorId, dependencyType || 'finish_to_start', lag || 0);
+    invalidateDependencyCache();
     return {
       success: true,
       dependency: result
@@ -2263,6 +2406,7 @@ function addDependency(successorId, predecessorId, dependencyType, lag) {
 function removeDependency(dependencyId) {
   try {
     DependencyEngine.removeDependency(dependencyId);
+    invalidateDependencyCache();
     return {
       success: true
     };

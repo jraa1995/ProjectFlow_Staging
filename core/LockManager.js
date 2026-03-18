@@ -234,7 +234,6 @@ const LockManager = {
         }
         return data;
       } catch (e) {
-        console.warn('Script cache parse error for', key);
       }
     }
 

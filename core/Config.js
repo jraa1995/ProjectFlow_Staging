@@ -37,7 +37,7 @@ const CONFIG = {
   COLORS: {
     'Backlog': '#6B7280',
     'To Do': '#3B82F6',
-    'In Progress': '#F59E0B',
+    'In Progress': '#525252',
     'Review': '#8B5CF6',
     'Testing': '#06B6D4',
     'Done': '#10B981'
@@ -419,5 +419,7 @@ function sanitize(input) {
   if (typeof input !== 'string') return input;
   return input
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/javascript\s*:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
     .replace(/[<>]/g, '');
 }

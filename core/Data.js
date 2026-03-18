@@ -203,7 +203,6 @@ const RowIndexCache = {
       }
       return null;
     } catch (e) {
-      console.warn('RowIndexCache.get failed:', e.message);
       return null;
     }
   },
@@ -214,7 +213,6 @@ const RowIndexCache = {
       const key = `row_${sheetName}_${id}`;
       cache.put(key, rowIndex.toString(), this.CACHE_TTL);
     } catch (e) {
-      console.warn('RowIndexCache.set failed:', e.message);
     }
   },
 
@@ -224,7 +222,6 @@ const RowIndexCache = {
       const key = `row_${sheetName}_${id}`;
       cache.remove(key);
     } catch (e) {
-      console.warn('RowIndexCache.invalidate failed:', e.message);
     }
   },
 
@@ -252,7 +249,6 @@ const UserCache = {
         return this._memoryCache;
       }
     } catch (e) {
-      console.warn('UserCache.getMap failed:', e.message);
     }
     return null;
   },
@@ -274,7 +270,6 @@ const UserCache = {
       const cache = CacheService.getScriptCache();
       cache.put(this.CACHE_KEY, JSON.stringify(userMap), this.CACHE_TTL);
     } catch (e) {
-      console.warn('UserCache.buildAndCache failed:', e.message);
     }
     this._memoryCache = userMap;
     this._memoryCacheTime = Date.now();
@@ -298,7 +293,6 @@ const UserCache = {
       this._memoryCache = null;
       this._memoryCacheTime = 0;
     } catch (e) {
-      console.warn('UserCache.invalidate failed:', e.message);
     }
   }
 };
@@ -883,8 +877,12 @@ function getCurrentUserEmail() {
 
 function setCurrentUserEmail(email) {
   try {
-    const properties = PropertiesService.getScriptProperties();
-    properties.setProperty('CURRENT_USER_EMAIL', email);
+    // Use per-user keyed cache instead of shared ScriptProperties
+    const userKey = Session.getTemporaryActiveUserKey();
+    if (userKey) {
+      const cache = CacheService.getScriptCache();
+      cache.put('ACTIVE_SESSION_EMAIL_' + userKey, email.toLowerCase().trim(), 86400);
+    }
     return true;
   } catch (e) {
     console.error('Failed to set current user email:', e);
@@ -894,8 +892,13 @@ function setCurrentUserEmail(email) {
 
 function getManualUserEmail() {
   try {
-    const properties = PropertiesService.getScriptProperties();
-    return properties.getProperty('CURRENT_USER_EMAIL');
+    // Use per-user keyed cache instead of shared ScriptProperties
+    const userKey = Session.getTemporaryActiveUserKey();
+    if (userKey) {
+      const cache = CacheService.getScriptCache();
+      return cache.get('ACTIVE_SESSION_EMAIL_' + userKey);
+    }
+    return null;
   } catch (e) {
     return null;
   }
@@ -903,8 +906,11 @@ function getManualUserEmail() {
 
 function clearCurrentUserEmail() {
   try {
-    const properties = PropertiesService.getScriptProperties();
-    properties.deleteProperty('CURRENT_USER_EMAIL');
+    const userKey = Session.getTemporaryActiveUserKey();
+    if (userKey) {
+      const cache = CacheService.getScriptCache();
+      cache.remove('ACTIVE_SESSION_EMAIL_' + userKey);
+    }
     return true;
   } catch (e) {
     console.error('Failed to clear current user email:', e);
@@ -919,10 +925,11 @@ function getCurrentUser() {
   }
   let user = getUserByEmail(email);
   if (!user) {
+    // Auto-create as 'member' role (not admin) for new domain users
     user = createUser({
       email: email,
       name: email.split('@')[0],
-      role: 'admin'
+      role: 'member'
     });
   }
   return user;
@@ -1333,23 +1340,63 @@ function createTaskDependency(dependencyData) {
   return dependency;
 }
 
-function getTaskDependencies(taskId) {
+function getAllDependenciesMap() {
+  if (RequestCache._dependencies !== undefined && RequestCache._dependencies !== null) {
+    return RequestCache._dependencies;
+  }
   const sheet = getTaskDependenciesSheet();
   const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return { predecessors: [], successors: [] };
-  const columns = CONFIG.TASK_DEPENDENCY_COLUMNS;
-  const predecessors = [];
-  const successors = [];
-  for (let i = 1; i < data.length; i++) {
-    const dependency = rowToObject(data[i], columns);
-    if (dependency.successorId === taskId) {
-      predecessors.push(dependency);
-    }
-    if (dependency.predecessorId === taskId) {
-      successors.push(dependency);
+  const bySuccessor = {};
+  const byPredecessor = {};
+  if (data.length > 1) {
+    const columns = CONFIG.TASK_DEPENDENCY_COLUMNS;
+    for (let i = 1; i < data.length; i++) {
+      const dep = rowToObject(data[i], columns);
+      if (!bySuccessor[dep.successorId]) bySuccessor[dep.successorId] = [];
+      bySuccessor[dep.successorId].push(dep);
+      if (!byPredecessor[dep.predecessorId]) byPredecessor[dep.predecessorId] = [];
+      byPredecessor[dep.predecessorId].push(dep);
     }
   }
-  return { predecessors, successors };
+  const result = { bySuccessor, byPredecessor };
+  RequestCache._dependencies = result;
+  return result;
+}
+
+function getTaskDependencies(taskId) {
+  const map = getAllDependenciesMap();
+  return {
+    predecessors: map.bySuccessor[taskId] || [],
+    successors: map.byPredecessor[taskId] || []
+  };
+}
+
+function batchUpdatePositions(updates) {
+  if (!updates || updates.length === 0) return;
+  const sheet = getTasksSheet();
+  const columns = CONFIG.TASK_COLUMNS;
+  const data = sheet.getDataRange().getValues();
+  const idIndex = 0;
+  const positionIndex = columns.indexOf('position');
+  if (positionIndex === -1) return;
+  const updateMap = {};
+  updates.forEach(u => { updateMap[u.taskId] = u.position; });
+  const updatedAt = now();
+  const updatedAtIndex = columns.indexOf('updatedAt');
+  const rangesToWrite = [];
+  for (let i = 1; i < data.length; i++) {
+    const rowId = data[i][idIndex];
+    if (updateMap.hasOwnProperty(rowId)) {
+      data[i][positionIndex] = updateMap[rowId];
+      if (updatedAtIndex !== -1) data[i][updatedAtIndex] = updatedAt;
+      rangesToWrite.push({ rowIndex: i + 1, rowData: data[i] });
+    }
+  }
+  if (rangesToWrite.length === 0) return;
+  rangesToWrite.forEach(({ rowIndex, rowData }) => {
+    sheet.getRange(rowIndex, 1, 1, columns.length).setValues([rowData]);
+  });
+  SpreadsheetApp.flush();
 }
 
 function deleteTaskDependency(dependencyId) {

@@ -8,7 +8,7 @@ function getMyBoard(projectId) {
 }
 
 function getMasterBoard(projectId) {
-  const tasks = getAllTasks();
+  const tasks = RequestCache.getTasks();
   return buildBoardData(tasks, projectId, {
     view: "master",
   });
@@ -20,26 +20,31 @@ function buildBoardData(allTasks, projectId, options = {}) {
     tasks = tasks.filter((t) => t.projectId === projectId);
   }
 
+  const depMap = getAllDependenciesMap();
+  const taskMap = {};
+  allTasks.forEach(t => { taskMap[t.id] = t; });
+
   tasks = tasks.map(task => {
     try {
-      const dependencies = getTaskDependencies(task.id);
-      const hasDependencies = dependencies.predecessors.length > 0 || dependencies.successors.length > 0;
-      const blockedBy = dependencies.predecessors.filter(dep => {
-        const predecessorTask = getTaskById(dep.predecessorId);
+      const predecessors = depMap.bySuccessor[task.id] || [];
+      const successors = depMap.byPredecessor[task.id] || [];
+      const hasDependencies = predecessors.length > 0 || successors.length > 0;
+      const blockedBy = predecessors.filter(dep => {
+        const predecessorTask = taskMap[dep.predecessorId];
         return predecessorTask && predecessorTask.status !== 'Done';
       });
       const isBlocked = blockedBy.length > 0;
       return {
         ...task,
-        hasDependencies: hasDependencies,
-        isBlocked: isBlocked,
+        hasDependencies,
+        isBlocked,
         blockedByCount: blockedBy.length,
-        blockingCount: dependencies.successors.length,
+        blockingCount: successors.length,
         dependencyMetadata: {
-          predecessorCount: dependencies.predecessors.length,
-          successorCount: dependencies.successors.length,
+          predecessorCount: predecessors.length,
+          successorCount: successors.length,
           blockedByTasks: blockedBy.map(dep => {
-            const t = getTaskById(dep.predecessorId);
+            const t = taskMap[dep.predecessorId];
             return t ? { id: t.id, title: t.title, status: t.status } : null;
           }).filter(Boolean)
         }
@@ -101,13 +106,11 @@ function getValidStatus(status, defaultStatus) {
     return status;
   }
   const fallback = defaultStatus || CONFIG.STATUSES[0] || 'Backlog';
-  console.warn('getValidStatus: Invalid status "' + status + '", using default "' + fallback + '"');
   return fallback;
 }
 
 function denormalizeStatusId(columnId) {
   if (!columnId || typeof columnId !== 'string') {
-    console.warn('denormalizeStatusId: Invalid columnId "' + columnId + '", using default');
     return CONFIG.STATUSES[0] || 'Backlog';
   }
 
@@ -118,7 +121,6 @@ function denormalizeStatusId(columnId) {
 
   const status = statusMap[columnId.toLowerCase()];
   if (!status) {
-    console.warn('denormalizeStatusId: Unknown columnId "' + columnId + '", valid options: ' + Object.keys(statusMap).join(', '));
     if (CONFIG.STATUSES.includes(columnId)) {
       return columnId;
     }
@@ -290,11 +292,17 @@ function reorderTasksInColumn(taskId, newPosition, status) {
   const [movedTask] = tasks.splice(taskIndex, 1);
   tasks.splice(newPosition, 0, movedTask);
 
+  const updates = [];
   tasks.forEach((task, index) => {
     if (task.position !== index) {
-      updateTask(task.id, { position: index });
+      updates.push({ taskId: task.id, position: index });
     }
   });
+
+  if (updates.length > 0) {
+    batchUpdatePositions(updates);
+    invalidateTaskCache(null, 'update');
+  }
 
   return true;
 }

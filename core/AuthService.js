@@ -419,13 +419,13 @@ const AuthService = {
       } else {
         GmailApp.sendEmail(
           user.email,
-          'ProjectFlow Login Code',
+          'COLONY Login Code',
           `Your login verification code is: ${code}\n\nThis code expires in 5 minutes.`,
           {
-            name: 'ProjectFlow',
+            name: 'COLONY',
             htmlBody: `
             <div style="font-family: sans-serif; padding: 20px;">
-            <h2 style="color: #f59e0b;">ProjectFlow Login Code</h2>
+            <h2 style="color: #525252;">COLONY Login Code</h2>
             <p>Your verification code is:</p>
             <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1f2937;">${code}</p>
             <p style="color: #6b7280;">This code expires in 5 minutes.</p>

@@ -4,29 +4,29 @@
 <base target="_top">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>List View - ProjectFlow</title>
+<title>List View - COLONY</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
 :root {
-  --pf-primary-500: #f59e0b;
-  --pf-primary-600: #d97706;
-  --pf-primary-700: #b45309;
-  --pf-gray-50: #f9fafb;
-  --pf-gray-100: #f3f4f6;
-  --pf-gray-200: #e5e7eb;
-  --pf-gray-300: #d1d5db;
-  --pf-gray-400: #9ca3af;
-  --pf-gray-500: #6b7280;
-  --pf-gray-600: #4b5563;
-  --pf-gray-700: #374151;
-  --pf-gray-800: #1f2937;
-  --pf-gray-900: #111827;
+  --co-primary-500: #525252;
+  --co-primary-600: #404040;
+  --co-primary-700: #262626;
+  --co-gray-50: #f9fafb;
+  --co-gray-100: #f3f4f6;
+  --co-gray-200: #e5e7eb;
+  --co-gray-300: #d1d5db;
+  --co-gray-400: #9ca3af;
+  --co-gray-500: #6b7280;
+  --co-gray-600: #4b5563;
+  --co-gray-700: #374151;
+  --co-gray-800: #1f2937;
+  --co-gray-900: #111827;
 }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: var(--pf-gray-50);
+  background: var(--co-gray-50);
   margin: 0;
   padding: 0;
 }
@@ -40,8 +40,8 @@ body {
 }
 
 .list-table thead {
-  background: var(--pf-gray-50);
-  border-bottom: 2px solid var(--pf-gray-200);
+  background: var(--co-gray-50);
+  border-bottom: 2px solid var(--co-gray-200);
 }
 
 .list-table th {
@@ -50,7 +50,7 @@ body {
   font-weight: 600;
   font-size: 12px;
   text-transform: uppercase;
-  color: var(--pf-gray-700);
+  color: var(--co-gray-700);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -58,7 +58,7 @@ body {
 }
 
 .list-table th.sortable:hover {
-  background: var(--pf-gray-100);
+  background: var(--co-gray-100);
 }
 
 .list-table th .sort-icon {
@@ -70,26 +70,26 @@ body {
 .list-table th.sorted-asc .sort-icon,
 .list-table th.sorted-desc .sort-icon {
   opacity: 1;
-  color: var(--pf-primary-600);
+  color: var(--co-primary-600);
 }
 
 .list-table tbody tr {
-  border-bottom: 1px solid var(--pf-gray-200);
+  border-bottom: 1px solid var(--co-gray-200);
   transition: background 0.15s ease;
 }
 
 .list-table tbody tr:hover {
-  background: var(--pf-gray-50);
+  background: var(--co-gray-50);
 }
 
 .list-table tbody tr.selected {
-  background: #fef3c7;
+  background: #f5f5f5;
 }
 
 .list-table td {
   padding: 12px 16px;
   font-size: 14px;
-  color: var(--pf-gray-900);
+  color: var(--co-gray-900);
   vertical-align: middle;
 }
 
@@ -100,7 +100,7 @@ body {
 }
 
 .editable-cell:hover {
-  background: var(--pf-gray-100);
+  background: var(--co-gray-100);
   border-radius: 4px;
 }
 
@@ -112,7 +112,7 @@ body {
 .editable-cell select {
   width: 100%;
   padding: 8px;
-  border: 2px solid var(--pf-primary-500);
+  border: 2px solid var(--co-primary-500);
   border-radius: 4px;
   font-size: 14px;
   outline: none;
@@ -120,8 +120,8 @@ body {
 
 .editable-cell input:focus,
 .editable-cell select:focus {
-  border-color: var(--pf-primary-600);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+  border-color: var(--co-primary-600);
+  box-shadow: 0 0 0 3px rgba(82, 82, 82, 0.1);
 }
 
 .status-badge {
@@ -135,7 +135,7 @@ body {
 
 .status-new { background: #dbeafe; color: #1e40af; }
 .status-assigned { background: #e0e7ff; color: #4338ca; }
-.status-in-progress { background: #fef3c7; color: #d97706; }
+.status-in-progress { background: #f5f5f5; color: #404040; }
 .status-pending-clarification { background: #fce7f3; color: #be185d; }
 .status-on-hold { background: #f3f4f6; color: #6b7280; }
 .status-in-review { background: #e0f2fe; color: #0369a1; }
@@ -156,7 +156,7 @@ body {
 
 .priority-urgent { background: #fee2e2; color: #991b1b; }
 .priority-high { background: #fed7aa; color: #c2410c; }
-.priority-medium { background: #fef3c7; color: #d97706; }
+.priority-medium { background: #f5f5f5; color: #404040; }
 .priority-low { background: #dbeafe; color: #1e40af; }
 .priority-routine { background: #e5e7eb; color: #6b7280; }
 
@@ -176,7 +176,7 @@ body {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: var(--pf-gray-700);
+  color: var(--co-gray-700);
   margin-bottom: 4px;
   text-transform: uppercase;
 }
@@ -185,7 +185,7 @@ body {
 .filter-group select {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--pf-gray-300);
+  border: 1px solid var(--co-gray-300);
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.15s ease;
@@ -194,8 +194,8 @@ body {
 .filter-group input:focus,
 .filter-group select:focus {
   outline: none;
-  border-color: var(--pf-primary-500);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+  border-color: var(--co-primary-500);
+  box-shadow: 0 0 0 3px rgba(82, 82, 82, 0.1);
 }
 
 .btn {
@@ -213,25 +213,25 @@ body {
 }
 
 .btn-primary {
-  background: var(--pf-primary-500);
+  background: var(--co-primary-500);
   color: white;
 }
 
 .btn-primary:hover {
-  background: var(--pf-primary-600);
+  background: var(--co-primary-600);
   transform: translateY(-1px);
-  box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2);
+  box-shadow: 0 4px 6px rgba(82, 82, 82, 0.2);
 }
 
 .btn-secondary {
   background: white;
-  color: var(--pf-gray-700);
-  border: 1px solid var(--pf-gray-300);
+  color: var(--co-gray-700);
+  border: 1px solid var(--co-gray-300);
 }
 
 .btn-secondary:hover {
-  background: var(--pf-gray-50);
-  border-color: var(--pf-gray-400);
+  background: var(--co-gray-50);
+  border-color: var(--co-gray-400);
 }
 
 .btn-danger {
@@ -252,7 +252,7 @@ input[type="checkbox"] {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: var(--pf-primary-500);
+  accent-color: var(--co-primary-500);
 }
 
 .pagination {
@@ -264,7 +264,7 @@ input[type="checkbox"] {
 
 .pagination button {
   padding: 6px 12px;
-  border: 1px solid var(--pf-gray-300);
+  border: 1px solid var(--co-gray-300);
   background: white;
   border-radius: 6px;
   cursor: pointer;
@@ -273,8 +273,8 @@ input[type="checkbox"] {
 }
 
 .pagination button:hover:not(:disabled) {
-  background: var(--pf-gray-50);
-  border-color: var(--pf-primary-500);
+  background: var(--co-gray-50);
+  border-color: var(--co-primary-500);
 }
 
 .pagination button:disabled {
@@ -284,7 +284,7 @@ input[type="checkbox"] {
 
 .pagination .page-number {
   padding: 6px 12px;
-  border: 1px solid var(--pf-gray-300);
+  border: 1px solid var(--co-gray-300);
   background: white;
   border-radius: 6px;
   cursor: pointer;
@@ -292,9 +292,9 @@ input[type="checkbox"] {
 }
 
 .pagination .page-number.active {
-  background: var(--pf-primary-500);
+  background: var(--co-primary-500);
   color: white;
-  border-color: var(--pf-primary-500);
+  border-color: var(--co-primary-500);
 }
 
 .column-visibility-panel {
@@ -303,7 +303,7 @@ input[type="checkbox"] {
   right: 0;
   margin-top: 8px;
   background: white;
-  border: 1px solid var(--pf-gray-300);
+  border: 1px solid var(--co-gray-300);
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   padding: 12px;
@@ -321,13 +321,13 @@ input[type="checkbox"] {
 }
 
 .column-visibility-item:hover {
-  background: var(--pf-gray-50);
+  background: var(--co-gray-50);
 }
 
 .column-visibility-item label {
   cursor: pointer;
   font-size: 14px;
-  color: var(--pf-gray-700);
+  color: var(--co-gray-700);
 }
 
 .preset-panel {
@@ -336,7 +336,7 @@ input[type="checkbox"] {
   right: 0;
   margin-top: 8px;
   background: white;
-  border: 1px solid var(--pf-gray-300);
+  border: 1px solid var(--co-gray-300);
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   padding: 12px;
@@ -354,7 +354,7 @@ input[type="checkbox"] {
 }
 
 .preset-item:hover {
-  background: var(--pf-gray-50);
+  background: var(--co-gray-50);
 }
 
 .preset-item .delete-preset {
@@ -372,7 +372,7 @@ input[type="checkbox"] {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--pf-gray-800);
+  background: var(--co-gray-800);
   color: white;
   padding: 16px 24px;
   border-radius: 8px;
@@ -405,8 +405,8 @@ input[type="checkbox"] {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid var(--pf-gray-300);
-  border-top-color: var(--pf-primary-500);
+  border: 2px solid var(--co-gray-300);
+  border-top-color: var(--co-primary-500);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -440,7 +440,7 @@ input[type="checkbox"] {
 
 .toast.success { border-left-color: #10b981; }
 .toast.error { border-left-color: #ef4444; }
-.toast.warning { border-left-color: #f59e0b; }
+.toast.warning { border-left-color: #525252; }
 .toast.info { border-left-color: #3b82f6; }
 
 @keyframes slideIn {
@@ -461,7 +461,7 @@ input[type="checkbox"] {
 .empty-state {
   text-align: center;
   padding: 60px 20px;
-  color: var(--pf-gray-500);
+  color: var(--co-gray-500);
 }
 
 .empty-state i {
@@ -829,7 +829,6 @@ const ListViewPage = {
         this.applyFilters();
         this.showLoading(false);
       } else {
-        console.warn('ListView: Fallback to direct API call');
         google.script.run
           .withSuccessHandler((data) => {
             this.allTasks = data.tasks || [];
@@ -1428,7 +1427,7 @@ const ListViewPage = {
       editor.value = task[field] || '';
     }
 
-    editor.style.cssText = 'width: 100%; padding: 8px; border: 2px solid var(--pf-primary-500); border-radius: 4px;';
+    editor.style.cssText = 'width: 100%; padding: 8px; border: 2px solid var(--co-primary-500); border-radius: 4px;';
     editor.onblur = () => this.saveInlineEdit();
 
     cell.innerHTML = '';
@@ -1580,7 +1579,7 @@ const ListViewPage = {
     const url = URL.createObjectURL(blob);
 
     link.setAttribute('href', url);
-    link.setAttribute('download', `projectflow_tasks_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `colony_tasks_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();

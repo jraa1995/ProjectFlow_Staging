@@ -126,8 +126,8 @@ class MentionEngine {
         if (excludeSet.has(user.email.toLowerCase())) {
           return false;
         }
-        const emailMatch = user.email.toLowerCase().includes(queryLower);
-        const nameMatch = user.name.toLowerCase().includes(queryLower);
+        const emailMatch = user.email && user.email.toLowerCase().includes(queryLower);
+        const nameMatch = user.name && user.name.toLowerCase().includes(queryLower);
         return emailMatch || nameMatch;
       })
       .map(user => ({
@@ -144,8 +144,8 @@ class MentionEngine {
 
   static calculateMatchScore(query, user) {
     const queryLower = query.toLowerCase();
-    const emailLower = user.email.toLowerCase();
-    const nameLower = user.name.toLowerCase();
+    const emailLower = (user.email || '').toLowerCase();
+    const nameLower = (user.name || '').toLowerCase();
     let score = 0;
 
     if (emailLower === queryLower || nameLower === queryLower) {

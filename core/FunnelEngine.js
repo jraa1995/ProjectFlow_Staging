@@ -20,7 +20,7 @@ function getFunnelStagingSheet() {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, headers.length)
-      .setBackground('#f59e0b')
+      .setBackground('#525252')
       .setFontColor('#ffffff')
       .setFontWeight('bold');
   }
@@ -206,7 +206,6 @@ function getFunnelTickets(status) {
         ticket.rawData = ticket.rawData ? JSON.parse(ticket.rawData) : {};
         ticket.mappedData = ticket.mappedData ? JSON.parse(ticket.mappedData) : {};
       } catch (e) {
-        console.warn('Failed to parse JSON fields for ticket:', ticket.id, e);
         ticket.rawData = {};
         ticket.mappedData = {};
       }

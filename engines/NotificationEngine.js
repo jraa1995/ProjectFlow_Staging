@@ -185,7 +185,7 @@ class NotificationEngine {
       try {
         GmailApp.sendEmail(email, subject, '', {
           htmlBody: body,
-          name: 'ProjectFlow Notifications'
+          name: 'COLONY Notifications'
         });
         return;
       } catch (error) {
@@ -214,7 +214,7 @@ class NotificationEngine {
   static getEmailTemplates() {
     return {
       mention: {
-        subject: 'You were mentioned in ProjectFlow',
+        subject: 'You were mentioned in COLONY',
         body: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
@@ -233,13 +233,13 @@ class NotificationEngine {
         </p>
         </div>
         <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #64748b;">
-        <p>This notification was sent by ProjectFlow. To manage your notification preferences, visit your account settings.</p>
+        <p>This notification was sent by COLONY. To manage your notification preferences, visit your account settings.</p>
         </div>
         </div>
         `
       },
       task_assigned: {
-        subject: 'New task assigned to you in ProjectFlow',
+        subject: 'New task assigned to you in COLONY',
         body: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
@@ -261,37 +261,37 @@ class NotificationEngine {
         </p>
         </div>
         <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #64748b;">
-        <p>This notification was sent by ProjectFlow. To manage your notification preferences, visit your account settings.</p>
+        <p>This notification was sent by COLONY. To manage your notification preferences, visit your account settings.</p>
         </div>
         </div>
         `
       },
       deadline_approaching: {
-        subject: 'Task deadline approaching in ProjectFlow',
+        subject: 'Task deadline approaching in COLONY',
         body: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-        <h2 style="color: #92400e; margin: 0;">Task deadline approaching</h2>
+        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h2 style="color: #262626; margin: 0;">Task deadline approaching</h2>
         </div>
         <div style="background: white; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-        <h3 style="color: #f59e0b; margin: 0 0 10px 0;">{{taskTitle}}</h3>
+        <h3 style="color: #525252; margin: 0 0 10px 0;">{{taskTitle}}</h3>
         <p><strong>Due Date:</strong> <span style="color: #dc2626;">{{taskDueDate}}</span></p>
         <p><strong>Priority:</strong> {{taskPriority}}</p>
         <p><strong>Status:</strong> {{taskStatus}}</p>
         <p>
-        <a href="{{taskUrl}}" style="background: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block;">
+        <a href="{{taskUrl}}" style="background: #525252; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block;">
         View Task
         </a>
         </p>
         </div>
         <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #64748b;">
-        <p>This notification was sent by ProjectFlow. To manage your notification preferences, visit your account settings.</p>
+        <p>This notification was sent by COLONY. To manage your notification preferences, visit your account settings.</p>
         </div>
         </div>
         `
       },
       default: {
-        subject: 'ProjectFlow Notification',
+        subject: 'COLONY Notification',
         body: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
@@ -308,7 +308,7 @@ class NotificationEngine {
         {{/entityUrl}}
         </div>
         <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #64748b;">
-        <p>This notification was sent by ProjectFlow. To manage your notification preferences, visit your account settings.</p>
+        <p>This notification was sent by COLONY. To manage your notification preferences, visit your account settings.</p>
         </div>
         </div>
         `
@@ -371,7 +371,7 @@ class NotificationEngine {
       project_update: 'Project updated',
       comment_added: 'New comment added'
     };
-    return titles[type] || 'ProjectFlow Notification';
+    return titles[type] || 'COLONY Notification';
   }
 
   static getTaskUrl(taskId) {

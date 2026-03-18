@@ -65,38 +65,25 @@ function removeDependency(dependencyId) {
 function getTaskDependenciesWithDetails(taskId) {
   try {
     const deps = getTaskDependencies(taskId);
-
-    const predecessorsWithDetails = deps.predecessors.map(dep => {
-      const task = getTaskById(dep.predecessorId);
-      return {
-        ...dep,
-        task: task
-      };
-    });
-
-    const successorsWithDetails = deps.successors.map(dep => {
-      const task = getTaskById(dep.successorId);
-      return {
-        ...dep,
-        task: task
-      };
-    });
+    const taskCache = {};
+    const resolveTask = (id) => {
+      if (!taskCache[id]) taskCache[id] = getTaskById(id);
+      return taskCache[id];
+    };
 
     return {
-      predecessors: predecessorsWithDetails,
-      successors: successorsWithDetails
+      predecessors: deps.predecessors.map(dep => ({ ...dep, task: resolveTask(dep.predecessorId) })),
+      successors: deps.successors.map(dep => ({ ...dep, task: resolveTask(dep.successorId) }))
     };
   } catch (error) {
     console.error('getTaskDependenciesWithDetails error:', error);
-    return {
-      predecessors: [],
-      successors: []
-    };
+    return { predecessors: [], successors: [] };
   }
 }
 
 function detectCircularDependency(successorId, predecessorId) {
   try {
+    const depMap = getAllDependenciesMap();
     const visited = new Set();
     const path = [];
 
@@ -105,21 +92,13 @@ function detectCircularDependency(successorId, predecessorId) {
         path.push(currentId);
         return true;
       }
-
-      if (visited.has(currentId)) {
-        return false;
-      }
-
+      if (visited.has(currentId)) return false;
       visited.add(currentId);
       path.push(currentId);
-
-      const deps = getTaskDependencies(currentId);
-      for (const dep of deps.predecessors) {
-        if (hasCycle(dep.predecessorId, targetId)) {
-          return true;
-        }
+      const preds = depMap.bySuccessor[currentId] || [];
+      for (const dep of preds) {
+        if (hasCycle(dep.predecessorId, targetId)) return true;
       }
-
       path.pop();
       return false;
     }
@@ -127,7 +106,6 @@ function detectCircularDependency(successorId, predecessorId) {
     if (hasCycle(predecessorId, successorId)) {
       return path;
     }
-
     return null;
   } catch (error) {
     console.error('detectCircularDependency error:', error);
@@ -148,24 +126,24 @@ function getDependencyBetween(successorId, predecessorId) {
 function canStartTask(taskId) {
   try {
     const task = getTaskById(taskId);
-    if (!task) {
-      throw new Error('Task not found');
-    }
+    if (!task) throw new Error('Task not found');
 
     const deps = getTaskDependencies(taskId);
     if (deps.predecessors.length === 0) {
-      return {
-        canStart: true,
-        blockingTasks: []
-      };
+      return { canStart: true, blockingTasks: [] };
     }
 
+    const taskMap = {};
+    deps.predecessors.forEach(dep => {
+      if (!taskMap[dep.predecessorId]) {
+        taskMap[dep.predecessorId] = getTaskById(dep.predecessorId);
+      }
+    });
+
     const blockingTasks = [];
-
     for (const dep of deps.predecessors) {
-      const predecessor = getTaskById(dep.predecessorId);
+      const predecessor = taskMap[dep.predecessorId];
       if (!predecessor) continue;
-
       if (dep.dependencyType === 'finish_to_start') {
         if (predecessor.status !== 'Done') {
           blockingTasks.push({
@@ -193,27 +171,47 @@ function canStartTask(taskId) {
     };
   } catch (error) {
     console.error('canStartTask error:', error);
-    return {
-      canStart: true,
-      blockingTasks: []
-    };
+    return { canStart: true, blockingTasks: [] };
   }
 }
 
 function getBlockedTasks() {
   try {
-    const allTasks = getAllTasks();
+    const allTasks = RequestCache.getTasks();
+    const depMap = getAllDependenciesMap();
+    const taskMap = {};
+    allTasks.forEach(t => { taskMap[t.id] = t; });
     const blockedTasks = [];
 
     for (const task of allTasks) {
       if (task.status === 'Done') continue;
+      const predecessors = depMap.bySuccessor[task.id] || [];
+      if (predecessors.length === 0) continue;
 
-      const canStartResult = canStartTask(task.id);
-      if (!canStartResult.canStart) {
-        blockedTasks.push({
-          ...task,
-          blockingTasks: canStartResult.blockingTasks
-        });
+      const blockingTasks = [];
+      for (const dep of predecessors) {
+        const predecessor = taskMap[dep.predecessorId];
+        if (!predecessor) continue;
+        if (dep.dependencyType === 'finish_to_start' && predecessor.status !== 'Done') {
+          blockingTasks.push({
+            taskId: predecessor.id,
+            title: predecessor.title,
+            status: predecessor.status,
+            dependencyType: dep.dependencyType
+          });
+        } else if (dep.dependencyType === 'start_to_start' &&
+          (predecessor.status === 'Backlog' || predecessor.status === 'To Do')) {
+          blockingTasks.push({
+            taskId: predecessor.id,
+            title: predecessor.title,
+            status: predecessor.status,
+            dependencyType: dep.dependencyType
+          });
+        }
+      }
+
+      if (blockingTasks.length > 0) {
+        blockedTasks.push({ ...task, blockingTasks });
       }
     }
 
@@ -226,7 +224,8 @@ function getBlockedTasks() {
 
 function calculateCriticalPath(projectId) {
   try {
-    let tasks = projectId ? getAllTasks({ projectId: projectId }) : getAllTasks();
+    const allTasks = RequestCache.getTasks();
+    let tasks = projectId ? allTasks.filter(t => t.projectId === projectId) : allTasks;
     tasks = tasks.filter(t => t.startDate || t.dueDate);
 
     if (tasks.length === 0) {
@@ -238,6 +237,7 @@ function calculateCriticalPath(projectId) {
       };
     }
 
+    const depMap = getAllDependenciesMap();
     const taskMap = {};
 
     tasks.forEach(t => {
@@ -256,13 +256,14 @@ function calculateCriticalPath(projectId) {
     });
 
     tasks.forEach(t => {
-      const deps = getTaskDependencies(t.id);
-      deps.predecessors.forEach(dep => {
+      const preds = depMap.bySuccessor[t.id] || [];
+      preds.forEach(dep => {
         if (taskMap[dep.predecessorId]) {
           taskMap[t.id].predecessors.push(dep.predecessorId);
         }
       });
-      deps.successors.forEach(dep => {
+      const succs = depMap.byPredecessor[t.id] || [];
+      succs.forEach(dep => {
         if (taskMap[dep.successorId]) {
           taskMap[t.id].successors.push(dep.successorId);
         }
@@ -272,7 +273,6 @@ function calculateCriticalPath(projectId) {
     const forwardPass = (taskId) => {
       const node = taskMap[taskId];
       if (node.earliestFinish !== null) return;
-
       if (node.predecessors.length === 0) {
         node.earliestStart = node.task.startDate ? new Date(node.task.startDate) : new Date();
       } else {
@@ -280,13 +280,10 @@ function calculateCriticalPath(projectId) {
         node.predecessors.forEach(predId => {
           forwardPass(predId);
           const pred = taskMap[predId];
-          if (pred.earliestFinish > maxFinish) {
-            maxFinish = pred.earliestFinish;
-          }
+          if (pred.earliestFinish > maxFinish) maxFinish = pred.earliestFinish;
         });
         node.earliestStart = new Date(maxFinish);
       }
-
       node.earliestFinish = new Date(node.earliestStart.getTime() + (node.duration * 24 * 60 * 60 * 1000));
     };
 
@@ -294,15 +291,12 @@ function calculateCriticalPath(projectId) {
 
     let projectEnd = new Date(0);
     Object.values(taskMap).forEach(node => {
-      if (node.earliestFinish > projectEnd) {
-        projectEnd = node.earliestFinish;
-      }
+      if (node.earliestFinish > projectEnd) projectEnd = node.earliestFinish;
     });
 
     const backwardPass = (taskId) => {
       const node = taskMap[taskId];
       if (node.latestStart !== null) return;
-
       if (node.successors.length === 0) {
         node.latestFinish = new Date(projectEnd);
       } else {
@@ -310,13 +304,10 @@ function calculateCriticalPath(projectId) {
         node.successors.forEach(succId => {
           backwardPass(succId);
           const succ = taskMap[succId];
-          if (succ.latestStart < minStart) {
-            minStart = succ.latestStart;
-          }
+          if (succ.latestStart < minStart) minStart = succ.latestStart;
         });
         node.latestFinish = new Date(minStart);
       }
-
       node.latestStart = new Date(node.latestFinish.getTime() - (node.duration * 24 * 60 * 60 * 1000));
     };
 
@@ -375,16 +366,15 @@ function calculateTaskDuration(task) {
     const days = Math.ceil((end - start) / (24 * 60 * 60 * 1000));
     return Math.max(days, 1);
   }
-
   if (task.estimatedHrs > 0) {
     return Math.ceil(task.estimatedHrs / 8);
   }
-
   return 1;
 }
 
 function getDependencyChain(taskId) {
   try {
+    const depMap = getAllDependenciesMap();
     const visited = new Set();
     const chain = [];
 
@@ -392,11 +382,8 @@ function getDependencyChain(taskId) {
       if (visited.has(currentId)) return;
       visited.add(currentId);
       chain.push(currentId);
-
-      const deps = getTaskDependencies(currentId);
-      deps.predecessors.forEach(dep => {
-        traverse(dep.predecessorId);
-      });
+      const preds = depMap.bySuccessor[currentId] || [];
+      preds.forEach(dep => traverse(dep.predecessorId));
     }
 
     traverse(taskId);
@@ -409,6 +396,7 @@ function getDependencyChain(taskId) {
 
 function getImpactChain(taskId) {
   try {
+    const depMap = getAllDependenciesMap();
     const visited = new Set();
     const chain = [];
 
@@ -416,11 +404,8 @@ function getImpactChain(taskId) {
       if (visited.has(currentId)) return;
       visited.add(currentId);
       chain.push(currentId);
-
-      const deps = getTaskDependencies(currentId);
-      deps.successors.forEach(dep => {
-        traverse(dep.successorId);
-      });
+      const succs = depMap.byPredecessor[currentId] || [];
+      succs.forEach(dep => traverse(dep.successorId));
     }
 
     traverse(taskId);
@@ -433,21 +418,24 @@ function getImpactChain(taskId) {
 
 function validateAllDependencies() {
   try {
-    const sheet = getTaskDependenciesSheet();
-    const data = sheet.getDataRange().getValues();
+    const depMap = getAllDependenciesMap();
+    const allDeps = [
+      ...Object.values(depMap.bySuccessor).flat(),
+      ...Object.values(depMap.byPredecessor).flat()
+    ];
+    const seen = new Set();
+    const uniqueDeps = allDeps.filter(d => {
+      if (seen.has(d.id)) return false;
+      seen.add(d.id);
+      return true;
+    });
 
-    if (data.length <= 1) {
-      return {
-        valid: true,
-        issues: []
-      };
+    if (uniqueDeps.length === 0) {
+      return { valid: true, issues: [] };
     }
 
     const issues = [];
-    const columns = CONFIG.TASK_DEPENDENCY_COLUMNS;
-
-    for (let i = 1; i < data.length; i++) {
-      const dependency = rowToObject(data[i], columns);
+    for (const dependency of uniqueDeps) {
       const successor = getTaskById(dependency.successorId);
       const predecessor = getTaskById(dependency.predecessorId);
 
@@ -458,7 +446,6 @@ function validateAllDependencies() {
           message: `Successor task not found: ${dependency.successorId}`
         });
       }
-
       if (!predecessor) {
         issues.push({
           dependencyId: dependency.id,
@@ -466,7 +453,6 @@ function validateAllDependencies() {
           message: `Predecessor task not found: ${dependency.predecessorId}`
         });
       }
-
       if (successor && predecessor) {
         const circular = detectCircularDependency(dependency.successorId, dependency.predecessorId);
         if (circular) {
@@ -482,7 +468,7 @@ function validateAllDependencies() {
     return {
       valid: issues.length === 0,
       issues: issues,
-      totalDependencies: data.length - 1
+      totalDependencies: uniqueDeps.length
     };
   } catch (error) {
     console.error('validateAllDependencies error:', error);

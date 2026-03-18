@@ -142,6 +142,7 @@ const AutomationEngine = {
         }
       }
     } catch (error) {
+      console.error('processRules failed:', error);
     }
     return results;
   },
@@ -385,6 +386,7 @@ const AutomationEngine = {
         }
         this.updateRule(rule.id, { lastTriggeredAt: now() });
       } catch (error) {
+        console.error('evaluateAllRules rule ' + rule.id + ' failed:', error);
       }
     }
   },

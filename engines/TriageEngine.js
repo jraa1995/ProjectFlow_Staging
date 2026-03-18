@@ -280,14 +280,14 @@ const TriageEngine = {
           htmlBody: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-          <h2 style="color: #f59e0b; margin: 0;">ProjectFlow</h2>
+          <h2 style="color: #525252; margin: 0;">COLONY</h2>
           </div>
           <div style="padding: 20px;">
           ${body}
           </div>
           </div>
           `,
-          name: 'ProjectFlow'
+          name: 'COLONY'
         });
       }
     } catch (error) {
@@ -295,7 +295,7 @@ const TriageEngine = {
   },
 
   importFromGmail(config = {}) {
-    const labelName = config.labelName || 'ProjectFlow/Inbox';
+    const labelName = config.labelName || 'COLONY/Inbox';
     const maxMessages = config.maxMessages || 50;
     const imported = [];
     try {
