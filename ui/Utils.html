@@ -19,6 +19,17 @@
     }
   }
 
+  function getInitials(name) {
+    if (!name) return "?";
+    return name
+      .split(/[\s@]/)
+      .filter(Boolean)
+      .map(function(w) { return w[0]; })
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  }
+
   function getPriorityColor(priority) {
     var colors = {
       'Critical': 'bg-red-100 text-red-800',
