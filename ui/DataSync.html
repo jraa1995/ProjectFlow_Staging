@@ -1,5 +1,5 @@
 <script>
-  const LocalCache = {
+  var LocalCache = {
     prefix: 'co_',
     get(key) {
       try {
@@ -36,7 +36,7 @@
     }
   };
 
-  const OptimisticUI = {
+  var OptimisticUI = {
     pendingOps: new Map(),
     opId: 0,
     generateOpId() {
@@ -175,7 +175,7 @@
     }
   };
 
-  const State = {
+  var State = {
     user: null,
     board: null,
     projects: [],
@@ -278,7 +278,7 @@
     }
   };
 
-  const RequestQueue = {
+  var RequestQueue = {
     pending: new Map(),
     debounceMs: 300,
     batchQueue: [],
@@ -358,7 +358,7 @@
     }
   };
 
-  const SyncManager = {
+  var SyncManager = {
     lastSyncVersion: 0,
     pollTimer: null,
     lastActivity: Date.now(),

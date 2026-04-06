@@ -1,6 +1,6 @@
 <script>
-  const $ = (id) => document.getElementById(id);
-  const $$ = (selector) => document.querySelectorAll(selector);
+  var $ = function(id) { return document.getElementById(id); };
+  var $$ = function(selector) { return document.querySelectorAll(selector); };
 
   async function loadAllData(forceRefresh = false) {
     if (State.loading) {
