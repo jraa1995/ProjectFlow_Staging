@@ -45,6 +45,7 @@ function testIncludes() {
       results[f] = 'FAIL: ' + e.message;
     }
   });
+  Logger.log(JSON.stringify(results, null, 2));
   return results;
 }
 
