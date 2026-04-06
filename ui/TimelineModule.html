@@ -115,8 +115,11 @@
           const isCritical = criticalPath.includes(task.id);
           const taskDeps = dependencyMap.get(task.id) || [];
           const dependencyString = taskDeps.join(',');
-          const startDate = typeof task.start === 'string' ? new Date(task.start) : task.start;
-          const endDate = typeof task.end === 'string' ? new Date(task.end) : task.end;
+          var startDate = typeof task.start === 'string' ? new Date(task.start) : task.start;
+          var endDate = typeof task.end === 'string' ? new Date(task.end) : task.end;
+          if (endDate && startDate && endDate < startDate) {
+            endDate = new Date(startDate.getTime() + 86400000);
+          }
           return {
             id: task.id,
             name: task.name || task.title,
@@ -126,7 +129,11 @@
             dependencies: dependencyString,
             custom_class: getTaskClass(task, isCritical),
           };
-        });
+        }).filter(function(t) { return t.start && t.end; });
+        if (ganttTasks.length === 0) {
+          renderEmptyTimeline();
+          return;
+        }
         State.ganttInstance = new Gantt(ganttContainer, ganttTasks, {
           view_mode: "Week",
           date_format: "YYYY-MM-DD",

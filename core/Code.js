@@ -13,12 +13,21 @@ function doGet(e) {
 }
 
 function include(filename) {
-  const cleanFilename = filename.includes('/') ? filename.split('/').pop() : filename;
-  try {
-    return HtmlService.createHtmlOutputFromFile(cleanFilename).getContent();
-  } catch (e) {
-    return HtmlService.createHtmlOutputFromFile(filename).getContent();
+  var attempts = [filename];
+  if (filename.includes('/')) {
+    attempts.unshift(filename.split('/').pop());
   }
+  for (var i = 0; i < attempts.length; i++) {
+    try {
+      return HtmlService.createHtmlOutputFromFile(attempts[i]).getContent();
+    } catch (e) {
+      if (i === attempts.length - 1) {
+        console.error('include failed for: ' + filename);
+        return '<!-- include not found: ' + filename + ' -->';
+      }
+    }
+  }
+  return '';
 }
 
 function getErrorPage(message) {
