@@ -16,13 +16,12 @@ function include(filename) {
   var attempts = [filename];
   if (filename.includes('/')) {
     attempts.push(filename.split('/').pop());
-    attempts.push(filename.replace(/\//g, '/'));
   } else {
     attempts.push('ui/' + filename);
   }
   for (var i = 0; i < attempts.length; i++) {
     try {
-      return HtmlService.createHtmlOutputFromFile(attempts[i]).getContent();
+      return HtmlService.createTemplateFromFile(attempts[i]).evaluate().getContent();
     } catch (e) {
       if (i === attempts.length - 1) {
         console.error('include failed for: ' + filename + ' (tried: ' + attempts.join(', ') + ')');
@@ -34,13 +33,18 @@ function include(filename) {
 }
 
 function testIncludes() {
-  var files = ['ui/HomeView', 'HomeView', 'ui/Scripts', 'Scripts', 'ui/Utils', 'Utils',
-               'ui/FunnelView', 'FunnelView', 'ui/ListView', 'ListView', 'ui/ProjectView', 'ProjectView'];
+  var files = ['ui/HomeView', 'ui/FunnelView', 'ui/ListView', 'ui/ProjectView', 'ui/Scripts', 'ui/Utils',
+               'ui/DataSync', 'ui/BoardView', 'ui/LoginModule', 'ui/Dialogs', 'ui/Sidebar',
+               'ui/TimelineModule', 'ui/AnalyticsModule', 'ui/Shortcuts',
+               'ui/SprintView', 'ui/SurgeView', 'ui/MilestoneView',
+               'ui/TaskDetailPanel', 'ui/TaskEditModal', 'ui/MentionAutocomplete',
+               'ui/DependencyPicker', 'ui/NotificationCenter', 'ui/CacheService'];
   var results = {};
   files.forEach(function(f) {
     try {
-      var content = HtmlService.createHtmlOutputFromFile(f).getContent();
-      results[f] = 'OK (' + content.length + ' chars)';
+      var content = HtmlService.createTemplateFromFile(f).evaluate().getContent();
+      var hasScript = content.indexOf('<script') !== -1 || content.indexOf('function ') !== -1;
+      results[f] = 'OK (' + content.length + ' chars, scripts: ' + hasScript + ')';
     } catch (e) {
       results[f] = 'FAIL: ' + e.message;
     }
