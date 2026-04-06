@@ -15,7 +15,7 @@ function doGet(e) {
 function include(filename) {
   var attempts = [filename];
   if (filename.includes('/')) {
-    attempts.unshift(filename.split('/').pop());
+    attempts.push(filename.split('/').pop());
   }
   for (var i = 0; i < attempts.length; i++) {
     try {
@@ -23,7 +23,7 @@ function include(filename) {
     } catch (e) {
       if (i === attempts.length - 1) {
         console.error('include failed for: ' + filename);
-        return '<!-- include not found: ' + filename + ' -->';
+        return '';
       }
     }
   }
