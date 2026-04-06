@@ -310,7 +310,7 @@ class EmailNotificationService {
       try {
         const result = GmailApp.sendEmail(email, subject, textBody, {
           htmlBody: htmlBody,
-          name: 'COLONY Notifications',
+          name: 'COLONY.SYSTEM',
           replyTo: 'noreply@projectflow.com'
         });
 

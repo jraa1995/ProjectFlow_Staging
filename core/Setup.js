@@ -4,7 +4,7 @@ function quickSetup() {
       throw new Error('CONFIG object is undefined. Check Config.gs for syntax errors.');
     }
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getColonySpreadsheet_();
     const existingSheets = ss.getSheets().map(s => s.getName());
 
     initializeSystem();
@@ -155,7 +155,7 @@ function createSampleTasks() {
 }
 
 function cleanupDuplicateSheets() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getColonySpreadsheet_();
   const sheets = ss.getSheets();
   const requiredSheets = ['Tasks', 'Users', 'Projects', 'Comments', 'Activity', 'Mentions', 'Notifications', 'Analytics_Cache', 'Task_Dependencies'];
   const sheetCounts = {};
@@ -214,7 +214,7 @@ function resetSystem() {
     return false;
   }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getColonySpreadsheet_();
   const sheetsToDelete = ['Tasks', 'Users', 'Projects', 'Comments', 'Activity', 'Mentions', 'Notifications', 'Analytics_Cache', 'Task_Dependencies'];
 
   sheetsToDelete.forEach(name => {
@@ -346,7 +346,7 @@ function runQuickTests() {
 }
 
 function diagnose() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getColonySpreadsheet_();
   const issues = [];
   const requiredSheets = ['Tasks', 'Users', 'Projects', 'Comments', 'Activity', 'Mentions', 'Notifications', 'Analytics_Cache', 'Task_Dependencies'];
 

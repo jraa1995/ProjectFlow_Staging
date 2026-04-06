@@ -1,0 +1,1146 @@
+<script>
+  let lastBoardView = null;
+  let lastBoardProjectFilter = null;
+
+  function loadBoard() {
+    if (State.currentView === "timeline" || State.currentView === "analytics") {
+      return;
+    }
+    const projectId = State.projectFilter || null;
+    const isSameContext = (lastBoardView === State.view && lastBoardProjectFilter === projectId);
+    if (State.board && State.board.columns && isSameContext) {
+      renderBoard();
+      updateStats();
+      showLoading(false);
+      return;
+    }
+    var cachedTasks = State.getTasks();
+    if (cachedTasks && cachedTasks.length > 0 && State.config) {
+      var board = buildBoardFromTasks(cachedTasks, projectId);
+      State.board = board;
+      lastBoardView = State.view;
+      lastBoardProjectFilter = projectId;
+      renderBoard();
+      updateStats();
+      showLoading(false);
+      return;
+    }
+    if (State.board && State.board.columns) {
+      renderBoard();
+      updateStats();
+    } else {
+      showLoading(true);
+    }
+    lastBoardView = State.view;
+    lastBoardProjectFilter = projectId;
+    if (State.view === "master") {
+      google.script.run
+        .withSuccessHandler(handleBoardData)
+        .withFailureHandler(handleError)
+        .loadMasterBoard(projectId);
+    } else {
+      google.script.run
+        .withSuccessHandler(handleBoardData)
+        .withFailureHandler(handleError)
+        .loadMyBoard(projectId);
+    }
+  }
+
+  function handleBoardData(data) {
+    State.board = data;
+    State.projects = data.projects || State.projects;
+    State.users = data.users || State.users;
+    if (data && data.columns) {
+      const flatTasks = [];
+      data.columns.forEach(col => {
+        if (col.tasks) {
+          col.tasks.forEach(task => {
+            flatTasks.push({
+              ...task,
+              status: col.id
+            });
+          });
+        }
+      });
+      State.setTasks(flatTasks);
+      State.setProjects(data.projects || []);
+      State.setUsers(data.users || []);
+    }
+    renderBoard();
+    updateStats();
+    updateProjectNav();
+    showLoading(false);
+  }
+
+  function updateTaskInDOM(taskId, changes) {
+    const card = document.querySelector(`[data-task-id="${taskId}"]`);
+    if (!card) {
+      return false;
+    }
+    if (changes.status) {
+      const targetColumn = document.querySelector(
+        `.task-list[data-status="${changes.status}"]`
+      );
+      if (targetColumn && card.parentElement !== targetColumn) {
+        card.remove();
+        targetColumn.appendChild(card);
+        card.dataset.status = changes.status;
+        updateColumnCounts();
+      }
+    }
+    if (changes.title) {
+      const titleEl = card.querySelector('.task-title, .font-medium');
+      if (titleEl) titleEl.textContent = changes.title;
+    }
+    if (changes.priority) {
+      updatePriorityBadge(card, changes.priority);
+    }
+    if (changes.assignee) {
+      updateAssigneeAvatar(card, changes.assignee);
+    }
+    if (changes.dueDate !== undefined) {
+      const dueDateEl = card.querySelector('.task-due-date, [data-due-date]');
+      if (dueDateEl) {
+        dueDateEl.textContent = changes.dueDate ? formatDate(changes.dueDate) : '';
+        dueDateEl.dataset.dueDate = changes.dueDate || '';
+      }
+    }
+    if (changes.storyPoints !== undefined) {
+      const pointsEl = card.querySelector('.story-points');
+      if (pointsEl) {
+        pointsEl.textContent = changes.storyPoints || '';
+        pointsEl.style.display = changes.storyPoints ? '' : 'none';
+      }
+    }
+    if (State.tasks) {
+      const task = State.tasks.find(t => t.id === taskId);
+      if (task) {
+        Object.assign(task, changes);
+      }
+    }
+    if (State.cache?.tasks?.data) {
+      const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
+      if (cachedTask) {
+        Object.assign(cachedTask, changes);
+      }
+    }
+    return true;
+  }
+
+  function updatePriorityBadge(card, priority) {
+    const badge = card.querySelector('.priority-badge, [data-priority]');
+    if (badge) {
+      badge.textContent = priority;
+      badge.dataset.priority = priority;
+      const colorMap = {
+        'Critical': 'bg-red-100 text-red-800',
+        'High': 'bg-orange-100 text-orange-800',
+        'Medium': 'bg-gray-100 text-gray-800',
+        'Low': 'bg-green-100 text-green-800'
+      };
+      badge.className = badge.className
+        .split(' ')
+        .filter(c => !c.startsWith('bg-') && !c.startsWith('text-'))
+        .join(' ');
+      const colors = colorMap[priority] || colorMap['Medium'];
+      badge.className += ' ' + colors;
+    }
+  }
+
+  function updateAssigneeAvatar(card, assignee) {
+    const avatar = card.querySelector('.assignee-avatar, [data-assignee]');
+    if (avatar) {
+      avatar.dataset.assignee = assignee;
+      const initials = assignee ?
+        assignee.split('@')[0].substring(0, 2).toUpperCase() :
+        '?';
+      avatar.textContent = initials;
+      avatar.title = assignee || 'Unassigned';
+    }
+  }
+
+  function updateColumnCounts() {
+    document.querySelectorAll('.board-column').forEach(col => {
+      const status = col.dataset.status;
+      const taskList = col.querySelector('.task-list');
+      const count = taskList ? taskList.querySelectorAll('.task-card').length : 0;
+      const countEl = col.querySelector('.task-count, .column-count');
+      if (countEl) {
+        countEl.textContent = count;
+      }
+    });
+  }
+
+
+  function removeTaskFromDOM(taskId) {
+    const card = document.querySelector(`[data-task-id="${taskId}"]`);
+    if (card) {
+      card.remove();
+      updateColumnCounts();
+      if (State.tasks) {
+        State.tasks = State.tasks.filter(t => t.id !== taskId);
+      }
+      if (State.cache?.tasks?.data) {
+        State.cache.tasks.data = State.cache.tasks.data.filter(t => t.id !== taskId);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function renderBoard() {
+    const board = $("board");
+    if (!board || !State.board || !State.board.columns) return;
+    let html = "";
+    State.board.columns.forEach((col) => {
+      html += `<div class="board-column" data-status="${col.id}">`;
+      html += `<div class="column-header" style="border-top-color: ${col.color}">`;
+      html += `<h3 class="text-sm font-semibold text-gray-700">${escapeHtml(
+        col.name
+        )}</h3>`;
+      html += `<span class="text-xs font-medium bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">${col.count}</span>`;
+      html += `</div>`;
+      html += `<div class="task-list" data-status="${col.id}">`;
+      col.tasks.forEach((task) => {
+        html += renderTaskCard(task, col.id);
+      });
+      html += `</div></div>`;
+    });
+    board.innerHTML = html;
+    initDragAndDrop();
+  }
+
+  function renderTaskCard(task, columnId) {
+    const priorityColors = {
+      Critical: "bg-red-100 text-red-700 border-red-200",
+      High: "bg-orange-100 text-orange-700 border-orange-200",
+      Medium: "bg-gray-100 text-gray-700 border-gray-200",
+      Low: "bg-green-100 text-green-700 border-green-200",
+    };
+    const priorityClass =
+      priorityColors[task.priority] || "bg-gray-100 text-gray-700";
+    const isMilestone = task.isMilestone === true || task.isMilestone === 'true';
+    let milestoneClass = '';
+    let milestoneState = '';
+    if (isMilestone) {
+      milestoneClass = 'milestone';
+      if (task.status === 'Done') {
+        milestoneState = 'completed';
+      } else if (task.milestoneDate) {
+        const now = new Date();
+        const milestoneDate = new Date(task.milestoneDate);
+        const daysUntil = Math.ceil((milestoneDate - now) / (1000 * 60 * 60 * 24));
+        if (milestoneDate < now) {
+          milestoneState = 'overdue';
+        } else if (daysUntil <= 7) {
+          milestoneState = 'upcoming';
+        }
+      }
+    }
+    const hasDependencies = task.hasDependencies === true;
+    const isBlocked = task.isBlocked === true;
+    const blockedByCount = task.blockedByCount || 0;
+    const blockingCount = task.blockingCount || 0;
+    let dependencyTooltip = '';
+    if (hasDependencies) {
+      const parts = [];
+      if (blockedByCount > 0) {
+        parts.push(`🔒 Blocked by ${blockedByCount} task${blockedByCount > 1 ? 's' : ''}`);
+      }
+      if (blockingCount > 0) {
+        parts.push(`⏳ Blocking ${blockingCount} task${blockingCount > 1 ? 's' : ''}`);
+      }
+      dependencyTooltip = parts.join(' • ');
+    }
+    let blockedClass = '';
+    let cardBorderStyle = '';
+    if (isBlocked) {
+      blockedClass = 'task-blocked';
+      cardBorderStyle = 'border-red-400 border-2';
+    }
+    return `
+  <div class="task-card ${milestoneClass} ${milestoneState} ${blockedClass} bg-white rounded-lg p-3 shadow-sm border ${cardBorderStyle || 'border-gray-200'} cursor-pointer hover:shadow-md transition-shadow"
+  draggable="true"
+  data-task-id="${task.id}"
+  data-status="${columnId || ''}"
+  onclick="openTaskDetailPanel('${task.id}')"
+  ${dependencyTooltip ? `title="${escapeHtml(dependencyTooltip)}"` : ''}>
+  <div class="flex items-start justify-between mb-2">
+  <div class="flex items-center gap-1">
+  <span class="text-xs font-mono text-gray-500">${escapeHtml(task.id)}</span>
+  ${hasDependencies ? '<i class="fas fa-link text-blue-500 text-xs" title="Has dependencies"></i>' : ''}
+  ${isBlocked ? '<span class="ml-1 px-1 py-0.5 text-xs bg-red-100 text-red-700 rounded font-semibold" title="Blocked by incomplete tasks">🔒 BLOCKED</span>' : ''}
+  </div>
+  <span class="px-1.5 py-0.5 text-xs rounded ${priorityClass}">${escapeHtml(
+    task.priority
+    )}</span>
+  </div>
+  <h4 class="task-title text-sm font-medium text-gray-900 mb-2 ${isBlocked ? 'opacity-70' : ''}">${escapeHtml(
+    task.title
+    )}</h4>
+  ${
+    isMilestone && task.milestoneDate
+    ? `<div class="text-xs text-gray-600 mb-2">
+    <i class="fas fa-flag-checkered mr-1"></i>
+    ${formatDate(task.milestoneDate)}
+    ${task.milestoneType ? `<span class="ml-1 opacity-75">(${task.milestoneType.replace(/-/g, ' ')})</span>` : ''}
+    </div>`
+    : task.dueDate
+    ? `<div class="text-xs text-gray-500 mb-2"><i class="far fa-calendar mr-1"></i>${formatDate(
+      task.dueDate
+      )}</div>`
+    : ""
+  }
+  ${
+    isMilestone
+    ? `<div class="milestone-badge">
+    <i class="fas fa-flag"></i>
+    MILESTONE
+    </div>`
+    : ""
+  }
+  ${
+    isBlocked && task.dependencyMetadata && task.dependencyMetadata.blockedByTasks && task.dependencyMetadata.blockedByTasks.length > 0
+    ? `<div class="text-xs text-red-600 mb-2 p-2 bg-red-50 rounded border border-red-200">
+    <div class="font-semibold mb-1">Blocked by:</div>
+    ${task.dependencyMetadata.blockedByTasks.map(bt =>
+      `<div class="truncate" title="${escapeHtml(bt.title)}">• ${escapeHtml(bt.id)}: ${escapeHtml(bt.title.substring(0, 30))}${bt.title.length > 30 ? '...' : ''}</div>`
+      ).join('')}
+    </div>`
+    : ""
+  }
+  <div class="flex items-center justify-between ${isMilestone ? 'mt-2' : ''}">
+  ${
+    task.assignee
+    ? `<div class="w-6 h-6 rounded-full bg-primary-500 text-white text-xs flex items-center justify-center" title="${escapeHtml(
+      task.assignee
+      )}">${getInitials(task.assignee)}</div>`
+    : "<div></div>"
+  }
+  <div class="flex items-center gap-1">
+  ${
+    !isMilestone && task.type
+    ? `<span class="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">${escapeHtml(
+      task.type
+      )}</span>`
+    : ""
+  }
+  </div>
+  </div>
+  </div>
+  `;
+  }
+
+  function openTaskDetailPanel(taskId) {
+    try {
+      if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+        console.error('openTaskDetailPanel: Invalid taskId', taskId);
+        toast('Invalid task ID', 'error');
+        return;
+      }
+      const cleanTaskId = taskId.trim();
+      const cachedTask = findTaskInCache(cleanTaskId);
+      showSimpleTaskModal(cleanTaskId, cachedTask);
+    } catch (error) {
+      console.error('openTaskDetailPanel error:', error);
+      toast('Failed to open task: ' + (error.message || 'Unknown error'), 'error');
+    }
+  }
+
+  function findTaskInCache(taskId) {
+    if (State.board && State.board.columns) {
+      for (const col of State.board.columns) {
+        if (col.tasks) {
+          const task = col.tasks.find(t => t.id === taskId);
+          if (task) return task;
+        }
+      }
+    }
+    return null;
+  }
+
+  function showSimpleTaskModal(taskId, cachedTask) {
+    const existing = document.getElementById('simpleTaskModal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'simpleTaskModal';
+    modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.15s ease-out;
+    `;
+    modal.onclick = (e) => {
+      if (e.target === modal) closeSimpleTaskModal();
+    };
+    if (!document.getElementById('modalAnimations')) {
+      const style = document.createElement('style');
+      style.id = 'modalAnimations';
+      style.textContent = `
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    `;
+      document.head.appendChild(style);
+    }
+    const content = document.createElement('div');
+    content.style.cssText = `
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 640px;
+  max-height: 85vh;
+  overflow: auto;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.05);
+  animation: slideUp 0.2s ease-out;
+  `;
+    if (cachedTask) {
+      content.innerHTML = renderTaskModalContent(cachedTask);
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+      loadModalDependencies(taskId);
+    } else {
+      content.innerHTML = `
+    <div style="padding: 60px 40px; text-align: center; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);">
+    <div style="width: 48px; height: 48px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+    <div style="color: #64748b; font-size: 14px; font-weight: 500;">Loading task details...</div>
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    </div>
+    `;
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+      google.script.run
+        .withSuccessHandler((task) => {
+          if (task) {
+            content.innerHTML = renderTaskModalContent(task);
+            loadModalDependencies(taskId);
+          } else {
+            content.innerHTML = `
+        <div style="padding: 60px 40px; text-align: center;">
+        <div style="width: 64px; height: 64px; background: #fef2f2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+        <svg width="32" height="32" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+        </div>
+        <div style="color: #dc2626; font-size: 16px; font-weight: 600; margin-bottom: 8px;">Task Not Found</div>
+        <div style="color: #6b7280; font-size: 13px; margin-bottom: 20px;">The task may have been deleted or you don't have access.</div>
+        <button onclick="closeSimpleTaskModal()" style="padding: 10px 24px; background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">Close</button>
+        </div>
+        `;
+          }
+        })
+        .withFailureHandler((error) => {
+          content.innerHTML = `
+    <div style="padding: 60px 40px; text-align: center;">
+    <div style="width: 64px; height: 64px; background: #fef2f2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+    <svg width="32" height="32" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="10"/></svg>
+    </div>
+    <div style="color: #dc2626; font-size: 16px; font-weight: 600; margin-bottom: 8px;">Failed to Load Task</div>
+    <div style="color: #6b7280; font-size: 13px; margin-bottom: 20px;">Please check your connection and try again.</div>
+    <button onclick="closeSimpleTaskModal()" style="padding: 10px 24px; background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">Close</button>
+    </div>
+    `;
+        })
+        .loadTask(taskId);
+    }
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') {
+        closeSimpleTaskModal();
+        document.removeEventListener('keydown', handleEsc);
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+  }
+
+  function renderTaskModalContent(task) {
+    const priorityConfig = {
+      'Critical': {
+        bg: '#fef2f2',
+        color: '#dc2626',
+        icon: '🔴'
+      },
+      'Highest': {
+        bg: '#fff7ed',
+        color: '#ea580c',
+        icon: '🟠'
+      },
+      'High': {
+        bg: '#fffbeb',
+        color: '#404040',
+        icon: '🟡'
+      },
+      'Medium': {
+        bg: '#eff6ff',
+        color: '#2563eb',
+        icon: '🔵'
+      },
+      'Low': {
+        bg: '#f0fdf4',
+        color: '#16a34a',
+        icon: '🟢'
+      },
+      'Lowest': {
+        bg: '#f9fafb',
+        color: '#6b7280',
+        icon: '⚪'
+      }
+    };
+    const statusConfig = {
+      'Backlog': {
+        bg: '#f3f4f6',
+        color: '#6b7280'
+      },
+      'To Do': {
+        bg: '#dbeafe',
+        color: '#1d4ed8'
+      },
+      'In Progress': {
+        bg: '#f5f5f5',
+        color: '#262626'
+      },
+      'Review': {
+        bg: '#f3e8ff',
+        color: '#7c3aed'
+      },
+      'Testing': {
+        bg: '#cffafe',
+        color: '#0891b2'
+      },
+      'Done': {
+        bg: '#dcfce7',
+        color: '#15803d'
+      }
+    };
+    const typeConfig = {
+      'Epic': {
+        icon: '⚡',
+        color: '#7c3aed'
+      },
+      'Story': {
+        icon: '📖',
+        color: '#2563eb'
+      },
+      'Task': {
+        icon: '✅',
+        color: '#16a34a'
+      },
+      'Bug': {
+        icon: '🐛',
+        color: '#dc2626'
+      },
+      'Subtask': {
+        icon: '📎',
+        color: '#6b7280'
+      }
+    };
+    const priority = priorityConfig[task.priority] || priorityConfig['Medium'];
+    const status = statusConfig[task.status] || statusConfig['To Do'];
+    const type = typeConfig[task.type] || typeConfig['Task'];
+    return `
+  <div style="background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%); padding: 20px 24px; border-radius: 12px 12px 0 0;">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+  <div style="flex: 1;">
+  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+  <span style="font-size: 11px; font-family: 'SF Mono', monospace; color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 4px;">${escapeHtml(task.id)}</span>
+  <span style="font-size: 11px; padding: 3px 10px; border-radius: 12px; background: ${priority.bg}; color: ${priority.color}; font-weight: 600;">${priority.icon} ${escapeHtml(task.priority)}</span>
+  ${task.isMilestone ? '<span style="font-size: 11px; padding: 3px 10px; border-radius: 12px; background: #f5f5f5; color: #171717; font-weight: 600;">🏁 Milestone</span>' : ''}
+  </div>
+  <h2 style="font-size: 18px; font-weight: 600; color: white; margin: 0; line-height: 1.4;">${escapeHtml(task.title)}</h2>
+  </div>
+  <button onclick="closeSimpleTaskModal()" style="background: rgba(255,255,255,0.1); border: none; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; color: rgba(255,255,255,0.7); font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">×</button>
+  </div>
+  </div>
+  <div style="padding: 20px 24px;">
+  <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+  <div style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: ${status.bg}; border-radius: 8px;">
+  <div style="width: 8px; height: 8px; border-radius: 50%; background: ${status.color};"></div>
+  <span style="font-size: 13px; font-weight: 600; color: ${status.color};">${escapeHtml(task.status)}</span>
+  </div>
+  <div style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+  <span style="font-size: 14px;">${type.icon}</span>
+  <span style="font-size: 13px; font-weight: 500; color: ${type.color};">${escapeHtml(task.type || 'Task')}</span>
+  </div>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px;">
+  <div style="background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0;">
+  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+  <svg width="14" height="14" fill="none" stroke="#6b7280" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+  <span style="font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600; letter-spacing: 0.5px;">Assignee</span>
+  </div>
+  <div style="font-size: 14px; font-weight: 500; color: #1e293b;">${escapeHtml(task.assignee || 'Unassigned')}</div>
+  </div>
+  <div style="background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0;">
+  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+  <svg width="14" height="14" fill="none" stroke="#6b7280" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+  <span style="font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600; letter-spacing: 0.5px;">Due Date</span>
+  </div>
+  <div style="font-size: 14px; font-weight: 500; color: ${task.dueDate && new Date(task.dueDate) < new Date() ? '#dc2626' : '#1e293b'};">${task.dueDate ? formatDate(task.dueDate) : 'No due date'}</div>
+  </div>
+  ${task.projectName ? `
+    <div style="background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0;">
+    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+    <svg width="14" height="14" fill="none" stroke="#6b7280" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/></svg>
+    <span style="font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600; letter-spacing: 0.5px;">Project</span>
+    </div>
+    <div style="font-size: 14px; font-weight: 500; color: #1e293b;">${escapeHtml(task.projectName)}</div>
+    </div>
+    ` : ''}
+  ${task.storyPoints ? `
+    <div style="background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0;">
+    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+    <span style="font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600; letter-spacing: 0.5px;">Story Points</span>
+    </div>
+    <div style="font-size: 14px; font-weight: 500; color: #1e293b;">${task.storyPoints}</div>
+    </div>
+    ` : ''}
+  </div>
+  ${task.description ? `
+    <div style="margin-bottom: 20px;">
+    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+    <svg width="16" height="16" fill="none" stroke="#374151" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    <span style="font-size: 12px; text-transform: uppercase; color: #374151; font-weight: 600; letter-spacing: 0.5px;">Description</span>
+    </div>
+    <div style="font-size: 14px; color: #475569; line-height: 1.7; white-space: pre-wrap; background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0;">${escapeHtml(task.description)}</div>
+    </div>
+    ` : ''}
+  <div id="taskModalDependencies" style="margin-bottom: 20px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+  <div style="display: flex; align-items: center; gap: 6px;">
+  <svg width="16" height="16" fill="none" stroke="#374151" stroke-width="2" viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+  <span style="font-size: 12px; text-transform: uppercase; color: #374151; font-weight: 600; letter-spacing: 0.5px;">Dependencies</span>
+  </div>
+  <button onclick="openDependencyPickerFromModal('${task.id}', 'predecessor')" style="font-size: 12px; padding: 6px 12px; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; align-items: center; gap: 4px;" onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+  <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+  Add Blocker
+  </button>
+  </div>
+  <div id="dependenciesLoading" style="padding: 20px; text-align: center; color: #6b7280; font-size: 13px;">
+  Loading dependencies...
+  </div>
+  <div id="dependenciesList" style="display: none;"></div>
+  </div>
+  <div style="display: flex; gap: 10px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
+  <button onclick="openEditFromSimpleModal('${task.id}')" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #525252 0%, #404040 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(82,82,82,0.3);" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 8px rgba(82,82,82,0.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 2px 4px rgba(82,82,82,0.3)'">
+  <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+  Edit Task
+  </button>
+  <button onclick="closeSimpleTaskModal()" style="flex: 1; padding: 12px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+  Close
+  </button>
+  </div>
+  </div>
+  `;
+  }
+
+  function loadModalDependencies(taskId) {
+    const loadingEl = document.getElementById('dependenciesLoading');
+    const listEl = document.getElementById('dependenciesList');
+    if (!loadingEl || !listEl) return;
+    google.script.run
+      .withSuccessHandler((deps) => {
+        loadingEl.style.display = 'none';
+        listEl.style.display = 'block';
+        listEl.innerHTML = renderDependenciesList(deps, taskId);
+      })
+      .withFailureHandler((error) => {
+        loadingEl.innerHTML = '<span style="color: #dc2626;">Failed to load dependencies</span>';
+      })
+      .getTaskDependenciesWithDetails(taskId);
+  }
+
+  function renderDependenciesList(deps, taskId) {
+    const predecessors = deps.predecessors || [];
+    const successors = deps.successors || [];
+    if (predecessors.length === 0 && successors.length === 0) {
+      return `
+      <div style="padding: 16px; text-align: center; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;">
+      <div style="color: #64748b; font-size: 13px;">No dependencies configured</div>
+      <div style="color: #94a3b8; font-size: 12px; margin-top: 4px;">Click "Add Blocker" to create dependencies</div>
+      </div>
+      `;
+    }
+    let html = '';
+    if (predecessors.length > 0) {
+      html += `
+    <div style="margin-bottom: 12px;">
+    <div style="font-size: 11px; text-transform: uppercase; color: #dc2626; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;">
+    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="10"/></svg>
+    Blocked By (${predecessors.length})
+    </div>
+    ${predecessors.map(dep => dep.task ? `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; margin-bottom: 6px;">
+      <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+      <span style="font-size: 11px; font-family: monospace; color: #991b1b; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">${escapeHtml(dep.task.id)}</span>
+      <span style="font-size: 13px; color: #7f1d1d; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(dep.task.title)}</span>
+      <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: white; color: #6b7280;">${escapeHtml(dep.task.status)}</span>
+      </div>
+      <button onclick="removeDependency('${dep.id}', '${taskId}')" style="background: none; border: none; color: #dc2626; cursor: pointer; padding: 4px;" title="Remove dependency">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      </div>
+      ` : '').join('')}
+    </div>
+    `;
+    }
+    if (successors.length > 0) {
+      html += `
+    <div>
+    <div style="font-size: 11px; text-transform: uppercase; color: #2563eb; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;">
+    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    Blocking (${successors.length})
+    </div>
+    ${successors.map(dep => dep.task ? `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; margin-bottom: 6px;">
+      <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+      <span style="font-size: 11px; font-family: monospace; color: #1e40af; background: #dbeafe; padding: 2px 6px; border-radius: 4px;">${escapeHtml(dep.task.id)}</span>
+      <span style="font-size: 13px; color: #1e3a8a; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(dep.task.title)}</span>
+      <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: white; color: #6b7280;">${escapeHtml(dep.task.status)}</span>
+      </div>
+      <button onclick="removeDependency('${dep.id}', '${taskId}')" style="background: none; border: none; color: #2563eb; cursor: pointer; padding: 4px;" title="Remove dependency">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      </div>
+      ` : '').join('')}
+    </div>
+    `;
+    }
+    return html;
+  }
+
+  function openDependencyPickerFromModal(taskId, type) {
+    if (typeof DependencyPicker !== 'undefined') {
+      DependencyPicker.open(taskId, type);
+    } else {
+      toast('Dependency picker not available', 'error');
+    }
+  }
+
+  function closeSimpleTaskModal() {
+    const modal = document.getElementById('simpleTaskModal');
+    if (modal) modal.remove();
+  }
+
+  function openEditFromSimpleModal(taskId) {
+    closeSimpleTaskModal();
+    if (typeof TaskEditModal !== 'undefined') {
+      TaskEditModal.open(taskId);
+    } else {
+      toast('Edit modal not available', 'error');
+    }
+  }
+
+  function updateSidebarDate() {
+    const el = $('sidebarDate');
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    }) + ' ' + now.toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit'
+    });
+  }
+
+  function updateStats() {
+    if (!State.board || !State.board.stats) return;
+    const stats = State.board.stats;
+    const elements = {
+      statTotal: stats.total,
+      statCompleted: stats.completed,
+      statProgress: stats.progress + "%",
+      statDueSoon: stats.dueSoon,
+      statOverdue: stats.overdue,
+    };
+    Object.entries(elements).forEach(([id, value]) => {
+      const el = $(id);
+      if (el) el.textContent = value;
+    });
+  }
+
+  function updateProjectNav() {
+    var label = $('projectSelectorLabel');
+    if (!label || !State.projects) return;
+    if (!State.projectFilter) {
+      label.textContent = 'All Projects';
+    } else {
+      var proj = State.projects.find(function(p) { return p.id === State.projectFilter; });
+      label.textContent = proj ? proj.name : State.projectFilter;
+    }
+  }
+
+  let dragDropInitialized = false;
+
+  function initDragAndDrop() {
+    if (dragDropInitialized) return;
+    dragDropInitialized = true;
+
+    const board = $("board");
+    if (!board) return;
+
+    board.addEventListener("dragstart", (e) => {
+      const card = e.target.closest(".task-card");
+      if (card) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", card.dataset.taskId);
+        State.draggedTask = card;
+        setTimeout(() => card.style.opacity = '0.4', 0);
+        card.classList.add("dragging");
+      }
+    });
+
+    board.addEventListener("dragend", (e) => {
+      const card = e.target.closest(".task-card");
+      if (card) {
+        card.classList.remove("dragging");
+        card.style.opacity = '';
+        State.draggedTask = null;
+        currentDropTarget = null;
+        $$(".task-list").forEach(l => l.classList.remove("drag-over"));
+        $$(".board-column").forEach(c => c.classList.remove("drag-over"));
+      }
+    });
+
+    board.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const column = e.target.closest(".board-column");
+      const list = e.target.closest(".task-list");
+      if (column) column.classList.add("drag-over");
+      if (list) list.classList.add("drag-over");
+    });
+
+    board.addEventListener("dragleave", (e) => {
+      const column = e.target.closest(".board-column");
+      const list = e.target.closest(".task-list");
+      if (column && !column.contains(e.relatedTarget)) {
+        column.classList.remove("drag-over");
+      }
+      if (list && !list.contains(e.relatedTarget)) {
+        list.classList.remove("drag-over");
+      }
+    });
+
+    board.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const list = e.target.closest(".task-list");
+      const column = e.target.closest(".board-column");
+      if (list) {
+        handleDrop(e);
+      } else if (column) {
+        handleDropOnColumn(e);
+      }
+      $$(".task-list").forEach(l => l.classList.remove("drag-over"));
+      $$(".board-column").forEach(c => c.classList.remove("drag-over"));
+    });
+  }
+  let currentDropTarget = null;
+
+  function handleDragEnterColumn(e) {
+    e.preventDefault();
+    const column = e.currentTarget;
+    const taskList = column.querySelector('.task-list');
+    column.classList.add('drag-over');
+    if (taskList) taskList.classList.add('drag-over');
+    currentDropTarget = column;
+  }
+
+  function handleDragOverColumn(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const column = e.currentTarget;
+    const taskList = column.querySelector('.task-list');
+    column.classList.add('drag-over');
+    if (taskList) taskList.classList.add('drag-over');
+  }
+
+  function handleDragLeaveColumn(e) {
+    const column = e.currentTarget;
+    if (!column.contains(e.relatedTarget)) {
+      column.classList.remove('drag-over');
+      const taskList = column.querySelector('.task-list');
+      if (taskList) taskList.classList.remove('drag-over');
+      if (currentDropTarget === column) currentDropTarget = null;
+    }
+  }
+
+  function handleDropOnColumn(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const column = e.currentTarget;
+    column.classList.remove('drag-over');
+    const taskList = column.querySelector('.task-list');
+    if (taskList) taskList.classList.remove('drag-over');
+    const taskId = e.dataTransfer.getData("text/plain");
+    const newStatus = column.dataset.status;
+    if (!taskId || !newStatus) {
+      console.error('handleDropOnColumn: Missing taskId or newStatus', {
+        taskId,
+        newStatus
+      });
+      toast('Could not determine drop target', 'error');
+      return;
+    }
+    const previousStatus = State.draggedTask?.dataset.status;
+    const statusName = getStatusName(newStatus);
+    OptimisticUI.apply(
+      'moveTask', {
+        taskId,
+        newStatus,
+        previousStatus
+      },
+      () => {
+        if (State.draggedTask && taskList) {
+          taskList.appendChild(State.draggedTask);
+          State.draggedTask.dataset.status = newStatus;
+        }
+        updateColumnCounts();
+      },
+      () => {
+        if (State.tasks) {
+          const task = State.tasks.find(t => t.id === taskId);
+          if (task) task.status = statusName;
+        }
+        if (State.cache?.tasks?.data) {
+          const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
+          if (cachedTask) cachedTask.status = statusName;
+        }
+        LocalCache.set('tasks', State.cache.tasks.data);
+      },
+      () => new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .moveTaskToStatus(taskId, statusName, 0);
+      })
+    );
+    currentDropTarget = null;
+  }
+
+  function handleDragEnterList(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.add('drag-over');
+  }
+
+  function handleDragOverList(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    e.currentTarget.classList.add('drag-over');
+  }
+
+  function handleDragLeaveList(e) {
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      e.currentTarget.classList.remove('drag-over');
+    }
+  }
+
+  function handleDragOverCard(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    const taskList = e.currentTarget.closest('.task-list');
+    const boardColumn = e.currentTarget.closest('.board-column');
+    if (taskList) taskList.classList.add("drag-over");
+    if (boardColumn) boardColumn.classList.add("drag-over");
+  }
+
+  function handleDropOnCard(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const boardColumn = e.currentTarget.closest('.board-column[data-status]');
+    const taskList = e.currentTarget.closest('.task-list[data-status]');
+    if (taskList) taskList.classList.remove("drag-over");
+    if (boardColumn) boardColumn.classList.remove("drag-over");
+    const taskId = e.dataTransfer.getData("text/plain");
+    let newStatus = boardColumn?.dataset.status || taskList?.dataset.status || e.currentTarget.dataset.status;
+    if (!taskId || !newStatus) {
+      console.error('handleDropOnCard: Missing taskId or newStatus', {
+        taskId,
+        newStatus
+      });
+      toast('Could not determine drop target', 'error');
+      return;
+    }
+    if (taskId === e.currentTarget.dataset.taskId) {
+      return;
+    }
+    const previousStatus = State.draggedTask?.dataset.status;
+    const targetList = taskList || boardColumn?.querySelector('.task-list');
+    const statusName = getStatusName(newStatus);
+    OptimisticUI.apply(
+      'moveTask', {
+        taskId,
+        newStatus,
+        previousStatus
+      },
+      () => {
+        if (State.draggedTask && targetList) {
+          targetList.appendChild(State.draggedTask);
+          State.draggedTask.dataset.status = newStatus;
+        }
+        updateColumnCounts();
+      },
+      () => {
+        if (State.tasks) {
+          const task = State.tasks.find(t => t.id === taskId);
+          if (task) task.status = statusName;
+        }
+        if (State.cache?.tasks?.data) {
+          const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
+          if (cachedTask) cachedTask.status = statusName;
+        }
+        LocalCache.set('tasks', State.cache.tasks.data);
+      },
+      () => new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .moveTaskToStatus(taskId, statusName, 0);
+      })
+    );
+  }
+
+  function handleDragLeaveCard(e) {
+    e.stopPropagation();
+    const taskList = e.currentTarget.closest('.task-list');
+    const boardColumn = e.currentTarget.closest('.board-column');
+    if (boardColumn && !boardColumn.contains(e.relatedTarget)) {
+      if (taskList) taskList.classList.remove("drag-over");
+      boardColumn.classList.remove("drag-over");
+    }
+  }
+
+  function handleDragStart(e) {
+    State.draggedTask = e.target;
+    e.target.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", e.target.dataset.taskId);
+    setTimeout(() => {
+      if (State.draggedTask) {
+        State.draggedTask.style.opacity = '0.4';
+      }
+    }, 0);
+  }
+
+  function handleDragEnd(e) {
+    e.target.classList.remove("dragging");
+    e.target.style.opacity = '';
+    State.draggedTask = null;
+    currentDropTarget = null;
+    $$(".task-list").forEach((list) => list.classList.remove("drag-over"));
+    $$(".board-column").forEach((col) => col.classList.remove("drag-over"));
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove("drag-over");
+    const taskId = e.dataTransfer.getData("text/plain");
+    let newStatus = e.currentTarget.dataset.status;
+    if (!newStatus) {
+      const taskList = e.target.closest('.task-list[data-status]');
+      if (taskList) {
+        newStatus = taskList.dataset.status;
+      }
+    }
+    if (!newStatus) {
+      const boardColumn = e.target.closest('.board-column[data-status]');
+      if (boardColumn) {
+        newStatus = boardColumn.dataset.status;
+      }
+    }
+    if (!newStatus) {
+      const taskCard = e.target.closest('.task-card[data-status]');
+      if (taskCard) {
+        newStatus = taskCard.dataset.status;
+      }
+    }
+    if (!taskId || !newStatus) {
+      console.error('handleDrop: Missing taskId or newStatus', {
+        taskId,
+        newStatus
+      });
+      toast('Could not determine drop target', 'error');
+      return;
+    }
+    let targetList = e.currentTarget;
+    if (!targetList.classList.contains('task-list')) {
+      targetList = e.target.closest('.task-list[data-status]');
+      if (!targetList) {
+        const boardColumn = e.target.closest('.board-column[data-status]');
+        if (boardColumn) {
+          targetList = boardColumn.querySelector('.task-list');
+        }
+      }
+    }
+    const previousStatus = State.draggedTask?.dataset.status;
+    const statusName = getStatusName(newStatus);
+    OptimisticUI.apply(
+      'moveTask', {
+        taskId,
+        newStatus,
+        previousStatus
+      },
+      () => {
+        if (State.draggedTask && targetList) {
+          targetList.appendChild(State.draggedTask);
+          State.draggedTask.dataset.status = newStatus;
+        }
+        updateColumnCounts();
+      },
+      () => {
+        if (State.tasks) {
+          const task = State.tasks.find(t => t.id === taskId);
+          if (task) task.status = statusName;
+        }
+        if (State.cache?.tasks?.data) {
+          const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
+          if (cachedTask) cachedTask.status = statusName;
+        }
+        LocalCache.set('tasks', State.cache.tasks.data);
+      },
+      () => new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .moveTaskToStatus(taskId, statusName, 0);
+      })
+    );
+  }
+
+  function getStatusName(statusId) {
+    const statusMap = {
+      'backlog': 'Backlog',
+      'to_do': 'To Do',
+      'in_progress': 'In Progress',
+      'review': 'Review',
+      'testing': 'Testing',
+      'done': 'Done'
+    };
+    return statusMap[statusId] || statusId;
+  }
+
+  function findTaskInCache(taskId) {
+    if (State.tasks) {
+      const task = State.tasks.find(t => t.id === taskId);
+      if (task) return task;
+    }
+    if (State.cache?.tasks?.data) {
+      const task = State.cache.tasks.data.find(t => t.id === taskId);
+      if (task) return task;
+    }
+    if (State.board?.columns) {
+      for (const col of State.board.columns) {
+        const task = col.tasks?.find(t => t.id === taskId);
+        if (task) return task;
+      }
+    }
+    return null;
+  }
+</script>

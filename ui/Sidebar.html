@@ -1,0 +1,100 @@
+<script>
+  function toggleProjectDropdown() {
+    var dropdown = $('projectDropdown');
+    if (!dropdown) return;
+    var isHidden = dropdown.classList.contains('hidden');
+    if (isHidden) {
+      dropdown.classList.remove('hidden');
+      var input = $('projectSearchInput');
+      if (input) { input.value = ''; input.focus(); }
+      filterProjectDropdown();
+    } else {
+      dropdown.classList.add('hidden');
+    }
+  }
+
+  function filterProjectDropdown() {
+    var input = $('projectSearchInput');
+    var list = $('projectDropdownList');
+    if (!list) return;
+    var query = (input ? input.value : '').toLowerCase().trim();
+    var projects = State.projects || [];
+    var filtered = query ? projects.filter(function(p) { return (p.name || '').toLowerCase().includes(query); }) : projects;
+    var html = '<div class="px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer rounded mx-1 flex items-center gap-2' +
+      (!State.projectFilter ? ' bg-gray-700' : '') + '" onclick="selectProjectFromDropdown(null)">' +
+      '<i class="fas fa-folder-open text-gray-500 w-4"></i> All Projects</div>';
+    filtered.forEach(function(p) {
+      var isActive = State.projectFilter === p.id;
+      html += '<div class="px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer rounded mx-1 flex items-center gap-2' +
+        (isActive ? ' bg-gray-700' : '') + '" onclick="selectProjectFromDropdown(\'' + p.id + '\')">' +
+        '<i class="fas fa-folder text-gray-500 w-4"></i> ' + escapeHtml(p.name) + '</div>';
+    });
+    if (filtered.length === 0 && query) {
+      html += '<div class="px-2 py-3 text-sm text-gray-500 text-center">No projects match</div>';
+    }
+    list.innerHTML = html;
+  }
+
+  function selectProjectFromDropdown(projectId) {
+    var dropdown = $('projectDropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    var label = $('projectSelectorLabel');
+    if (label) {
+      if (!projectId) {
+        label.textContent = 'All Projects';
+      } else {
+        var proj = (State.projects || []).find(function(p) { return p.id === projectId; });
+        label.textContent = proj ? proj.name : projectId;
+      }
+    }
+    selectProject(projectId);
+  }
+
+  (function() {
+    document.addEventListener('click', function(e) {
+      var container = $('projectSelectorContainer');
+      var dropdown = $('projectDropdown');
+      if (container && dropdown && !container.contains(e.target)) {
+        dropdown.classList.add('hidden');
+      }
+    });
+  })();
+
+  function toggleSidebarGroup(groupId) {
+    var content = document.getElementById('sidebarGroup-' + groupId);
+    var chevron = document.getElementById('sidebarChevron-' + groupId);
+    if (!content) return;
+    var isCollapsed = content.classList.toggle('sidebar-group-collapsed');
+    if (chevron) {
+      chevron.classList.toggle('fa-chevron-right', isCollapsed);
+      chevron.classList.toggle('fa-chevron-down', !isCollapsed);
+    }
+    try { localStorage.setItem('co_sidebar_' + groupId, isCollapsed ? '0' : '1'); } catch (e) {}
+  }
+
+  function restoreSidebarGroupStates() {
+    ['workViews', 'management'].forEach(function(groupId) {
+      var stored = null;
+      try { stored = localStorage.getItem('co_sidebar_' + groupId); } catch (e) {}
+      if (stored === '0') {
+        var content = document.getElementById('sidebarGroup-' + groupId);
+        var chevron = document.getElementById('sidebarChevron-' + groupId);
+        if (content) content.classList.add('sidebar-group-collapsed');
+        if (chevron) { chevron.classList.remove('fa-chevron-down'); chevron.classList.add('fa-chevron-right'); }
+      }
+    });
+  }
+
+  function autoExpandSidebarGroup(view) {
+    var targetLink = document.querySelector('.nav-link[data-view="' + view + '"]');
+    if (!targetLink) return;
+    var parentGroup = targetLink.closest('[id^="sidebarGroup-"]');
+    if (parentGroup && parentGroup.classList.contains('sidebar-group-collapsed')) {
+      parentGroup.classList.remove('sidebar-group-collapsed');
+      var gId = parentGroup.id.replace('sidebarGroup-', '');
+      var chev = document.getElementById('sidebarChevron-' + gId);
+      if (chev) { chev.classList.remove('fa-chevron-right'); chev.classList.add('fa-chevron-down'); }
+      try { localStorage.setItem('co_sidebar_' + gId, '1'); } catch (e) {}
+    }
+  }
+</script>

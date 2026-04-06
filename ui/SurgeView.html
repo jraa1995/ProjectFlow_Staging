@@ -1,0 +1,245 @@
+<div class="p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-lg font-semibold text-gray-900">
+      <i class="fas fa-bolt mr-2 text-gray-500"></i>Pick Ups / Surge
+    </h2>
+    <button onclick="SurgePage.loadTasks()" class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+      <i class="fas fa-sync-alt text-gray-500"></i> Refresh
+    </button>
+  </div>
+
+  <div class="flex gap-4 mb-6">
+    <div class="flex-1 bg-white border border-gray-200 rounded-lg p-4">
+      <div class="text-2xl font-bold text-gray-900" id="surgeStatTotal">0</div>
+      <div class="text-sm text-gray-500 mt-1">Total Open</div>
+    </div>
+    <div class="flex-1 bg-white border border-gray-200 rounded-lg p-4">
+      <div class="text-2xl font-bold text-gray-900" id="surgeStatHighPriority">0</div>
+      <div class="text-sm text-gray-500 mt-1">High Priority</div>
+    </div>
+    <div class="flex-1 bg-white border border-gray-200 rounded-lg p-4">
+      <div class="text-2xl font-bold text-gray-900" id="surgeStatAging">0</div>
+      <div class="text-sm text-gray-500 mt-1">Aging &gt; 7d</div>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3 mb-6">
+    <select id="surgePriorityFilter" onchange="SurgePage.applyFilters()" class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400">
+      <option value="">All Priorities</option>
+      <option value="Critical">Critical</option>
+      <option value="Highest">Highest</option>
+      <option value="High">High</option>
+      <option value="Medium">Medium</option>
+      <option value="Low">Low</option>
+      <option value="Lowest">Lowest</option>
+    </select>
+    <select id="surgeProjectFilter" onchange="SurgePage.applyFilters()" class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400">
+      <option value="">All Projects</option>
+    </select>
+    <input
+      id="surgeSearchInput"
+      type="text"
+      placeholder="Search tasks..."
+      oninput="SurgePage.applyFilters()"
+      class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
+    />
+  </div>
+
+  <div id="surgeTaskGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+</div>
+
+<script>
+const SurgePage = {
+  tasks: [],
+  filteredTasks: [],
+  isLoaded: false,
+
+  init() {
+    this.loadTasks();
+  },
+
+  loadTasks() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to load surge tasks', 'error');
+          return;
+        }
+        this.tasks = result.tasks || [];
+        this.filteredTasks = [...this.tasks];
+        this.isLoaded = true;
+        this._populateProjectFilter();
+        this.renderAll();
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Failed to load surge tasks:', error);
+        toast('Failed to load surge tasks', 'error');
+      })
+      .fetchSurgeTasks();
+  },
+
+  _populateProjectFilter() {
+    const select = document.getElementById('surgeProjectFilter');
+    if (!select) return;
+    const current = select.value;
+    const projects = [...new Set(this.tasks.map(t => t.projectName).filter(Boolean))].sort();
+    select.innerHTML = '<option value="">All Projects</option>';
+    projects.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      if (p === current) opt.selected = true;
+      select.appendChild(opt);
+    });
+  },
+
+  renderAll() {
+    this.renderStats();
+    this.renderTasks();
+  },
+
+  renderStats() {
+    const highPrioritySet = new Set(['Critical', 'Highest', 'High']);
+    const now = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+
+    const highCount = this.tasks.filter(t => highPrioritySet.has(t.priority)).length;
+    const agingCount = this.tasks.filter(t => {
+      if (!t.createdAt) return false;
+      const created = new Date(t.createdAt).getTime();
+      return (now - created) > sevenDaysMs;
+    }).length;
+
+    const elTotal = document.getElementById('surgeStatTotal');
+    const elHigh = document.getElementById('surgeStatHighPriority');
+    const elAging = document.getElementById('surgeStatAging');
+    if (elTotal) elTotal.textContent = this.tasks.length;
+    if (elHigh) elHigh.textContent = highCount;
+    if (elAging) elAging.textContent = agingCount;
+  },
+
+  renderTasks() {
+    const grid = document.getElementById('surgeTaskGrid');
+    if (!grid) return;
+
+    if (!this.filteredTasks.length) {
+      grid.innerHTML = `
+        <div class="col-span-3 flex flex-col items-center justify-center py-20 text-gray-400">
+          <i class="fas fa-hand-paper text-5xl mb-4"></i>
+          <p class="text-base font-medium">No open tasks available</p>
+          <p class="text-sm mt-1">Check back later or adjust your filters</p>
+        </div>`;
+      return;
+    }
+
+    grid.innerHTML = this.filteredTasks.map(t => this.renderCard(t)).join('');
+  },
+
+  applyFilters() {
+    const priority = (document.getElementById('surgePriorityFilter')?.value || '').trim();
+    const project = (document.getElementById('surgeProjectFilter')?.value || '').trim();
+    const search = (document.getElementById('surgeSearchInput')?.value || '').toLowerCase().trim();
+
+    this.filteredTasks = this.tasks.filter(t => {
+      if (priority && t.priority !== priority) return false;
+      if (project && t.projectName !== project) return false;
+      if (search) {
+        const haystack = [t.title, t.id, t.projectName].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+      return true;
+    });
+
+    this.renderTasks();
+  },
+
+  pickUp(taskId) {
+    const card = document.querySelector(`[data-surge-task="${taskId}"]`);
+    if (card) card.remove();
+    this.tasks = this.tasks.filter(t => t.id !== taskId);
+    this.filteredTasks = this.filteredTasks.filter(t => t.id !== taskId);
+    this.renderStats();
+
+    google.script.run
+      .withSuccessHandler((result) => {
+        if (!result.success) {
+          toast(result.error || 'Failed to pick up task', 'error');
+          this.loadTasks();
+          return;
+        }
+        toast('Task picked up! Check your board.', 'success');
+      })
+      .withFailureHandler((error) => {
+        console.error('Pick up failed:', error);
+        toast('Failed to pick up task', 'error');
+        this.loadTasks();
+      })
+      .pickUpSurgeTask(taskId);
+  },
+
+  renderCard(task) {
+    const cf = this.parseCustomFields(task);
+    const priorityClass = getPriorityColor(task.priority);
+    const escId = escapeHtml(task.id);
+    const escTitle = escapeHtml(task.title);
+    const escProject = escapeHtml(task.projectName);
+    const escPriority = escapeHtml(task.priority || 'Medium');
+
+    let dueBadge = '';
+    if (task.dueDate) {
+      const due = new Date(task.dueDate);
+      const isOverdue = due < new Date();
+      const label = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      dueBadge = `<span class="inline-flex items-center gap-1 text-xs ${isOverdue ? 'text-red-600' : 'text-gray-500'}">
+        <i class="fas fa-calendar-alt"></i> ${escapeHtml(label)}
+      </span>`;
+    }
+
+    let requestorTag = '';
+    if (cf.requestor) {
+      requestorTag = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+        <i class="fas fa-user"></i> ${escapeHtml(cf.requestor)}
+      </span>`;
+    }
+
+    let teamTag = '';
+    if (cf.team) {
+      teamTag = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+        <i class="fas fa-users"></i> ${escapeHtml(cf.team)}
+      </span>`;
+    }
+
+    const metaTags = [requestorTag, teamTag].filter(Boolean).join('');
+
+    return `<div data-surge-task="${escId}" class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-mono text-gray-400">${escId}</span>
+        <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${priorityClass}">${escPriority}</span>
+      </div>
+      <div class="font-semibold text-gray-900 text-sm leading-snug">${escTitle}</div>
+      <div class="flex flex-col gap-1.5">
+        ${escProject ? `<span class="inline-flex items-center gap-1 text-xs text-gray-500"><i class="fas fa-folder"></i> ${escProject}</span>` : ''}
+        ${dueBadge}
+      </div>
+      ${metaTags ? `<div class="flex flex-wrap gap-1.5">${metaTags}</div>` : ''}
+      <button
+        onclick="SurgePage.pickUp('${escId}')"
+        class="mt-auto w-full py-2 text-sm font-semibold bg-gray-900 text-white rounded-md hover:bg-gray-800 active:bg-gray-700 transition-colors"
+      >
+        <i class="fas fa-hand-paper mr-1.5"></i> Pick Up
+      </button>
+    </div>`;
+  },
+
+  parseCustomFields(task) {
+    try {
+      if (!task.customFields) return {};
+      return typeof task.customFields === 'string' ? JSON.parse(task.customFields) : task.customFields;
+    } catch (e) { return {}; }
+  },
+
+};
+</script>

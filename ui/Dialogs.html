@@ -1,0 +1,378 @@
+<script>
+  function autoCalcTaskStoryPoints() {
+    var startDate = $("taskStartDate")?.value;
+    var dueDate = $("taskDueDate")?.value;
+    if (!startDate || !dueDate) return;
+    var start = new Date(startDate);
+    var end = new Date(dueDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return;
+    var workingDays = 0;
+    var current = new Date(start);
+    while (current <= end) {
+      var day = current.getDay();
+      if (day !== 0 && day !== 6) workingDays++;
+      current.setDate(current.getDate() + 1);
+    }
+    var spEl = $("taskStoryPoints");
+    var ehEl = $("taskEstimatedHrs");
+    if (spEl) spEl.value = workingDays;
+    if (ehEl) ehEl.value = workingDays * 8;
+  }
+
+  function openTaskModal(taskId) {
+    if (taskId) {
+      const cachedTask = findTaskInCache(taskId);
+      if (cachedTask) {
+        State.editingTask = cachedTask;
+        populateTaskModal(cachedTask);
+        show($("taskModal"));
+        return;
+      }
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler((task) => {
+          showLoading(false);
+          State.editingTask = task;
+          populateTaskModal(task);
+          show($("taskModal"));
+        })
+        .withFailureHandler((error) => {
+          showLoading(false);
+          handleError(error);
+        })
+        .loadTask(taskId);
+    } else {
+      State.editingTask = null;
+      resetTaskForm();
+      show($("taskModal"));
+    }
+  }
+
+  function closeTaskModal() {
+    hide($("taskModal"));
+    State.editingTask = null;
+  }
+
+  function populateTaskModal(task) {
+    if (!task) return;
+    const fields = [
+      "taskTitle",
+      "taskDescription",
+      "taskStatus",
+      "taskPriority",
+      "taskType",
+      "taskProject",
+      "taskAssignee",
+      "taskDueDate",
+      "taskStartDate",
+      "taskEstimatedHrs",
+      "taskStoryPoints",
+    ];
+    fields.forEach((field) => {
+      const el = $(field);
+      if (el) {
+        const key = field.replace("task", "").toLowerCase();
+        el.value = task[key] || "";
+      }
+    });
+    $("modalTitle").textContent = `Edit Task: ${task.id}`;
+  }
+
+  function resetTaskForm() {
+    const form = $("taskForm");
+    if (form) form.reset();
+    $("modalTitle").textContent = "New Task";
+    populateSelectOptions();
+  }
+
+  function saveTask(e) {
+    e.preventDefault();
+    const taskData = {
+      title: $("taskTitle").value,
+      description: $("taskDescription").value,
+      status: $("taskStatus").value,
+      priority: $("taskPriority").value,
+      type: $("taskType").value,
+      projectId: $("taskProject").value,
+      assignee: $("taskAssignee").value,
+      dueDate: $("taskDueDate").value,
+      startDate: $("taskStartDate").value,
+      estimatedHrs: parseFloat($("taskEstimatedHrs").value) || 0,
+      storyPoints: parseInt($("taskStoryPoints").value) || 0,
+    };
+    if (State.editingTask) {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(async () => {
+          showLoading(false);
+          closeTaskModal();
+          await refreshAllData();
+          switchView(State.currentView || 'my');
+          toast("Task updated", "success");
+        })
+        .withFailureHandler((error) => {
+          showLoading(false);
+          handleError(error);
+        })
+        .saveTaskUpdate(State.editingTask.id, taskData);
+    } else {
+      const tempId = 'temp_' + Date.now();
+      const status = taskData.status || 'To Do';
+      const tempTask = { ...taskData, id: tempId, createdAt: new Date().toISOString() };
+      closeTaskModal();
+      OptimisticUI.apply(
+        'createTask',
+        { taskId: tempId, id: tempId },
+        () => {
+          const taskList = document.querySelector(`.task-list[data-status="${status}"]`);
+          if (taskList) {
+            taskList.insertAdjacentHTML('afterbegin', renderTaskCard(tempTask, status));
+          }
+          updateColumnCounts();
+        },
+        () => {
+          if (State.tasks) State.tasks.push(tempTask);
+          if (State.cache?.tasks?.data) State.cache.tasks.data.push(tempTask);
+        },
+        () => new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(async (result) => {
+              await refreshAllData();
+              switchView(State.currentView || 'my');
+              toast('Task created', 'success');
+              resolve(result);
+            })
+            .withFailureHandler(reject)
+            .saveNewTask(taskData);
+        })
+      );
+    }
+  }
+
+  function openProjectModal() {
+    show($("projectModal"));
+  }
+
+  function closeProjectModal() {
+    hide($("projectModal"));
+  }
+
+  function saveProject(e) {
+    e.preventDefault();
+    const projectData = {
+      name: $("projectName").value,
+      description: $("projectDescription").value,
+    };
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(() => {
+        showLoading(false);
+        closeProjectModal();
+        loadBoard();
+        toast("Project created", "success");
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        handleError(error);
+      })
+      .saveNewProject(projectData);
+  }
+
+  function show(el) {
+    if (el) el.classList.remove("hidden");
+  }
+
+  function hide(el) {
+    if (el) el.classList.add("hidden");
+  }
+
+  function ConfirmModal(message, options) {
+    options = options || {};
+    return new Promise(function(resolve) {
+      var modal = $('confirmModal');
+      var msgEl = $('confirmModalMessage');
+      var confirmBtn = $('confirmModalConfirm');
+      var cancelBtn = $('confirmModalCancel');
+      msgEl.textContent = message;
+      confirmBtn.textContent = options.confirmText || 'Confirm';
+      confirmBtn.className = options.destructive
+        ? 'px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors'
+        : 'px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors';
+      show(modal);
+      var cleanup = function(result) { hide(modal); resolve(result); };
+      confirmBtn.onclick = function() { cleanup(true); };
+      cancelBtn.onclick = function() { cleanup(false); };
+    });
+  }
+
+  function PromptModal(message, placeholder) {
+    return new Promise(function(resolve) {
+      var modal = $('promptModal');
+      var msgEl = $('promptModalMessage');
+      var input = $('promptModalInput');
+      var confirmBtn = $('promptModalConfirm');
+      var cancelBtn = $('promptModalCancel');
+      msgEl.textContent = message;
+      input.placeholder = placeholder || '';
+      input.value = '';
+      show(modal);
+      input.focus();
+      var cleanup = function(result) { hide(modal); resolve(result); };
+      confirmBtn.onclick = function() { cleanup(input.value || null); };
+      cancelBtn.onclick = function() { cleanup(null); };
+      input.onkeydown = function(e) { if (e.key === 'Enter') { cleanup(input.value || null); } };
+    });
+  }
+
+  var CommandPalette = {
+    isOpen: false,
+    selectedIndex: 0,
+    results: [],
+
+    open() {
+      var el = $('commandPalette');
+      if (el) {
+        el.classList.remove('hidden');
+        this.isOpen = true;
+        this.selectedIndex = 0;
+        var input = $('commandPaletteInput');
+        if (input) { input.value = ''; input.focus(); }
+        this.showDefaultActions();
+      }
+    },
+
+    close() {
+      var el = $('commandPalette');
+      if (el) { el.classList.add('hidden'); this.isOpen = false; }
+    },
+
+    search(query) {
+      query = (query || '').toLowerCase().trim();
+      if (!query) { this.showDefaultActions(); return; }
+      var results = [];
+      var tasks = (State && State.cache && State.cache.tasks) ? State.cache.tasks.data : [];
+      tasks.forEach(function(t) {
+        if ((t.title || '').toLowerCase().includes(query) || (t.id || '').toLowerCase().includes(query)) {
+          results.push({ type: 'task', id: t.id, title: t.title, subtitle: t.projectId + ' · ' + t.status, icon: 'fa-check-square' });
+        }
+      });
+      var projects = State ? State.projects : [];
+      projects.forEach(function(p) {
+        if ((p.name || '').toLowerCase().includes(query) || (p.id || '').toLowerCase().includes(query)) {
+          results.push({ type: 'project', id: p.id, title: p.name, subtitle: 'Project', icon: 'fa-folder' });
+        }
+      });
+      this.results = results.slice(0, 10);
+      this.selectedIndex = 0;
+      this.renderResults();
+    },
+
+    showDefaultActions() {
+      this.results = [
+        { type: 'action', id: 'new-task', title: 'Create new task', subtitle: 'Ctrl+N', icon: 'fa-plus' },
+        { type: 'action', id: 'view-my', title: 'Go to My Board', subtitle: 'Shortcut: B', icon: 'fa-user' },
+        { type: 'action', id: 'view-home', title: 'Go to Home', subtitle: 'Shortcut: H', icon: 'fa-home' },
+        { type: 'action', id: 'view-list', title: 'Go to List View', subtitle: 'Shortcut: L', icon: 'fa-list' },
+        { type: 'action', id: 'view-projects', title: 'Go to Projects', subtitle: '', icon: 'fa-folder-open' },
+        { type: 'action', id: 'view-timeline', title: 'Go to Timeline', subtitle: 'Shortcut: T', icon: 'fa-chart-gantt' }
+      ];
+      this.selectedIndex = 0;
+      this.renderResults();
+    },
+
+    renderResults() {
+      var container = $('commandPaletteResults');
+      if (!container) return;
+      if (!this.results.length) {
+        container.innerHTML = '<div class="px-4 py-8 text-center text-sm text-gray-400">No results found</div>';
+        return;
+      }
+      var self = this;
+      container.innerHTML = this.results.map(function(r, i) {
+        var isSelected = i === self.selectedIndex;
+        return '<div class="flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ' +
+          (isSelected ? 'bg-gray-100' : 'hover:bg-gray-50') +
+          '" onclick="CommandPalette.execute(' + i + ')" onmouseenter="CommandPalette.selectedIndex=' + i + ';CommandPalette.renderResults()">' +
+          '<i class="fas ' + r.icon + ' w-5 text-gray-400 text-sm"></i>' +
+          '<div class="flex-1 min-w-0">' +
+          '<div class="text-sm text-gray-900 truncate">' + escapeHtml(r.title) + '</div>' +
+          (r.subtitle ? '<div class="text-xs text-gray-400">' + escapeHtml(r.subtitle) + '</div>' : '') +
+          '</div>' +
+          (r.type === 'task' ? '<span class="text-xs font-mono text-gray-300">' + escapeHtml(r.id) + '</span>' : '') +
+          '</div>';
+      }).join('');
+    },
+
+    execute(index) {
+      var r = this.results[index];
+      if (!r) return;
+      this.close();
+      if (r.type === 'task') {
+        if (typeof openTaskDetailPanel === 'function') openTaskDetailPanel(r.id);
+      } else if (r.type === 'project') {
+        switchView('projects');
+        setTimeout(function() { if (typeof ProjectPage !== 'undefined') ProjectPage.selectProject(r.id); }, 200);
+      } else if (r.type === 'action') {
+        if (r.id === 'new-task') openTaskModal();
+        else if (r.id === 'view-my') switchView('my');
+        else if (r.id === 'view-home') switchView('home');
+        else if (r.id === 'view-list') switchView('list');
+        else if (r.id === 'view-projects') switchView('projects');
+        else if (r.id === 'view-timeline') switchView('timeline');
+      }
+    },
+
+    handleKeydown(e) {
+      if (!this.isOpen) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this.selectedIndex = Math.min(this.selectedIndex + 1, this.results.length - 1);
+        this.renderResults();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+        this.renderResults();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        this.execute(this.selectedIndex);
+      }
+    }
+  };
+
+  var SplitPane = {
+    init: function(containerId, storageKey, defaultLeftWidth) {
+      var container = $(containerId);
+      if (!container) return;
+      var children = container.children;
+      if (children.length < 3) return;
+      var left = children[0];
+      var divider = children[1];
+      var saved = localStorage.getItem('splitpane_' + storageKey);
+      left.style.width = (saved || defaultLeftWidth) + 'px';
+      left.style.flexShrink = '0';
+      var startX, startWidth;
+      divider.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = left.offsetWidth;
+        divider.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        var onMove = function(e) {
+          var newWidth = Math.max(200, Math.min(startWidth + e.clientX - startX, container.offsetWidth - 200));
+          left.style.width = newWidth + 'px';
+        };
+        var onUp = function() {
+          divider.classList.remove('active');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          localStorage.setItem('splitpane_' + storageKey, left.offsetWidth);
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    }
+  };
+</script>

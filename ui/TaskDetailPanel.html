@@ -1,4 +1,4 @@
-<div id="taskDetailPanel" class="fixed inset-0 bg-black/50 flex items-center justify-end hidden"
+<div id="taskDetailPanel" class="fixed inset-0 bg-black/20 flex items-center justify-end hidden"
   style="display: none; z-index: 9999;"
   onclick="TaskDetailPanel.handleOverlayClick(event)">
   <div class="task-detail-container bg-white w-full max-w-2xl h-full shadow-xl flex flex-col overflow-hidden"
@@ -30,6 +30,16 @@
             <i class="fas fa-save"></i> Save
           </button>
         </div>
+        <button
+          id="taskTimerBtn"
+          onclick="TaskDetailPanel.toggleTimer()"
+          class="px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 rounded-lg flex items-center gap-1.5 border border-green-200"
+          title="Start Timer"
+        >
+          <i id="taskTimerIcon" class="fas fa-play text-xs"></i>
+          <span id="taskTimerLabel">Start</span>
+          <span id="timerDisplay" class="font-mono text-xs text-gray-500 hidden"></span>
+        </button>
         <button
           onclick="TaskDetailPanel.close()"
           class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -216,6 +226,16 @@
               <div id="taskDetailBlockingList" class="space-y-2">
                 <div class="text-sm text-gray-400 italic">No dependent tasks</div>
               </div>
+            </div>
+          </div>
+
+          <div class="task-field border-t border-gray-200 pt-6 mt-6">
+            <label class="task-field-label flex items-center gap-2">
+              <i class="fas fa-clock text-gray-400"></i>
+              <span>Time Log</span>
+            </label>
+            <div id="taskDetailTimeLog" class="mt-3 space-y-1">
+              <span class="text-sm text-gray-400 italic">No time entries</span>
             </div>
           </div>
 
@@ -763,6 +783,80 @@
 </style>
 
 <script>
+var TaskTimer = {
+  activeTaskId: null,
+  startTime: null,
+  intervalId: null,
+
+  start(taskId) {
+    this.activeTaskId = taskId;
+    this.startTime = Date.now();
+    localStorage.setItem('co_timer_taskId', taskId);
+    localStorage.setItem('co_timer_start', String(this.startTime));
+    this.updateDisplay();
+    this.intervalId = setInterval(() => this.updateDisplay(), 1000);
+    const btn = document.getElementById('taskTimerBtn');
+    const icon = document.getElementById('taskTimerIcon');
+    const label = document.getElementById('taskTimerLabel');
+    const display = document.getElementById('timerDisplay');
+    if (btn) btn.className = 'px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg flex items-center gap-1.5 border border-red-200';
+    if (icon) { icon.classList.remove('fa-play'); icon.classList.add('fa-stop'); }
+    if (label) label.textContent = 'Stop';
+    if (display) display.classList.remove('hidden');
+  },
+
+  stop() {
+    if (!this.activeTaskId || !this.startTime) return;
+    var elapsed = (Date.now() - this.startTime) / 3600000;
+    var entry = { taskId: this.activeTaskId, start: new Date(this.startTime).toISOString(), end: new Date().toISOString(), hours: Math.round(elapsed * 100) / 100 };
+    var duration = Date.now() - this.startTime;
+    clearInterval(this.intervalId);
+    google.script.run
+      .withSuccessHandler(() => { toast('Time logged: ' + this.formatDuration(duration), 'success'); })
+      .withFailureHandler((err) => { console.error('Time save failed:', err); toast('Failed to save time', 'error'); })
+      .logTimeEntry(this.activeTaskId, entry);
+    localStorage.removeItem('co_timer_taskId');
+    localStorage.removeItem('co_timer_start');
+    this.activeTaskId = null;
+    this.startTime = null;
+    this.intervalId = null;
+    const btn = document.getElementById('taskTimerBtn');
+    const icon = document.getElementById('taskTimerIcon');
+    const label = document.getElementById('taskTimerLabel');
+    const display = document.getElementById('timerDisplay');
+    if (btn) btn.className = 'px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 rounded-lg flex items-center gap-1.5 border border-green-200';
+    if (icon) { icon.classList.remove('fa-stop'); icon.classList.add('fa-play'); }
+    if (label) label.textContent = 'Start';
+    if (display) { display.textContent = ''; display.classList.add('hidden'); }
+  },
+
+  restore() {
+    var taskId = localStorage.getItem('co_timer_taskId');
+    var start = localStorage.getItem('co_timer_start');
+    if (taskId && start) {
+      this.activeTaskId = taskId;
+      this.startTime = parseInt(start);
+      this.intervalId = setInterval(() => this.updateDisplay(), 1000);
+    }
+  },
+
+  updateDisplay() {
+    var el = document.getElementById('timerDisplay');
+    if (!el || !this.startTime) return;
+    el.textContent = this.formatDuration(Date.now() - this.startTime);
+  },
+
+  formatDuration(ms) {
+    var s = Math.floor(ms / 1000);
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    s = s % 60;
+    return (h > 0 ? h + 'h ' : '') + (m > 0 ? m + 'm ' : '') + s + 's';
+  }
+};
+
+TaskTimer.restore();
+
 const TaskDetailPanel = {
   task: null,
   originalTask: null,
@@ -830,6 +924,60 @@ const TaskDetailPanel = {
     this.activity = [];
   },
 
+  toggleTimer() {
+    if (!this.task || !this.task.id) return;
+    if (TaskTimer.activeTaskId === this.task.id) {
+      TaskTimer.stop();
+    } else {
+      if (TaskTimer.activeTaskId && TaskTimer.activeTaskId !== this.task.id) {
+        TaskTimer.stop();
+      }
+      TaskTimer.start(this.task.id);
+    }
+  },
+
+  renderTimerButtonState() {
+    const btn = document.getElementById('taskTimerBtn');
+    const icon = document.getElementById('taskTimerIcon');
+    const label = document.getElementById('taskTimerLabel');
+    const display = document.getElementById('timerDisplay');
+    if (!btn) return;
+    if (this.task && TaskTimer.activeTaskId === this.task.id) {
+      btn.className = 'px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg flex items-center gap-1.5 border border-red-200';
+      if (icon) { icon.classList.remove('fa-play'); icon.classList.add('fa-stop'); }
+      if (label) label.textContent = 'Stop';
+      if (display) display.classList.remove('hidden');
+    } else {
+      btn.className = 'px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 rounded-lg flex items-center gap-1.5 border border-green-200';
+      if (icon) { icon.classList.remove('fa-stop'); icon.classList.add('fa-play'); }
+      if (label) label.textContent = 'Start';
+      if (display) { display.textContent = ''; display.classList.add('hidden'); }
+    }
+  },
+
+  renderTimeLog(task) {
+    const container = document.getElementById('taskDetailTimeLog');
+    if (!container) return;
+    var entries = [];
+    if (task.timeEntries) {
+      try { entries = typeof task.timeEntries === 'string' ? JSON.parse(task.timeEntries) : task.timeEntries; } catch (e) { entries = []; }
+    }
+    if (!Array.isArray(entries) || entries.length === 0) {
+      container.innerHTML = '<span class="text-sm text-gray-400 italic">No time entries</span>';
+      return;
+    }
+    container.innerHTML = entries.map(e => {
+      var date = e.start ? new Date(e.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      var hrs = e.hours != null ? e.hours + 'h' : '';
+      var who = escapeHtml(e.user || e.who || '');
+      return '<div class="flex items-center justify-between py-1.5 px-2 rounded bg-gray-50 text-sm">' +
+        '<span class="text-gray-500">' + date + '</span>' +
+        '<span class="font-medium text-gray-700">' + hrs + '</span>' +
+        (who ? '<span class="text-gray-400 text-xs">' + who + '</span>' : '') +
+        '</div>';
+    }).join('');
+  },
+
   openEditModal() {
     if (!this.task || !this.task.id) {
       console.error('No task loaded to edit');
@@ -855,10 +1003,10 @@ const TaskDetailPanel = {
     }
   },
 
-  handleOverlayClick(event) {
+  async handleOverlayClick(event) {
     if (event.target.id === 'taskDetailPanel') {
       if (this.mode === 'edit' && this.hasChanges()) {
-        if (confirm('You have unsaved changes. Are you sure you want to close?')) {
+        if (await ConfirmModal('You have unsaved changes. Are you sure you want to close?')) {
           this.close();
         }
       } else {
@@ -890,9 +1038,16 @@ const TaskDetailPanel = {
       return;
     }
 
+    showLoading(true);
     google.script.run
-      .withSuccessHandler((task) => this.handleTaskLoaded(task))
-      .withFailureHandler((error) => this.handleLoadError(error))
+      .withSuccessHandler((task) => {
+        showLoading(false);
+        this.handleTaskLoaded(task);
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        this.handleLoadError(error);
+      })
       .loadTask(taskId);
   },
 
@@ -1075,13 +1230,13 @@ const TaskDetailPanel = {
     const statusView = document.getElementById('taskDetailStatusView');
     if (statusView) {
       const statusClass = this.getStatusClass(task.status);
-      statusView.innerHTML = `<span class="status-badge ${statusClass}">${this.escapeHtml(task.status || 'To Do')}</span>`;
+      statusView.innerHTML = `<span class="status-badge ${statusClass}">${escapeHtml(task.status || 'To Do')}</span>`;
     }
 
     const priorityView = document.getElementById('taskDetailPriorityView');
     if (priorityView) {
       const priorityClass = this.getPriorityClass(task.priority);
-      priorityView.innerHTML = `<span class="priority-badge ${priorityClass}">${this.escapeHtml(task.priority || 'Medium')}</span>`;
+      priorityView.innerHTML = `<span class="priority-badge ${priorityClass}">${escapeHtml(task.priority || 'Medium')}</span>`;
     }
 
     this.setElementText('taskDetailTypeView', task.type || 'Task');
@@ -1095,7 +1250,7 @@ const TaskDetailPanel = {
         assigneeView.innerHTML = `
           <span class="user-avatar-inline">
             <span class="avatar">${initials}</span>
-            <span>${this.escapeHtml(task.assignee)}</span>
+            <span>${escapeHtml(task.assignee)}</span>
           </span>
         `;
       } else {
@@ -1110,7 +1265,7 @@ const TaskDetailPanel = {
         reporterView.innerHTML = `
           <span class="user-avatar-inline">
             <span class="avatar">${initials}</span>
-            <span>${this.escapeHtml(task.reporter)}</span>
+            <span>${escapeHtml(task.reporter)}</span>
           </span>
         `;
       } else {
@@ -1127,7 +1282,7 @@ const TaskDetailPanel = {
     const descView = document.getElementById('taskDetailDescriptionView');
     if (descView) {
       if (task.description) {
-        descView.innerHTML = `<div class="whitespace-pre-wrap">${this.escapeHtml(task.description)}</div>`;
+        descView.innerHTML = `<div class="whitespace-pre-wrap">${escapeHtml(task.description)}</div>`;
       } else {
         descView.innerHTML = '<span class="text-gray-400 italic">No description provided</span>';
       }
@@ -1135,6 +1290,8 @@ const TaskDetailPanel = {
 
     this.setElementText('taskDetailCreatedAt', task.createdAt ? this.formatDateTime(task.createdAt) : '-');
     this.setElementText('taskDetailUpdatedAt', task.updatedAt ? this.formatDateTime(task.updatedAt) : '-');
+    this.renderTimeLog(task);
+    this.renderTimerButtonState();
     this.loadDependencies();
   },
 
@@ -1183,11 +1340,11 @@ const TaskDetailPanel = {
       <div class="flex items-center justify-between p-3 rounded-lg border ${cardClass} hover:shadow-sm transition-shadow">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-mono text-gray-600">${this.escapeHtml(task.id)}</span>
-            <span class="text-xs px-1.5 py-0.5 rounded ${this.getStatusClass(task.status)}">${this.escapeHtml(task.status)}</span>
+            <span class="text-xs font-mono text-gray-600">${escapeHtml(task.id)}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded ${this.getStatusClass(task.status)}">${escapeHtml(task.status)}</span>
             ${isBlocked ? '<span class="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">Blocking</span>' : ''}
           </div>
-          <div class="text-sm font-medium text-gray-900 truncate">${this.escapeHtml(task.title)}</div>
+          <div class="text-sm font-medium text-gray-900 truncate">${escapeHtml(task.title)}</div>
           <div class="text-xs text-gray-500 mt-1">
             <i class="fas fa-link ${iconClass} mr-1"></i>
             ${dep.dependencyType.replace(/_/g, '-')}
@@ -1224,11 +1381,13 @@ const TaskDetailPanel = {
     }
   },
 
-  removeDependency(dependencyId) {
-    if (!confirm('Remove this dependency?')) return;
+  async removeDependency(dependencyId) {
+    if (!await ConfirmModal('Remove this dependency?')) return;
 
+    showLoading(true);
     google.script.run
       .withSuccessHandler((result) => {
+        showLoading(false);
         if (result.success) {
           toast('Dependency removed', 'success');
           this.loadDependencies();
@@ -1237,6 +1396,7 @@ const TaskDetailPanel = {
         }
       })
       .withFailureHandler((error) => {
+        showLoading(false);
         console.error('Failed to remove dependency:', error);
         toast('Failed to remove dependency', 'error');
       })
@@ -1271,7 +1431,7 @@ const TaskDetailPanel = {
     if (statusSelect) {
       const statuses = config.statuses || defaultStatuses;
       statusSelect.innerHTML = statuses
-        .map(s => `<option value="${s}" ${s === this.task?.status ? 'selected' : ''}>${this.escapeHtml(s)}</option>`)
+        .map(s => `<option value="${s}" ${s === this.task?.status ? 'selected' : ''}>${escapeHtml(s)}</option>`)
         .join('');
     }
 
@@ -1279,7 +1439,7 @@ const TaskDetailPanel = {
     if (prioritySelect) {
       const priorities = config.priorities || defaultPriorities;
       prioritySelect.innerHTML = priorities
-        .map(p => `<option value="${p}" ${p === this.task?.priority ? 'selected' : ''}>${this.escapeHtml(p)}</option>`)
+        .map(p => `<option value="${p}" ${p === this.task?.priority ? 'selected' : ''}>${escapeHtml(p)}</option>`)
         .join('');
     }
 
@@ -1287,7 +1447,7 @@ const TaskDetailPanel = {
     if (typeSelect) {
       const types = config.types || defaultTypes;
       typeSelect.innerHTML = types
-        .map(t => `<option value="${t}" ${t === this.task?.type ? 'selected' : ''}>${this.escapeHtml(t)}</option>`)
+        .map(t => `<option value="${t}" ${t === this.task?.type ? 'selected' : ''}>${escapeHtml(t)}</option>`)
         .join('');
     }
 
@@ -1296,7 +1456,7 @@ const TaskDetailPanel = {
       const projects = State.projects || [];
       projectSelect.innerHTML = '<option value="">No Project</option>' +
         projects.map(p =>
-          `<option value="${p.id}" ${p.id === this.task?.projectId ? 'selected' : ''}>${this.escapeHtml(p.name)}</option>`
+          `<option value="${p.id}" ${p.id === this.task?.projectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
         ).join('');
     }
 
@@ -1305,7 +1465,7 @@ const TaskDetailPanel = {
       const users = State.users || [];
       assigneeSelect.innerHTML = '<option value="">Unassigned</option>' +
         users.map(u =>
-          `<option value="${u.email}" ${u.email === this.task?.assignee ? 'selected' : ''}>${this.escapeHtml(u.name || u.email)}</option>`
+          `<option value="${u.email}" ${u.email === this.task?.assignee ? 'selected' : ''}>${escapeHtml(u.name || u.email)}</option>`
         ).join('');
     }
   },
@@ -1332,8 +1492,10 @@ const TaskDetailPanel = {
     this.setMode('view');
     toast('Saving changes...', 'info');
 
+    showLoading(true);
     google.script.run
       .withSuccessHandler(() => {
+        showLoading(false);
         this.originalTask = JSON.parse(JSON.stringify(this.task));
         toast('Task updated successfully', 'success');
         if (typeof loadBoard === 'function') {
@@ -1341,6 +1503,7 @@ const TaskDetailPanel = {
         }
       })
       .withFailureHandler((error) => {
+        showLoading(false);
         console.error('Failed to save task:', error);
         this.task = previousTask;
         this.renderTask();
@@ -1351,14 +1514,14 @@ const TaskDetailPanel = {
       .saveTaskUpdate(this.task.id, formData);
   },
 
-  cancelChanges() {
+  async cancelChanges() {
     if (!this.originalTask) {
       this.setMode('view');
       return;
     }
 
     if (this.hasChanges()) {
-      if (!confirm('Are you sure you want to discard your changes?')) {
+      if (!await ConfirmModal('Are you sure you want to discard your changes?')) {
         return;
       }
     }
@@ -1426,13 +1589,6 @@ const TaskDetailPanel = {
 
   capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
-  },
-
-  escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   },
 
   getInitials(name) {
@@ -1573,10 +1729,10 @@ const TaskDetailPanel = {
     const formattedContent = comment.formattedContent || this.formatMentions(comment.content, comment.mentionedUsers);
 
     div.innerHTML = `
-      <div class="comment-avatar" title="${this.escapeHtml(comment.userId)}">${initials}</div>
+      <div class="comment-avatar" title="${escapeHtml(comment.userId)}">${initials}</div>
       <div class="flex-1 min-w-0">
         <div class="comment-header">
-          <span class="comment-author">${this.escapeHtml(authorName)}</span>
+          <span class="comment-author">${escapeHtml(authorName)}</span>
           <span class="comment-timestamp" title="${this.formatDateTime(comment.createdAt)}">${timestamp}</span>
           ${comment.isEdited ? '<span class="text-xs text-gray-400">(edited)</span>' : ''}
         </div>
@@ -1590,14 +1746,14 @@ const TaskDetailPanel = {
   formatMentions(content, mentionedUsers) {
     if (!content) return '';
 
-    let formatted = this.escapeHtml(content);
+    let formatted = escapeHtml(content);
 
     if (mentionedUsers && Array.isArray(mentionedUsers)) {
       mentionedUsers.forEach(email => {
         const displayName = this.getUserDisplayName(email);
         const regex = new RegExp(`@${this.escapeRegExp(email)}`, 'gi');
         formatted = formatted.replace(regex,
-          `<span class="mention" data-user="${this.escapeHtml(email)}" title="${this.escapeHtml(email)}">@${this.escapeHtml(displayName)}</span>`
+          `<span class="mention" data-user="${escapeHtml(email)}" title="${escapeHtml(email)}">@${escapeHtml(displayName)}</span>`
         );
       });
     }

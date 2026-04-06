@@ -1,5 +1,115 @@
+const REQUESTS_STATUS_MAP = {
+  'AH-ST-001': 'To Do',
+  'AH-ST-002': 'To Do',
+  'AH-ST-003': 'In Progress',
+  'AH-ST-004': 'Backlog',
+  'AH-ST-005': 'Backlog',
+  'AH-ST-006': 'Review',
+  'AH-ST-007': 'Done',
+  'AH-ST-008': 'Done',
+  'AH-ST-009': 'Done',
+  'AH-ST-010': 'Done',
+  'AH-ST-011': 'Done'
+};
+
+const REQUESTS_COLUMN_MAPPING = {
+  title: 'Request Name',
+  description: 'Description Of Request',
+  status: 'Status',
+  priority: 'Priority',
+  type: 'Request Type Category',
+  assignee: 'Assigned To',
+  dueDate: 'Target Completion Date',
+  startDate: 'Start Date Time',
+  estimatedHrs: 'Time To Complete Estimated Hours',
+  actualHrs: 'Time To Complete Actual Hours'
+};
+
+function getRequestsWorkbookId() {
+  return PropertiesService.getScriptProperties().getProperty('REQUESTS_WORKBOOK_ID') || '';
+}
+
+function setRequestsWorkbookId(workbookId) {
+  PropertiesService.getScriptProperties().setProperty('REQUESTS_WORKBOOK_ID', workbookId);
+  return true;
+}
+
+function getExistingRequestIds() {
+  try {
+    const sheet = getFunnelStagingSheet();
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return new Set();
+
+    const headers = data[0];
+    const rawDataCol = headers.indexOf('rawData');
+    const sourceSheetCol = headers.indexOf('sourceSheetName');
+    const ids = new Set();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][sourceSheetCol] !== 'Requests') continue;
+      try {
+        const raw = JSON.parse(data[i][rawDataCol]);
+        if (raw['Request ID']) ids.add(String(raw['Request ID']));
+      } catch (e) {}
+    }
+    return ids;
+  } catch (error) {
+    console.error('getExistingRequestIds error:', error);
+    return new Set();
+  }
+}
+
+function normalizeRequestStatus(statusCode) {
+  return REQUESTS_STATUS_MAP[statusCode] || 'To Do';
+}
+
+function importFromRequestsWorkbook(workbookId) {
+  try {
+    if (workbookId) {
+      setRequestsWorkbookId(workbookId);
+    }
+
+    const storedId = workbookId || getRequestsWorkbookId();
+    if (!storedId) {
+      return { success: false, error: 'No workbook ID configured', stagedCount: 0, skippedCount: 0 };
+    }
+
+    const result = importTicketsFromWorkbook(storedId, 'Requests');
+    if (!result.success) {
+      return { success: false, error: result.error, stagedCount: 0, skippedCount: 0 };
+    }
+
+    const existingIds = getExistingRequestIds();
+    const newTickets = result.tickets.filter(t => !existingIds.has(String(t['Request ID'] || '')));
+    const skippedCount = result.tickets.length - newTickets.length;
+
+    newTickets.forEach(ticket => {
+      if (ticket['Status']) {
+        ticket['Status'] = normalizeRequestStatus(ticket['Status']);
+      }
+    });
+
+    if (newTickets.length === 0) {
+      return { success: true, stagedCount: 0, skippedCount: skippedCount };
+    }
+
+    const stageResult = stageTicketsInFunnel(newTickets, REQUESTS_COLUMN_MAPPING, storedId, 'Requests');
+
+    return {
+      success: stageResult.success,
+      stagedCount: stageResult.stagedCount || 0,
+      skippedCount: skippedCount,
+      funnelIds: stageResult.funnelIds || [],
+      error: stageResult.error
+    };
+  } catch (error) {
+    console.error('importFromRequestsWorkbook error:', error);
+    return { success: false, error: error.message, stagedCount: 0, skippedCount: 0 };
+  }
+}
+
 function getFunnelStagingSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getColonySpreadsheet_();
   let sheet = ss.getSheetByName('Funnel_Staging');
 
   if (!sheet) {
@@ -108,6 +218,7 @@ function stageTicketsInFunnel(tickets, mapping, workbookId, sheetName) {
       ];
 
       let additionalContext = '';
+      const metadata = {};
       const usedColumns = Object.values(mapping);
 
       criticalUnmappedFields.forEach(fieldName => {
@@ -120,6 +231,7 @@ function stageTicketsInFunnel(tickets, mapping, workbookId, sheetName) {
             if (!usedColumns.includes(ticketKey) && ticket[ticketKey]) {
               const displayName = fieldName.replace(/([A-Z])/g, ' $1').trim();
               additionalContext += `\n**${displayName}:** ${ticket[ticketKey]}`;
+              metadata[fieldName] = ticket[ticketKey];
             }
           }
         });
@@ -130,6 +242,10 @@ function stageTicketsInFunnel(tickets, mapping, workbookId, sheetName) {
         mappedData.description = originalDesc +
           '\n\n---\n**Additional Request Details:**' +
           additionalContext;
+      }
+
+      if (Object.keys(metadata).length > 0) {
+        mappedData.customFields = JSON.stringify(metadata);
       }
 
       if (!mappedData.status) mappedData.status = 'To Do';
@@ -260,8 +376,9 @@ function updateFunnelTicket(funnelId, updates) {
   }
 }
 
-function importFunnelTicketsToTasks(funnelIds) {
+function importFunnelTicketsToTasks(funnelIds, options) {
   try {
+    options = options || {};
     const funnelTickets = getFunnelTickets().filter(t => funnelIds.includes(t.id));
 
     if (funnelTickets.length === 0) {
@@ -281,6 +398,17 @@ function importFunnelTicketsToTasks(funnelIds) {
 
         if (!taskData.projectId) {
           taskData.projectId = '';
+        }
+
+        if (!taskData.assignee) {
+          if (options.surgeUnassigned) {
+            taskData.assignee = '';
+            const existingLabels = taskData.labels ? String(taskData.labels).split(',').map(l => l.trim()).filter(l => l) : [];
+            existingLabels.push('surge');
+            taskData.labels = existingLabels;
+          } else if (options.assignTo) {
+            taskData.assignee = options.assignTo;
+          }
         }
 
         const task = createTask(taskData);

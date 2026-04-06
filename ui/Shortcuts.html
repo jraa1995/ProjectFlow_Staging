@@ -1,0 +1,86 @@
+<script>
+  document.addEventListener("keydown", function(e) {
+    if (CommandPalette.isOpen) {
+      CommandPalette.handleKeydown(e);
+      if (e.key === 'Escape') { CommandPalette.close(); return; }
+      return;
+    }
+
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) {
+      if (e.key === 'Escape') {
+        e.target.blur();
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      if (typeof TaskDetailPanel !== 'undefined' && TaskDetailPanel.isOpen) { TaskDetailPanel.close(); return; }
+      closeTaskModal();
+      closeProjectModal();
+      closeChangePasswordModal();
+      closeSetPasswordModal();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      CommandPalette.open();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+      e.preventDefault();
+      openTaskModal();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+      e.preventDefault();
+      var searchInput = $('searchInput');
+      if (searchInput) searchInput.focus();
+      return;
+    }
+
+    if (e.key === '?') {
+      e.preventDefault();
+      showShortcutsHelp();
+      return;
+    }
+
+    var viewShortcuts = { 'h': 'home', 'b': 'my', 'l': 'list', 't': 'timeline', 'p': 'projects', 'm': 'milestones', 's': 'sprints' };
+    if (viewShortcuts[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      switchView(viewShortcuts[e.key]);
+      return;
+    }
+  });
+
+  function showShortcutsHelp() {
+    var existing = document.getElementById('shortcutsHelp');
+    if (existing) { existing.remove(); return; }
+    var shortcuts = [
+      ['Ctrl/Cmd + K', 'Command Palette'],
+      ['Ctrl/Cmd + N', 'New Task'],
+      ['Ctrl/Cmd + /', 'Focus Search'],
+      ['H', 'Home Dashboard'],
+      ['B', 'My Board'],
+      ['L', 'List View'],
+      ['T', 'Timeline'],
+      ['P', 'Projects'],
+      ['M', 'Milestones'],
+      ['?', 'Toggle this help'],
+      ['Esc', 'Close modals/panels']
+    ];
+    var html = '<div id="shortcutsHelp" class="fixed inset-0 bg-black/40 flex items-center justify-center z-[70]" onclick="this.remove()">' +
+      '<div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onclick="event.stopPropagation()">' +
+      '<h3 class="text-lg font-semibold text-gray-900 mb-4">Keyboard Shortcuts</h3>' +
+      '<div class="space-y-2">' +
+      shortcuts.map(function(s) {
+        return '<div class="flex items-center justify-between"><span class="text-sm text-gray-600">' + s[1] + '</span><kbd class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono">' + s[0] + '</kbd></div>';
+      }).join('') +
+      '</div>' +
+      '<div class="mt-4 text-center"><button onclick="document.getElementById(\'shortcutsHelp\').remove()" class="text-sm text-gray-500 hover:text-gray-700">Close</button></div>' +
+      '</div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+  }
+</script>

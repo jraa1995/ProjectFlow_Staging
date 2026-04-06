@@ -1,0 +1,492 @@
+<script>
+  const LocalCache = {
+    prefix: 'co_',
+    get(key) {
+      try {
+        const item = localStorage.getItem(this.prefix + key);
+        if (!item) return null;
+        const parsed = JSON.parse(item);
+        if (parsed.expires && Date.now() > parsed.expires) {
+          this.remove(key);
+          return null;
+        }
+        return parsed.data;
+      } catch (e) {
+        return null;
+      }
+    },
+    set(key, data, ttlMinutes = 60) {
+      try {
+        const item = {
+          data,
+          expires: Date.now() + (ttlMinutes * 60 * 1000),
+          timestamp: Date.now()
+        };
+        localStorage.setItem(this.prefix + key, JSON.stringify(item));
+      } catch (e) {
+      }
+    },
+    remove(key) {
+      localStorage.removeItem(this.prefix + key);
+    },
+    clear() {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith(this.prefix))
+        .forEach(k => localStorage.removeItem(k));
+    }
+  };
+
+  const OptimisticUI = {
+    pendingOps: new Map(),
+    opId: 0,
+    generateOpId() {
+      return `op_${++this.opId}_${Date.now()}`;
+    },
+    apply(opType, data, domUpdate, stateUpdate, apiCall) {
+      const opId = this.generateOpId();
+      const snapshot = this.createSnapshot(opType, data);
+      domUpdate();
+      stateUpdate();
+      this.pendingOps.set(opId, {
+        opType,
+        data,
+        snapshot,
+        status: 'pending'
+      });
+      this.showPendingIndicator(data.taskId || data.id);
+      apiCall()
+        .then((result) => {
+          this.pendingOps.delete(opId);
+          this.hidePendingIndicator(data.taskId || data.id);
+          if (result?.version) {
+            SyncManager.setVersion(result.version);
+          }
+        })
+        .catch((error) => {
+          console.error(`❌ ${opType} failed, reverting:`, error);
+          this.revert(opId);
+          this.pendingOps.delete(opId);
+          this.hidePendingIndicator(data.taskId || data.id);
+          toast(`Failed to ${opType}: ${error.message || 'Unknown error'}`, 'error');
+        });
+      return opId;
+    },
+    createSnapshot(opType, data) {
+      switch (opType) {
+        case 'moveTask':
+          const task = State.tasks?.find(t => t.id === data.taskId);
+          return {
+            status: task?.status, position: task?.position
+          };
+        case 'updateTask':
+          const taskToUpdate = State.tasks?.find(t => t.id === data.taskId);
+          return taskToUpdate ? {
+            ...taskToUpdate
+          } : null;
+        case 'createTask':
+          return {
+            taskId: data.taskId
+          };
+        case 'deleteTask':
+          return State.tasks?.find(t => t.id === data.taskId);
+        default:
+          return null;
+      }
+    },
+    revert(opId) {
+      const op = this.pendingOps.get(opId);
+      if (!op || !op.snapshot) return;
+      switch (op.opType) {
+        case 'moveTask':
+          this.revertMoveTask(op.data.taskId, op.snapshot.status);
+          break;
+        case 'updateTask':
+          this.revertUpdateTask(op.data.taskId, op.snapshot);
+          break;
+        case 'createTask':
+          this.revertCreateTask(op.data.taskId);
+          break;
+        case 'deleteTask':
+          this.revertDeleteTask(op.snapshot);
+          break;
+      }
+    },
+    revertMoveTask(taskId, previousStatus) {
+      const card = document.querySelector(`[data-task-id="${taskId}"]`);
+      if (card && previousStatus) {
+        const targetColumn = document.querySelector(`.task-list[data-status="${previousStatus}"]`);
+        if (targetColumn) {
+          targetColumn.appendChild(card);
+          card.dataset.status = previousStatus;
+        }
+      }
+      if (State.tasks) {
+        const task = State.tasks.find(t => t.id === taskId);
+        if (task) task.status = previousStatus;
+      }
+      updateColumnCounts();
+    },
+    revertUpdateTask(taskId, snapshot) {
+      if (State.tasks) {
+        const idx = State.tasks.findIndex(t => t.id === taskId);
+        if (idx >= 0) State.tasks[idx] = snapshot;
+      }
+      updateTaskInDOM(taskId, snapshot);
+    },
+    revertCreateTask(taskId) {
+      const card = document.querySelector(`[data-task-id="${taskId}"]`);
+      if (card) card.remove();
+      if (State.tasks) {
+        State.tasks = State.tasks.filter(t => t.id !== taskId);
+      }
+      updateColumnCounts();
+    },
+    revertDeleteTask(snapshot) {
+      if (snapshot && State.tasks) {
+        State.tasks.push(snapshot);
+      }
+      loadBoard();
+    },
+    showPendingIndicator(taskId) {
+      const card = document.querySelector(`[data-task-id="${taskId}"]`);
+      if (card) {
+        card.classList.add('syncing');
+        if (!card.querySelector('.sync-indicator')) {
+          const indicator = document.createElement('div');
+          indicator.className = 'sync-indicator';
+          indicator.innerHTML = '<i class="fas fa-sync fa-spin"></i>';
+          card.appendChild(indicator);
+        }
+      }
+    },
+    hidePendingIndicator(taskId) {
+      const card = document.querySelector(`[data-task-id="${taskId}"]`);
+      if (card) {
+        card.classList.remove('syncing');
+        const indicator = card.querySelector('.sync-indicator');
+        if (indicator) indicator.remove();
+      }
+    },
+    hasPendingOps() {
+      return this.pendingOps.size > 0;
+    },
+    getPendingCount() {
+      return this.pendingOps.size;
+    }
+  };
+
+  const State = {
+    user: null,
+    board: null,
+    projects: [],
+    users: [],
+    view: "my",
+    projectFilter: null,
+    loading: false,
+    initialLoadComplete: false,
+    editingTask: null,
+    draggedTask: null,
+    currentView: "my",
+    timelineData: null,
+    analyticsData: null,
+    config: null,
+    cache: {
+      tasks: {
+        data: [],
+        lastFetched: null,
+        isFresh: false
+      },
+      projects: {
+        data: [],
+        lastFetched: null,
+        isFresh: false
+      },
+      users: {
+        data: [],
+        lastFetched: null,
+        isFresh: false
+      }
+    },
+    cacheConfig: {
+      ttl: 5 * 60 * 1000,
+      maxAge: 30 * 60 * 1000
+    },
+    getTasks() {
+      const cache = this.cache.tasks;
+      if (!cache.isFresh || !cache.lastFetched) return null;
+      const age = Date.now() - cache.lastFetched;
+      if (age > this.cacheConfig.maxAge) {
+        cache.isFresh = false;
+        return null;
+      }
+      return cache.data;
+    },
+    setTasks(tasks) {
+      this.cache.tasks = {
+        data: tasks,
+        lastFetched: Date.now(),
+        isFresh: true
+      };
+      this.tasks = tasks;
+    },
+    getProjects() {
+      const cache = this.cache.projects;
+      if (!cache.isFresh || !cache.lastFetched) return null;
+      const age = Date.now() - cache.lastFetched;
+      if (age > this.cacheConfig.maxAge) {
+        cache.isFresh = false;
+        return null;
+      }
+      return cache.data;
+    },
+    setProjects(projects) {
+      this.cache.projects = {
+        data: projects,
+        lastFetched: Date.now(),
+        isFresh: true
+      };
+      this.projects = projects;
+    },
+    getUsers() {
+      const cache = this.cache.users;
+      if (!cache.isFresh || !cache.lastFetched) return null;
+      const age = Date.now() - cache.lastFetched;
+      if (age > this.cacheConfig.maxAge) {
+        cache.isFresh = false;
+        return null;
+      }
+      return cache.data;
+    },
+    setUsers(users) {
+      this.cache.users = {
+        data: users,
+        lastFetched: Date.now(),
+        isFresh: true
+      };
+      this.users = users;
+    },
+    invalidateCache() {
+      this.cache.tasks.isFresh = false;
+      this.cache.projects.isFresh = false;
+      this.cache.users.isFresh = false;
+    },
+    hasFreshCache() {
+      const tasks = this.getTasks();
+      const projects = this.getProjects();
+      const users = this.getUsers();
+      return tasks !== null && projects !== null && users !== null;
+    }
+  };
+
+  const RequestQueue = {
+    pending: new Map(),
+    debounceMs: 300,
+    batchQueue: [],
+    batchTimer: null,
+    batchDelayMs: 100,
+    enqueue(key, fn, debounce = true) {
+      if (this.pending.has(key)) {
+        clearTimeout(this.pending.get(key).timer);
+      }
+      if (debounce) {
+        const timer = setTimeout(() => this.execute(key), this.debounceMs);
+        this.pending.set(key, {
+          fn,
+          timer
+        });
+      } else {
+        this.pending.set(key, {
+          fn,
+          timer: null
+        });
+        this.execute(key);
+      }
+    },
+    execute(key) {
+      const item = this.pending.get(key);
+      if (item) {
+        this.pending.delete(key);
+        try {
+          item.fn();
+        } catch (error) {
+          console.error(`Request ${key} failed:`, error);
+        }
+      }
+    },
+    cancel(key) {
+      if (this.pending.has(key)) {
+        clearTimeout(this.pending.get(key).timer);
+        this.pending.delete(key);
+      }
+    },
+    addToBatch(operation) {
+      this.batchQueue.push(operation);
+      if (this.batchTimer) {
+        clearTimeout(this.batchTimer);
+      }
+      this.batchTimer = setTimeout(() => this.flushBatch(), this.batchDelayMs);
+    },
+    flushBatch() {
+      if (this.batchQueue.length === 0) return;
+      const operations = [...this.batchQueue];
+      this.batchQueue = [];
+      this.batchTimer = null;
+      google.script.run
+        .withSuccessHandler((results) => {
+          results.results?.forEach((result) => {
+            if (!result.success) {
+              console.error('Batch operation failed:', result.error);
+            }
+          });
+        })
+        .withFailureHandler((error) => {
+          console.error('❌ Batch failed:', error);
+          toast('Some operations failed. Please refresh.', 'error');
+        })
+        .executeBatchOperations(operations);
+    },
+    clear() {
+      this.pending.forEach((item) => {
+        if (item.timer) clearTimeout(item.timer);
+      });
+      this.pending.clear();
+      if (this.batchTimer) {
+        clearTimeout(this.batchTimer);
+        this.batchTimer = null;
+      }
+      this.batchQueue = [];
+    }
+  };
+
+  const SyncManager = {
+    lastSyncVersion: 0,
+    pollTimer: null,
+    lastActivity: Date.now(),
+    isEnabled: true,
+    consecutiveNoChange: 0,
+    currentInterval: 15000,
+    INTERVALS: {
+      ACTIVE: 15000,
+      IDLE: 60000,
+      VERY_IDLE: 120000,
+      BACKOFF_MAX: 120000
+    },
+    IDLE_THRESHOLD: 2 * 60 * 1000,
+    VERY_IDLE_THRESHOLD: 5 * 60 * 1000,
+    BACKOFF_THRESHOLD: 3,
+    _immediateDebounce: null,
+    init() {
+      ['mousemove', 'keypress', 'scroll'].forEach(event => {
+        document.addEventListener(event, () => this.markActive(), { passive: true });
+      });
+      document.addEventListener('click', () => this._onUserAction(), { passive: true });
+      document.addEventListener('submit', () => this._onUserAction(), { passive: true });
+      document.addEventListener('dragend', () => this._onUserAction(), { passive: true });
+      document.addEventListener('visibilitychange', () => this._onVisibilityChange());
+      this.startPolling();
+    },
+    markActive() {
+      this.lastActivity = Date.now();
+    },
+    _onUserAction() {
+      this.lastActivity = Date.now();
+      if (this._immediateDebounce) clearTimeout(this._immediateDebounce);
+      this._immediateDebounce = setTimeout(() => {
+        if (this.isEnabled && !document.hidden) {
+          this.checkForUpdates();
+        }
+      }, 300);
+    },
+    _onVisibilityChange() {
+      if (document.hidden) {
+        this.stopPolling();
+      } else {
+        this.lastActivity = Date.now();
+        this.currentInterval = this.INTERVALS.ACTIVE;
+        this.consecutiveNoChange = 0;
+        this.checkForUpdates();
+        this.startPolling();
+      }
+    },
+    _getTargetInterval() {
+      const idle = Date.now() - this.lastActivity;
+      if (idle >= this.VERY_IDLE_THRESHOLD) return this.INTERVALS.VERY_IDLE;
+      if (idle >= this.IDLE_THRESHOLD) return this.INTERVALS.IDLE;
+      return this.INTERVALS.ACTIVE;
+    },
+    startPolling() {
+      if (this.pollTimer) clearTimeout(this.pollTimer);
+      const schedule = () => {
+        if (!this.isEnabled || document.hidden) return;
+        this.checkForUpdates();
+        this.pollTimer = setTimeout(schedule, this.currentInterval);
+      };
+      this.pollTimer = setTimeout(schedule, this.currentInterval);
+    },
+    stopPolling() {
+      if (this.pollTimer) {
+        clearTimeout(this.pollTimer);
+        this.pollTimer = null;
+      }
+    },
+    checkForUpdates() {
+      google.script.run
+        .withSuccessHandler((result) => {
+          const hasChanges = result.version > this.lastSyncVersion;
+          if (hasChanges) {
+            if (result.changedIds.length > 0) {
+              this.fetchChangedItems(result.changedIds);
+            }
+            this.lastSyncVersion = result.version;
+            this.consecutiveNoChange = 0;
+            this.currentInterval = this._getTargetInterval();
+          } else {
+            this.consecutiveNoChange++;
+            const base = this._getTargetInterval();
+            if (this.consecutiveNoChange >= this.BACKOFF_THRESHOLD) {
+              this.currentInterval = Math.min(this.currentInterval * 2, this.INTERVALS.BACKOFF_MAX);
+            } else {
+              this.currentInterval = base;
+            }
+          }
+        })
+        .withFailureHandler((error) => {
+          console.error('SyncManager checkForUpdates failed:', error);
+        })
+        .getChangesSince(this.lastSyncVersion);
+    },
+    fetchChangedItems(taskIds) {
+      if (!taskIds || taskIds.length === 0) return;
+      google.script.run
+        .withSuccessHandler((tasks) => {
+          tasks.forEach(task => {
+            updateTaskInDOM(task.id, task);
+            if (State.tasks) {
+              const index = State.tasks.findIndex(t => t.id === task.id);
+              if (index >= 0) {
+                State.tasks[index] = task;
+              } else {
+                State.tasks.push(task);
+              }
+            }
+          });
+          updateColumnCounts();
+        })
+        .withFailureHandler((error) => {
+          console.error('SyncManager fetchChangedItems failed:', error);
+        })
+        .getTasksByIds(taskIds);
+    },
+    forceFullSync() {
+      this.lastSyncVersion = 0;
+      this.consecutiveNoChange = 0;
+      this.currentInterval = this.INTERVALS.ACTIVE;
+      this.checkForUpdates();
+    },
+    setVersion(version) {
+      if (version && version > this.lastSyncVersion) {
+        this.lastSyncVersion = version;
+      }
+    }
+  };
+</script>

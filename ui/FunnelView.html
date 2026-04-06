@@ -6,12 +6,20 @@
           <i class="fas fa-filter text-primary-500 mr-2"></i>
           Ticket Funnel
         </h2>
-        <button
-          onclick="FunnelPage.openImportDialog()"
-          class="co-btn co-btn-primary"
-        >
-          <i class="fas fa-file-import"></i> Import Tickets
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            onclick="FunnelPage.syncRequests()"
+            class="co-btn co-btn-primary"
+          >
+            <i class="fas fa-sync"></i> Sync Requests
+          </button>
+          <button
+            onclick="FunnelPage.openImportDialog()"
+            class="co-btn co-btn-secondary"
+          >
+            <i class="fas fa-file-import"></i> Import Tickets
+          </button>
+        </div>
       </div>
       <div class="grid grid-cols-4 gap-4">
         <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
@@ -100,10 +108,13 @@
                 class="rounded"
               />
             </th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ID</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Req ID</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Title</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Requestor</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Priority</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Team</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Assignee</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Import Status</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Imported</th>
@@ -112,7 +123,7 @@
         </thead>
         <tbody id="funnelTableBody">
           <tr>
-            <td colspan="9" class="px-4 py-12 text-center text-gray-500">
+            <td colspan="12" class="px-4 py-12 text-center text-gray-500">
               <i class="fas fa-inbox text-4xl mb-3 text-gray-300"></i>
               <p>No tickets in funnel</p>
               <p class="text-sm mt-1">Click "Import Tickets" to get started</p>
@@ -209,6 +220,65 @@ const FunnelPage = {
     this.loadTickets();
   },
 
+  syncRequests() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        if (!result.workbookId) {
+          showLoading(false);
+          this.promptForWorkbookId();
+          return;
+        }
+        this.runSync(result.workbookId);
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to get workbook ID:', error);
+        showLoading(false);
+        this.promptForWorkbookId();
+      })
+      .getStoredRequestsWorkbookId();
+  },
+
+  async promptForWorkbookId() {
+    const workbookId = await PromptModal('Enter the Requests workbook ID (from the Google Sheets URL):', 'Paste Sheet ID here');
+    if (!workbookId) return;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(() => {
+        this.runSync(workbookId);
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to save workbook ID:', error);
+        toast('Failed to save workbook ID', 'error');
+        showLoading(false);
+      })
+      .saveRequestsWorkbookId(workbookId);
+  },
+
+  runSync(workbookId) {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Sync failed', 'error');
+          return;
+        }
+        const msg = result.stagedCount > 0
+          ? `Synced ${result.stagedCount} new request${result.stagedCount !== 1 ? 's' : ''}` +
+            (result.skippedCount > 0 ? ` (${result.skippedCount} already in funnel)` : '')
+          : `No new requests (${result.skippedCount} already in funnel)`;
+        toast(msg, result.stagedCount > 0 ? 'success' : 'info');
+        this.loadTickets();
+      })
+      .withFailureHandler((error) => {
+        console.error('Sync requests failed:', error);
+        toast('Sync failed: ' + error.message, 'error');
+        showLoading(false);
+      })
+      .syncRequestsFromWorkbook(workbookId);
+  },
+
   loadTickets() {
     showLoading(true);
     google.script.run
@@ -234,7 +304,7 @@ const FunnelPage = {
     if (this.filteredTickets.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="9" class="px-4 py-12 text-center text-gray-500">
+          <td colspan="12" class="px-4 py-12 text-center text-gray-500">
             <i class="fas fa-inbox text-4xl mb-3 text-gray-300"></i>
             <p>No tickets match your filters</p>
           </td>
@@ -250,6 +320,7 @@ const FunnelPage = {
   renderTicketRow(ticket) {
     const isSelected = this.selectedTickets.has(ticket.id);
     const mappedData = ticket.mappedData || {};
+    const rawData = ticket.rawData || {};
     return `
       <tr class="funnel-ticket-row ${isSelected ? 'selected' : ''}" data-ticket-id="${ticket.id}">
         <td class="px-4 py-3">
@@ -262,19 +333,28 @@ const FunnelPage = {
           />
         </td>
         <td class="px-4 py-3">
-          <span class="text-xs font-mono text-gray-500">${this.escapeHtml(ticket.id)}</span>
+          <span class="text-xs font-mono text-gray-500">${escapeHtml(rawData['Request ID'] || ticket.id)}</span>
         </td>
         <td class="px-4 py-3">
-          <span class="font-medium text-gray-900">${this.escapeHtml(mappedData.title || 'Untitled')}</span>
+          <span class="font-medium text-gray-900">${escapeHtml(mappedData.title || 'Untitled')}</span>
         </td>
         <td class="px-4 py-3">
-          <span class="co-badge co-badge-primary">${this.escapeHtml(mappedData.status || 'To Do')}</span>
+          <span class="text-sm text-gray-600">${escapeHtml(rawData['Requestor'] || '-')}</span>
         </td>
         <td class="px-4 py-3">
-          <span class="text-sm text-gray-600">${this.escapeHtml(mappedData.priority || 'Medium')}</span>
+          <span class="co-badge co-badge-primary">${escapeHtml(mappedData.status || 'To Do')}</span>
         </td>
         <td class="px-4 py-3">
-          <span class="text-sm text-gray-600">${this.escapeHtml(ticket.assignedTo || 'Unassigned')}</span>
+          <span class="text-sm text-gray-600">${escapeHtml(mappedData.priority || 'Medium')}</span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="text-sm text-gray-600">${escapeHtml(rawData['Assigned Team'] || '-')}</span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="text-sm text-gray-600">${escapeHtml(rawData['Topic'] || '-')}</span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="text-sm text-gray-600">${escapeHtml(ticket.assignedTo || 'Unassigned')}</span>
         </td>
         <td class="px-4 py-3">
           ${this.renderImportStatus(ticket.importStatus)}
@@ -355,11 +435,16 @@ const FunnelPage = {
       }
       if (searchQuery) {
         const mappedData = ticket.mappedData || {};
+        const rawData = ticket.rawData || {};
         const searchFields = [
           ticket.id,
           mappedData.title,
           mappedData.description,
-          ticket.assignedTo
+          ticket.assignedTo,
+          rawData['Request ID'],
+          rawData['Requestor'],
+          rawData['Assigned Team'],
+          rawData['Topic']
         ].filter(Boolean).map(f => String(f).toLowerCase());
         if (!searchFields.some(field => field.includes(searchQuery))) {
           return false;
@@ -539,7 +624,7 @@ const FunnelPage = {
                     ${this.unmappedFields.map(field => `
                       <div class="flex items-center gap-2">
                         <i class="fas fa-database text-blue-400"></i>
-                        <code class="bg-white px-2 py-0.5 rounded">${this.escapeHtml(field)}</code>
+                        <code class="bg-white px-2 py-0.5 rounded">${escapeHtml(field)}</code>
                       </div>
                     `).join('')}
                   </div>
@@ -567,8 +652,8 @@ const FunnelPage = {
                 >
                   <option value="">-- Not mapped --</option>
                   ${sourceColumns.map(col => `
-                    <option value="${this.escapeHtml(col)}" ${col === mappedColumn ? 'selected' : ''}>
-                      ${this.escapeHtml(col)}
+                    <option value="${escapeHtml(col)}" ${col === mappedColumn ? 'selected' : ''}>
+                      ${escapeHtml(col)}
                     </option>
                   `).join('')}
                 </select>
@@ -726,11 +811,11 @@ const FunnelPage = {
             });
             return `
               <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <div class="font-medium text-gray-900 mb-2">${this.escapeHtml(mapped.title || 'Untitled')}</div>
+                <div class="font-medium text-gray-900 mb-2">${escapeHtml(mapped.title || 'Untitled')}</div>
                 <div class="grid grid-cols-3 gap-2 text-sm text-gray-600">
-                  <div><strong>Status:</strong> ${this.escapeHtml(mapped.status || 'To Do')}</div>
-                  <div><strong>Priority:</strong> ${this.escapeHtml(mapped.priority || 'Medium')}</div>
-                  <div><strong>Type:</strong> ${this.escapeHtml(mapped.type || 'Task')}</div>
+                  <div><strong>Status:</strong> ${escapeHtml(mapped.status || 'To Do')}</div>
+                  <div><strong>Priority:</strong> ${escapeHtml(mapped.priority || 'Medium')}</div>
+                  <div><strong>Type:</strong> ${escapeHtml(mapped.type || 'Task')}</div>
                 </div>
               </div>
             `;
@@ -782,7 +867,7 @@ const FunnelPage = {
       );
   },
 
-  bulkImport() {
+  async bulkImport() {
     if (this.selectedTickets.size === 0) {
       toast('No tickets selected', 'warning');
       return;
@@ -790,11 +875,20 @@ const FunnelPage = {
 
     const selectedIds = Array.from(this.selectedTickets);
     const count = selectedIds.length;
+    const unassigned = this.tickets.filter(t => selectedIds.includes(t.id) && !t.mappedData?.assignee);
 
-    if (!confirm(`Import ${count} selected ticket(s) to Tasks?`)) {
+    if (unassigned.length > 0) {
+      this.showAssignmentModal(unassigned.length, count, (options) => {
+        this.executeImport(selectedIds, options);
+      });
       return;
     }
 
+    if (!await ConfirmModal(`Import ${count} selected ticket(s) to Tasks?`)) return;
+    this.executeImport(selectedIds, {});
+  },
+
+  executeImport(selectedIds, options) {
     showLoading(true);
     google.script.run
       .withSuccessHandler((result) => {
@@ -812,17 +906,70 @@ const FunnelPage = {
         console.error('Bulk import failed:', error);
         toast('Failed to import tickets', 'error');
       })
-      .importFunnelTicketsToTasks(selectedIds);
+      .importFunnelTicketsToTasks(selectedIds, options);
   },
 
-  bulkDelete() {
+  showAssignmentModal(unassignedCount, totalCount, callback) {
+    const existing = document.getElementById('assignmentModal');
+    if (existing) existing.remove();
+
+    const users = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    const userOptions = users.map(u =>
+      `<option value="${escapeHtml(u.email)}">${escapeHtml(u.name || u.email)}</option>`
+    ).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'assignmentModal';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
+    modal.innerHTML = `
+      <div class="bg-white rounded-lg shadow-xl p-6 w-96 max-w-full mx-4">
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">Unassigned Tickets</h3>
+        <p class="text-sm text-gray-600 mb-4">${unassignedCount} of ${totalCount} ticket(s) have no assignee.</p>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Assign to</label>
+          <select id="assignmentModalUser" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+            <option value="">Select a user...</option>
+            ${userOptions}
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <button id="assignmentModalAssign" class="flex-1 px-4 py-2 bg-gray-900 text-white rounded-md text-sm hover:bg-gray-800">
+            Assign & Import
+          </button>
+          <button id="assignmentModalSurge" class="flex-1 px-4 py-2 bg-orange-600 text-white rounded-md text-sm hover:bg-orange-700">
+            Push to Surge
+          </button>
+        </div>
+        <button id="assignmentModalCancel" class="w-full mt-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900">
+          Cancel
+        </button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    document.getElementById('assignmentModalAssign').onclick = () => {
+      const assignTo = document.getElementById('assignmentModalUser').value;
+      if (!assignTo) { toast('Select a user to assign', 'warning'); return; }
+      modal.remove();
+      callback({ assignTo: assignTo });
+    };
+    document.getElementById('assignmentModalSurge').onclick = () => {
+      modal.remove();
+      callback({ surgeUnassigned: true });
+    };
+    document.getElementById('assignmentModalCancel').onclick = () => {
+      modal.remove();
+    };
+  },
+
+  async bulkDelete() {
     if (this.selectedTickets.size === 0) {
       toast('No tickets selected', 'warning');
       return;
     }
 
     const count = this.selectedTickets.size;
-    if (!confirm(`Delete ${count} selected ticket(s) from funnel?`)) {
+    if (!await ConfirmModal(`Delete ${count} selected ticket(s) from funnel?`, { destructive: true })) {
       return;
     }
 
@@ -843,12 +990,12 @@ const FunnelPage = {
       .deleteFunnelTickets(selectedIds);
   },
 
-  openBulkAssignDialog() {
+  async openBulkAssignDialog() {
     if (this.selectedTickets.size === 0) {
       toast('No tickets selected', 'warning');
       return;
     }
-    const assignee = prompt('Enter assignee email:');
+    const assignee = await PromptModal('Enter assignee email:', 'email@example.com');
     if (assignee) {
       this.bulkAssign(assignee);
     }
@@ -899,8 +1046,8 @@ const FunnelPage = {
     alert(`Ticket Details:\n\n${JSON.stringify(ticket, null, 2)}`);
   },
 
-  deleteTicket(ticketId) {
-    if (!confirm('Delete this ticket from funnel?')) {
+  async deleteTicket(ticketId) {
+    if (!await ConfirmModal('Delete this ticket from funnel?', { destructive: true })) {
       return;
     }
 
@@ -917,13 +1064,6 @@ const FunnelPage = {
         toast('Failed to delete ticket', 'error');
       })
       .deleteFunnelTickets([ticketId]);
-  },
-
-  escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   },
 
   formatDate(dateStr) {

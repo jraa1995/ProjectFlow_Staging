@@ -1,0 +1,295 @@
+<script>
+  let lastAnalyticsDateRange = null;
+
+  function loadAnalyticsData() {
+    const dateRange = $("analyticsDateRange")?.value || "30";
+    const isSameContext = (lastAnalyticsDateRange === dateRange);
+    if (State.analyticsData && isSameContext) {
+      handleAnalyticsData(State.analyticsData);
+      return;
+    }
+    if (State.analyticsData) {
+      handleAnalyticsData(State.analyticsData);
+    } else {
+      showLoading(true);
+    }
+    lastAnalyticsDateRange = dateRange;
+    google.script.run
+      .withSuccessHandler(handleAnalyticsData)
+      .withFailureHandler(handleAnalyticsError)
+      .getAnalyticsData(parseInt(dateRange));
+  }
+
+  function handleAnalyticsData(data) {
+    showLoading(false);
+    if (!data) {
+      toast("No analytics data available", "warning");
+      return;
+    }
+    State.analyticsData = data;
+    updateAnalyticsMetrics(data.metrics);
+    updateCompletionChart(data.completionTrend);
+    updatePriorityChart(data.priorityDistribution);
+    updateTeamProductivity(data.teamProductivity);
+    updateProjectHealth(data.projectHealth);
+    updateRecentActivity(data.recentActivity);
+  }
+
+  function handleAnalyticsError(error) {
+    console.error("Analytics error:", error);
+    showLoading(false);
+    toast("Failed to load analytics data", "error");
+  }
+
+  function updateAnalyticsMetrics(metrics) {
+    if (!metrics) return;
+    const elements = {
+      analyticsStatTotal: metrics.total,
+      analyticsStatCompleted: metrics.completed,
+      analyticsStatInProgress: metrics.inProgress,
+      analyticsStatOverdue: metrics.overdue,
+      totalTasks: metrics.total,
+      completedTasks: metrics.completed,
+      inProgressTasks: metrics.inProgress,
+      overdueTasks: metrics.overdue,
+    };
+    Object.entries(elements).forEach(([id, value]) => {
+      const el = $(id);
+      if (el) el.textContent = value || 0;
+    });
+  }
+
+  function updateCompletionChart(data) {
+    const canvas = $("completionTrendCanvas");
+    if (!canvas || !data) {
+      return;
+    }
+    if (!window.Chart) {
+      if (canvas && canvas.parentElement) {
+        canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><div class="text-center"><i class="fas fa-chart-line text-4xl mb-2 text-gray-300"></i><p>Chart library unavailable</p></div></div>';
+      }
+      return;
+    }
+    try {
+      if (window.completionTrendChart) {
+        window.completionTrendChart.destroy();
+      }
+      const ctx = canvas.getContext("2d");
+      window.completionTrendChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: data.map((item) => item.date),
+          datasets: [{
+            label: "Tasks Completed",
+            data: data.map((item) => item.completed || 0),
+            borderColor: "#525252",
+            backgroundColor: "rgba(82, 82, 82, 0.1)",
+            fill: true,
+            tension: 0.3,
+          }, ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+          },
+          scales: {
+            y: {
+              beginAtZero: true
+            },
+          },
+        },
+      });
+    } catch (error) {
+      console.error('❌ Failed to render completion chart:', error);
+      if (canvas && canvas.parentElement) {
+        canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-red-500"><div class="text-center"><i class="fas fa-exclamation-triangle text-4xl mb-2"></i><p>Chart failed to render</p></div></div>';
+      }
+    }
+  }
+
+  function updatePriorityChart(data) {
+    const canvas = $("priorityChartCanvas");
+    if (!canvas || !data) {
+      return;
+    }
+    if (!window.Chart) {
+      if (canvas && canvas.parentElement) {
+        canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><div class="text-center"><i class="fas fa-chart-pie text-4xl mb-2 text-gray-300"></i><p>Chart library unavailable</p></div></div>';
+      }
+      return;
+    }
+    try {
+      if (window.priorityChart) {
+        window.priorityChart.destroy();
+      }
+      const colors = {
+        Critical: "#dc2626",
+        High: "#f97316",
+        Medium: "#eab308",
+        Low: "#22c55e",
+      };
+      const ctx = canvas.getContext("2d");
+      window.priorityChart = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+          labels: data.map((item) => item.priority),
+          datasets: [{
+            data: data.map((item) => item.count),
+            backgroundColor: data.map(
+              (item) => colors[item.priority] || "#6b7280"
+            ),
+          }, ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: "bottom"
+            },
+          },
+        },
+      });
+    } catch (error) {
+      console.error('❌ Failed to render priority chart:', error);
+      if (canvas && canvas.parentElement) {
+        canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-red-500"><div class="text-center"><i class="fas fa-exclamation-triangle text-4xl mb-2"></i><p>Chart failed to render</p></div></div>';
+      }
+    }
+  }
+
+  function updateTeamProductivity(data) {
+    const container = $("teamProductivityList");
+    if (!container || !data) return;
+    if (data.length === 0) {
+      container.innerHTML =
+        '<div class="p-4 text-center text-gray-500">No team data available</div>';
+      return;
+    }
+    container.innerHTML = data
+      .slice(0, 10)
+      .map(
+        (member) => `
+  <div class="flex items-center justify-between p-3 hover:bg-gray-50">
+  <div class="flex items-center gap-3">
+  <div class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white text-sm font-medium">
+  ${getInitials(member.name)}
+  </div>
+  <div>
+  <div class="font-medium text-gray-900">${escapeHtml(
+    member.name
+    )}</div>
+  <div class="text-xs text-gray-500">${member.tasksCompleted}/${
+    member.totalTasks
+  } completed</div>
+  </div>
+  </div>
+  <div class="flex items-center gap-2">
+  <div class="w-24 bg-gray-200 rounded-full h-2">
+  <div class="bg-primary-500 h-2 rounded-full" style="width: ${
+    member.productivity
+  }%"></div>
+  </div>
+  <span class="text-sm font-medium text-gray-600">${
+    member.productivity
+  }%</span>
+  </div>
+  </div>
+  `
+      )
+      .join("");
+  }
+
+  function updateProjectHealth(data) {
+    const container = $("projectHealthList");
+    if (!container || !data) return;
+    if (data.length === 0) {
+      container.innerHTML =
+        '<div class="p-4 text-center text-gray-500">No projects found</div>';
+      return;
+    }
+    const healthColors = {
+      excellent: "bg-green-100 text-green-800",
+      good: "bg-blue-100 text-blue-800",
+      "at-risk": "bg-gray-100 text-gray-800",
+      poor: "bg-red-100 text-red-800",
+    };
+    container.innerHTML = data
+      .map(
+        (project) => `
+  <div class="p-4 border-b border-gray-100 last:border-0">
+  <div class="flex items-center justify-between mb-2">
+  <span class="font-medium text-gray-900">${escapeHtml(
+    project.name
+    )}</span>
+  <span class="px-2 py-1 rounded text-xs font-medium ${
+    healthColors[project.health] || "bg-gray-100"
+  }">${project.health}</span>
+  </div>
+  <div class="flex items-center gap-2">
+  <div class="flex-1 bg-gray-200 rounded-full h-2">
+  <div class="bg-primary-500 h-2 rounded-full" style="width: ${
+    project.progress
+  }%"></div>
+  </div>
+  <span class="text-sm text-gray-500">${project.progress}%</span>
+  </div>
+  <div class="text-xs text-gray-500 mt-1">${project.tasksCompleted}/${
+    project.totalTasks
+  } tasks completed</div>
+  </div>
+  `
+      )
+      .join("");
+  }
+
+  function updateRecentActivity(data) {
+    const container = $("recentActivity") || $("recentActivityList");
+    if (!container || !data) return;
+    if (data.length === 0) {
+      container.innerHTML =
+        '<div class="p-4 text-center text-gray-500">No recent activity</div>';
+      return;
+    }
+    container.innerHTML = data
+      .slice(0, 10)
+      .map(
+        (activity) => `
+  <div class="flex items-start gap-3 p-3 hover:bg-gray-50">
+  <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm">
+  <i class="fas ${getActivityIcon(activity.type)}"></i>
+  </div>
+  <div class="flex-1">
+  <div class="text-sm text-gray-900">${escapeHtml(
+    activity.description
+    )}</div>
+  <div class="text-xs text-gray-500">${escapeHtml(
+    activity.user
+    )} • ${formatRelativeTime(activity.timestamp)}</div>
+  </div>
+  </div>
+  `
+      )
+      .join("");
+  }
+
+  function getActivityIcon(type) {
+    const icons = {
+      created: "fa-plus",
+      updated: "fa-edit",
+      moved: "fa-arrows-alt",
+      completed: "fa-check",
+      comment: "fa-comment",
+      assigned: "fa-user-plus",
+    };
+    return icons[type] || "fa-circle";
+  }
+
+  function refreshAnalytics() {
+    loadAnalyticsData();
+  }
+</script>

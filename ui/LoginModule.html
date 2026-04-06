@@ -1,0 +1,536 @@
+<script>
+  var loginAnimationId = null;
+
+  function startLoginAnimation() {
+    var canvas = $('loginCanvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    var nodes = [];
+    for (var i = 0; i < 50; i++) {
+      nodes.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        r: Math.random() * 2 + 1
+      });
+    }
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        n.x += n.vx; n.y += n.vy;
+        if (n.x < 0 || n.x > canvas.width) n.vx *= -1;
+        if (n.y < 0 || n.y > canvas.height) n.vy *= -1;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(107,114,128,0.4)';
+        ctx.fill();
+        for (var j = i + 1; j < nodes.length; j++) {
+          var dx = n.x - nodes[j].x, dy = n.y - nodes[j].y;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 150) {
+            ctx.beginPath();
+            ctx.moveTo(n.x, n.y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.strokeStyle = 'rgba(107,114,128,' + (0.15 * (1 - dist / 150)) + ')';
+            ctx.stroke();
+          }
+        }
+      }
+      loginAnimationId = requestAnimationFrame(draw);
+    }
+    draw();
+  }
+
+  function stopLoginAnimation() {
+    if (loginAnimationId) { cancelAnimationFrame(loginAnimationId); loginAnimationId = null; }
+  }
+
+  const LoginModal = {
+    isVisible: false,
+    isLoading: false,
+    errorMessage: null,
+    pendingEmail: null,
+    state: 'login',
+    resendTimer: null,
+
+    show() {
+      var page = $('loginPage');
+      if (page) {
+        page.classList.remove('hidden');
+        page.style.opacity = '1';
+        var card = $('loginCard');
+        if (card) { card.classList.remove('card-exit'); }
+        page.classList.remove('login-exit');
+        this.isVisible = true;
+        this.showLoginState();
+        startLoginAnimation();
+        var emailInput = $('loginEmail');
+        if (emailInput) setTimeout(function() { emailInput.focus(); }, 100);
+      }
+    },
+
+    hide() {
+      var page = $('loginPage');
+      if (!page) return;
+      var card = $('loginCard');
+      if (card) card.classList.add('card-exit');
+      page.classList.add('login-exit');
+      var self = this;
+      setTimeout(function() {
+        page.classList.add('hidden');
+        page.classList.remove('login-exit');
+        if (card) card.classList.remove('card-exit');
+        stopLoginAnimation();
+        self.isVisible = false;
+        self.clearError();
+        self.setLoading(false);
+      }, 400);
+    },
+
+    showLoginState() {
+      this.state = 'login';
+      this.clearAllErrors();
+      var s = $('loginState'), fe = $('forgotEmailState'), fv = $('forgotVerifyState');
+      if (s) s.classList.remove('hidden');
+      if (fe) fe.classList.add('hidden');
+      if (fv) fv.classList.add('hidden');
+      var sub = $('loginSubtitle');
+      if (sub) sub.textContent = 'Sign in to continue to your workspace';
+    },
+
+    showForgotPassword() {
+      this.state = 'forgot-email';
+      this.clearAllErrors();
+      var s = $('loginState'), fe = $('forgotEmailState'), fv = $('forgotVerifyState');
+      if (s) s.classList.add('hidden');
+      if (fe) fe.classList.remove('hidden');
+      if (fv) fv.classList.add('hidden');
+      var sub = $('loginSubtitle');
+      if (sub) sub.textContent = 'Reset your password';
+      var emailInput = $('resetEmail');
+      if (emailInput) {
+        emailInput.value = this.pendingEmail || '';
+        setTimeout(function() { emailInput.focus(); }, 100);
+      }
+    },
+
+    showVerifyState() {
+      this.state = 'forgot-verify';
+      this.clearAllErrors();
+      var s = $('loginState'), fe = $('forgotEmailState'), fv = $('forgotVerifyState');
+      if (s) s.classList.add('hidden');
+      if (fe) fe.classList.add('hidden');
+      if (fv) fv.classList.remove('hidden');
+      var sub = $('loginSubtitle');
+      if (sub) sub.textContent = 'Enter your reset code';
+      var emailLabel = $('resetVerifyEmail');
+      if (emailLabel) emailLabel.textContent = 'Code sent to ' + (this.pendingEmail || '');
+      this.startResendTimer();
+    },
+
+    handleRequestReset(event) {
+      event.preventDefault();
+      var emailInput = $('resetEmail');
+      var email = emailInput ? emailInput.value.trim() : '';
+      if (!this.validateEmail(email)) {
+        this.showResetError('resetEmailError', 'resetEmailErrorText', 'Please enter a valid email');
+        return;
+      }
+      this.pendingEmail = email;
+      this.setResetLoading('resetEmailBtn', 'resetEmailBtnText', 'resetEmailSpinner', true, 'Sending...');
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          self.setResetLoading('resetEmailBtn', 'resetEmailBtnText', 'resetEmailSpinner', false, 'Send Reset Code');
+          if (!result.success) {
+            self.showResetError('resetEmailError', 'resetEmailErrorText', result.error || 'Failed to send reset code');
+            return;
+          }
+          self.showVerifyState();
+          toast('Reset code sent to your email', 'success');
+        })
+        .withFailureHandler(function(error) {
+          self.setResetLoading('resetEmailBtn', 'resetEmailBtnText', 'resetEmailSpinner', false, 'Send Reset Code');
+          self.showResetError('resetEmailError', 'resetEmailErrorText', error.message || 'Failed to send reset code');
+        })
+        .requestPasswordReset(email);
+    },
+
+    handleResetPassword(event) {
+      event.preventDefault();
+      var code = ($('resetCode') || {}).value || '';
+      var newPw = ($('resetNewPassword') || {}).value || '';
+      var confirmPw = ($('resetConfirmPassword') || {}).value || '';
+      if (code.length !== 6) {
+        this.showResetError('resetVerifyError', 'resetVerifyErrorText', 'Code must be 6 digits');
+        return;
+      }
+      if (newPw.length < 8) {
+        this.showResetError('resetVerifyError', 'resetVerifyErrorText', 'Password must be at least 8 characters');
+        return;
+      }
+      if (newPw !== confirmPw) {
+        this.showResetError('resetVerifyError', 'resetVerifyErrorText', 'Passwords do not match');
+        return;
+      }
+      if (!/[A-Z]/.test(newPw) || !/[a-z]/.test(newPw) || !/[0-9]/.test(newPw)) {
+        this.showResetError('resetVerifyError', 'resetVerifyErrorText', 'Password needs uppercase, lowercase, and a number');
+        return;
+      }
+      this.setResetLoading('resetVerifyBtn', 'resetVerifyBtnText', 'resetVerifySpinner', true, 'Resetting...');
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          self.setResetLoading('resetVerifyBtn', 'resetVerifyBtnText', 'resetVerifySpinner', false, 'Reset Password');
+          if (!result.success) {
+            self.showResetError('resetVerifyError', 'resetVerifyErrorText', result.error || 'Reset failed');
+            return;
+          }
+          toast('Password reset successfully! Please sign in.', 'success');
+          self.showLoginState();
+          var emailInput = $('loginEmail');
+          if (emailInput) emailInput.value = self.pendingEmail || '';
+          var pwInput = $('loginPassword');
+          if (pwInput) { pwInput.value = ''; setTimeout(function() { pwInput.focus(); }, 100); }
+        })
+        .withFailureHandler(function(error) {
+          self.setResetLoading('resetVerifyBtn', 'resetVerifyBtnText', 'resetVerifySpinner', false, 'Reset Password');
+          self.showResetError('resetVerifyError', 'resetVerifyErrorText', error.message || 'Reset failed');
+        })
+        .resetPasswordWithCode(self.pendingEmail, code, newPw);
+    },
+
+    resendCode() {
+      if (this.pendingEmail) {
+        var self = this;
+        var btn = $('resendCodeBtn');
+        if (btn) btn.disabled = true;
+        google.script.run
+          .withSuccessHandler(function() {
+            toast('New code sent', 'success');
+            self.startResendTimer();
+          })
+          .withFailureHandler(function() {
+            toast('Failed to resend code', 'error');
+            if (btn) btn.disabled = false;
+          })
+          .requestPasswordReset(self.pendingEmail);
+      }
+    },
+
+    startResendTimer() {
+      var btn = $('resendCodeBtn');
+      var text = $('resendCodeText');
+      if (btn) btn.disabled = true;
+      var seconds = 60;
+      if (this.resendTimer) clearInterval(this.resendTimer);
+      function tick() {
+        if (text) text.textContent = 'Resend in ' + seconds + 's';
+        seconds--;
+        if (seconds < 0) {
+          clearInterval(LoginModal.resendTimer);
+          if (btn) btn.disabled = false;
+          if (text) text.textContent = 'Resend Code';
+        }
+      }
+      tick();
+      this.resendTimer = setInterval(tick, 1000);
+    },
+
+    showResetError(containerId, textId, message) {
+      var container = $(containerId);
+      var textEl = $(textId);
+      if (container && textEl) {
+        textEl.textContent = message;
+        container.classList.remove('hidden');
+      }
+    },
+
+    setResetLoading(btnId, textId, spinnerId, loading, label) {
+      var btn = $(btnId);
+      var text = $(textId);
+      var spinner = $(spinnerId);
+      if (btn) btn.disabled = loading;
+      if (text) text.textContent = loading ? label : label;
+      if (spinner) spinner.classList.toggle('hidden', !loading);
+    },
+
+    clearAllErrors() {
+      this.clearError();
+      var ids = ['resetEmailError', 'resetVerifyError'];
+      ids.forEach(function(id) { var el = $(id); if (el) el.classList.add('hidden'); });
+    },
+
+    handleLogin(event) {
+      event.preventDefault();
+      var emailInput = $('loginEmail');
+      var passwordInput = $('loginPassword');
+      var email = emailInput ? emailInput.value.trim() : '';
+      var password = passwordInput ? passwordInput.value : '';
+      if (!this.validateEmail(email)) {
+        this.showError('Please enter a valid email address');
+        return;
+      }
+      this.setLoading(true);
+      this.clearError();
+      this.pendingEmail = email;
+      if (password) {
+        google.script.run
+          .withSuccessHandler((data) => this.handlePasswordLoginSuccess(data))
+          .withFailureHandler((error) => this.handleLoginFailure(error))
+          .loginWithPassword(email, password, {});
+      } else {
+        google.script.run
+          .withSuccessHandler((data) => this.handleEmailLoginSuccess(data))
+          .withFailureHandler((error) => this.handleEmailLoginFailure(error))
+          .loginWithEmail(email);
+      }
+    },
+
+    validateEmail(email) {
+      if (!email) return false;
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    },
+
+    handlePasswordLoginSuccess(data) {
+      this.setLoading(false);
+      if (!data.success) {
+        if (data.passwordNotSet) {
+          this.hide();
+          openSetPasswordModal(this.pendingEmail);
+          return;
+        }
+        this.showError(data.error || 'Login failed.');
+        return;
+      }
+      this.hide();
+      handleInitialData(data);
+      toast('Welcome back, ' + (data.user.name || data.user.email) + '!', 'success');
+    },
+
+    handleEmailLoginSuccess(data) {
+      this.setLoading(false);
+      this.hide();
+      handleInitialData(data);
+      openSetPasswordModal(data.user.email);
+      toast('Welcome! Please set a password to secure your account.', 'info');
+    },
+
+    handleEmailLoginFailure(error) {
+      this.setLoading(false);
+      var message = error && error.message ? error.message : 'Login failed.';
+      if (message.includes('Password required')) {
+        this.showError('This account requires a password. Please enter your password.');
+        var hint = $('passwordHint');
+        if (hint) hint.classList.add('hidden');
+        var pwInput = $('loginPassword');
+        if (pwInput) setTimeout(function() { pwInput.focus(); }, 100);
+      } else {
+        this.handleLoginFailure(error);
+      }
+    },
+
+    handleLoginFailure(error) {
+      console.error('Login failed:', error);
+      this.setLoading(false);
+      var message = 'Login failed. Please try again.';
+      if (error && error.message) message = error.message;
+      if (message.includes('not found')) message = 'User not found. Please contact your administrator for access.';
+      else if (message.includes('Invalid email or password')) message = 'Invalid email or password. Please try again.';
+      this.showError(message);
+    },
+
+    showError(message) {
+      this.errorMessage = message;
+      var errorContainer = $('loginError');
+      var errorText = $('loginErrorText');
+      if (errorContainer && errorText) {
+        errorText.textContent = message;
+        errorContainer.classList.remove('hidden');
+        errorContainer.classList.add('login-error-shake');
+        setTimeout(function() { errorContainer.classList.remove('login-error-shake'); }, 500);
+      }
+    },
+
+    clearError() {
+      this.errorMessage = null;
+      var errorContainer = $('loginError');
+      if (errorContainer) errorContainer.classList.add('hidden');
+    },
+
+    setLoading(loading) {
+      this.isLoading = loading;
+      var submitBtn = $('loginSubmitBtn');
+      var btnText = $('loginBtnText');
+      var spinner = $('loginSpinner');
+      var emailInput = $('loginEmail');
+      var passwordInput = $('loginPassword');
+      if (submitBtn) submitBtn.disabled = loading;
+      if (btnText) btnText.textContent = loading ? 'Signing in...' : 'Sign In';
+      if (spinner) spinner.classList.toggle('hidden', !loading);
+      if (emailInput) emailInput.disabled = loading;
+      if (passwordInput) passwordInput.disabled = loading;
+    }
+  };
+
+  function showLoginForm() {
+    LoginModal.show();
+  }
+
+  function handleLogout() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(() => {
+        showLoading(false);
+        State.user = null;
+        State.board = null;
+        State.projects = [];
+        State.users = [];
+        const avatar = $("userAvatar");
+        const name = $("userName");
+        const email = $("userEmail");
+        if (avatar) avatar.textContent = "?";
+        if (name) name.textContent = "Not logged in";
+        if (email) email.textContent = "";
+        const board = $("board");
+        if (board) board.innerHTML = "";
+        LoginModal.show();
+        toast("You have been logged out", "info");
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        handleError(error);
+      })
+      .logout();
+  }
+
+  function openChangePasswordModal() {
+    var modal = $("changePasswordModal");
+    if (!modal) return;
+    // Reset form
+    var form = $("changePasswordForm");
+    if (form) form.reset();
+    var errEl = $("changePasswordError");
+    var succEl = $("changePasswordSuccess");
+    if (errEl) errEl.classList.add("hidden");
+    if (succEl) succEl.classList.add("hidden");
+    // Show current password field (user already has a password)
+    var cpGroup = $("currentPasswordGroup");
+    if (cpGroup) cpGroup.style.display = "";
+    modal.classList.remove("hidden");
+  }
+
+  function closeChangePasswordModal() {
+    var modal = $("changePasswordModal");
+    if (modal) modal.classList.add("hidden");
+  }
+
+  function handleChangePassword(event) {
+    event.preventDefault();
+    var errEl = $("changePasswordError");
+    var succEl = $("changePasswordSuccess");
+    var btn = $("changePasswordBtn");
+    if (errEl) errEl.classList.add("hidden");
+    if (succEl) succEl.classList.add("hidden");
+
+    var currentPw = ($("currentPassword") || {}).value || "";
+    var newPw = ($("newPassword") || {}).value || "";
+    var confirmPw = ($("confirmPassword") || {}).value || "";
+
+    if (newPw.length < 8) {
+      if (errEl) { errEl.textContent = "Password must be at least 8 characters."; errEl.classList.remove("hidden"); }
+      return;
+    }
+    if (!/[A-Z]/.test(newPw) || !/[a-z]/.test(newPw) || !/[0-9]/.test(newPw)) {
+      if (errEl) { errEl.textContent = "Password must contain uppercase, lowercase, and a number."; errEl.classList.remove("hidden"); }
+      return;
+    }
+    if (newPw !== confirmPw) {
+      if (errEl) { errEl.textContent = "Passwords do not match."; errEl.classList.remove("hidden"); }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = "Updating..."; }
+    var email = State.user ? State.user.email : null;
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (btn) { btn.disabled = false; btn.textContent = "Update Password"; }
+        if (result && result.success) {
+          if (succEl) { succEl.textContent = "Password updated successfully!"; succEl.classList.remove("hidden"); }
+          setTimeout(function() { closeChangePasswordModal(); }, 1500);
+        } else {
+          if (errEl) { errEl.textContent = (result && result.error) || "Failed to update password."; errEl.classList.remove("hidden"); }
+        }
+      })
+      .withFailureHandler(function(error) {
+        if (btn) { btn.disabled = false; btn.textContent = "Update Password"; }
+        if (errEl) { errEl.textContent = error.message || "Failed to update password."; errEl.classList.remove("hidden"); }
+      })
+      .setUserPassword(email, newPw, currentPw);
+  }
+
+  var _pendingSetPasswordEmail = null;
+
+  function openSetPasswordModal(email) {
+    _pendingSetPasswordEmail = email || (State.user ? State.user.email : null);
+    var modal = $("setPasswordModal");
+    if (!modal) return;
+    var form = $("setPasswordForm");
+    if (form) form.reset();
+    var errEl = $("setPasswordError");
+    if (errEl) errEl.classList.add("hidden");
+    modal.classList.remove("hidden");
+  }
+
+  function closeSetPasswordModal() {
+    var modal = $("setPasswordModal");
+    if (modal) modal.classList.add("hidden");
+    _pendingSetPasswordEmail = null;
+  }
+
+  function handleSetPassword(event) {
+    event.preventDefault();
+    var errEl = $("setPasswordError");
+    var btn = $("setPasswordBtn");
+    if (errEl) errEl.classList.add("hidden");
+
+    var newPw = ($("setupNewPassword") || {}).value || "";
+    var confirmPw = ($("setupConfirmPassword") || {}).value || "";
+
+    if (newPw.length < 8) {
+      if (errEl) { errEl.textContent = "Password must be at least 8 characters."; errEl.classList.remove("hidden"); }
+      return;
+    }
+    if (!/[A-Z]/.test(newPw) || !/[a-z]/.test(newPw) || !/[0-9]/.test(newPw)) {
+      if (errEl) { errEl.textContent = "Password must contain uppercase, lowercase, and a number."; errEl.classList.remove("hidden"); }
+      return;
+    }
+    if (newPw !== confirmPw) {
+      if (errEl) { errEl.textContent = "Passwords do not match."; errEl.classList.remove("hidden"); }
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = "Setting up..."; }
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (btn) { btn.disabled = false; btn.textContent = "Create Password & Continue"; }
+        if (result && result.success) {
+          closeSetPasswordModal();
+          toast("Password set successfully! Your account is now secured.", "success");
+        } else {
+          if (errEl) { errEl.textContent = (result && result.error) || "Failed to set password."; errEl.classList.remove("hidden"); }
+        }
+      })
+      .withFailureHandler(function(error) {
+        if (btn) { btn.disabled = false; btn.textContent = "Create Password & Continue"; }
+        if (errEl) { errEl.textContent = error.message || "Failed to set password."; errEl.classList.remove("hidden"); }
+      })
+      .setUserPassword(_pendingSetPasswordEmail, newPw, null);
+  }
+</script>

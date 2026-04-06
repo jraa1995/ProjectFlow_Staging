@@ -3,7 +3,7 @@ function getSheet(sheetName, columns) {
     console.error(`Invalid columns parameter for sheet ${sheetName}:`, columns);
     throw new Error(`Invalid columns parameter for sheet ${sheetName}. Expected array, got: ${typeof columns}`);
   }
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getColonySpreadsheet_();
   let sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
@@ -615,13 +615,23 @@ function rowToObject(row, columns) {
 }
 
 function objectToRow(obj, columns) {
-  return columns.map(col => {
+  const jsonDataIndex = columns.indexOf('jsonData');
+  const row = columns.map((col, i) => {
+    if (i === jsonDataIndex) return '';
     const value = obj[col];
-    if (Array.isArray(value)) {
-      return value.join(', ');
-    }
+    if (Array.isArray(value)) return value.join(', ');
     return value !== undefined ? value : '';
   });
+  if (jsonDataIndex !== -1) {
+    try {
+      var cleanObj = {};
+      columns.forEach(col => { if (col !== 'jsonData') cleanObj[col] = obj[col] !== undefined ? obj[col] : ''; });
+      row[jsonDataIndex] = JSON.stringify(cleanObj);
+    } catch (e) {
+      console.error('objectToRow jsonData serialization failed:', e);
+    }
+  }
+  return row;
 }
 
 function getAllTasks(filters = {}, options = {}) {
@@ -687,6 +697,22 @@ function getTasksForUser(email) {
   return getAllTasks({ assignee: email });
 }
 
+function calculateStoryPoints(startDate, dueDate) {
+  if (!startDate || !dueDate) return { storyPoints: 0, estimatedHrs: 0 };
+  var start = new Date(startDate);
+  var end = new Date(dueDate);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return { storyPoints: 0, estimatedHrs: 0 };
+  if (end < start) return { storyPoints: 0, estimatedHrs: 0 };
+  var workingDays = 0;
+  var current = new Date(start);
+  while (current <= end) {
+    var day = current.getDay();
+    if (day !== 0 && day !== 6) workingDays++;
+    current.setDate(current.getDate() + 1);
+  }
+  return { storyPoints: workingDays, estimatedHrs: workingDays * 8 };
+}
+
 function createTask(taskData) {
   if (typeof PermissionGuard !== 'undefined') {
     PermissionGuard.requirePermission('task:create', { projectId: taskData.projectId });
@@ -710,7 +736,7 @@ function createTask(taskData) {
     status: taskData.status || 'To Do',
     priority: taskData.priority || 'Medium',
     type: taskData.type || 'Task',
-    assignee: taskData.assignee || currentUser,
+    assignee: taskData.assignee !== undefined ? (taskData.assignee || '') : currentUser,
     reporter: taskData.reporter || currentUser,
     dueDate: taskData.dueDate || '',
     startDate: taskData.startDate || '',
@@ -734,11 +760,31 @@ function createTask(taskData) {
     milestoneDate: taskData.milestoneDate || '',
     milestoneType: taskData.milestoneType || ''
   };
+  if (task.startDate && task.dueDate) {
+    var calc = calculateStoryPoints(task.startDate, task.dueDate);
+    task.storyPoints = calc.storyPoints;
+    task.estimatedHrs = calc.estimatedHrs;
+  }
   sheet.appendRow(objectToRow(task, CONFIG.TASK_COLUMNS));
   SpreadsheetApp.flush();
   const newRowIndex = sheet.getLastRow();
   RowIndexCache.set('Tasks', task.id, newRowIndex);
   logActivity(currentUser, 'created', 'task', task.id, { title: task.title });
+  if (task.assignee && task.assignee !== currentUser && typeof NotificationEngine !== 'undefined') {
+    try {
+      NotificationEngine.createNotification({
+        userId: task.assignee,
+        type: 'task_assigned',
+        title: 'Task Assigned',
+        message: 'You have been assigned to ' + task.id + ': ' + task.title,
+        entityType: 'task',
+        entityId: task.id,
+        channels: ['in_app', 'email']
+      });
+    } catch (e) {
+      console.error('Failed to send assignment notification:', e);
+    }
+  }
   return task;
 }
 
@@ -773,6 +819,13 @@ function updateTask(taskId, updates) {
     }
   });
   Object.assign(task, updates);
+  if (updates.startDate !== undefined || updates.dueDate !== undefined) {
+    if (task.startDate && task.dueDate) {
+      var calc = calculateStoryPoints(task.startDate, task.dueDate);
+      task.storyPoints = calc.storyPoints;
+      task.estimatedHrs = calc.estimatedHrs;
+    }
+  }
   task.updatedAt = now();
   if (updates.status === 'Done' && !task.completedAt) {
     task.completedAt = now();
@@ -780,8 +833,24 @@ function updateTask(taskId, updates) {
   const newRow = objectToRow(task, columns);
   sheet.getRange(rowIndex, 1, 1, columns.length).setValues([newRow]);
   SpreadsheetApp.flush();
+  const currentUser = getCurrentUserEmail();
   if (Object.keys(changes).length > 0) {
-    logActivity(getCurrentUserEmail(), 'updated', 'task', taskId, changes);
+    logActivity(currentUser, 'updated', 'task', taskId, changes);
+  }
+  if (changes.assignee && updates.assignee && updates.assignee !== currentUser && typeof NotificationEngine !== 'undefined') {
+    try {
+      NotificationEngine.createNotification({
+        userId: updates.assignee,
+        type: 'task_assigned',
+        title: 'Task Assigned',
+        message: 'You have been assigned to ' + taskId + ': ' + task.title,
+        entityType: 'task',
+        entityId: taskId,
+        channels: ['in_app', 'email']
+      });
+    } catch (e) {
+      console.error('Failed to send assignment notification:', e);
+    }
   }
   return task;
 }
@@ -1029,6 +1098,9 @@ function getProjectById(projectId) {
 }
 
 function createProject(projectData) {
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('project:create');
+  }
   const sheet = getProjectsSheet();
   const existingProjects = getAllProjects();
   const currentUser = getCurrentUserEmail();
@@ -1041,7 +1113,15 @@ function createProject(projectData) {
     ownerId: projectData.ownerId || currentUser,
     startDate: projectData.startDate || now().split('T')[0],
     endDate: projectData.endDate || '',
-    createdAt: now()
+    createdAt: now(),
+    updatedAt: now(),
+    version: projectData.version || '0.1.0',
+    repoUrl: projectData.repoUrl || '',
+    releaseNotes: projectData.releaseNotes || '[]',
+    changelog: projectData.changelog || '[]',
+    tags: projectData.tags || '',
+    settings: projectData.settings || '{}',
+    lastUpdatedBy: currentUser
   };
   sheet.appendRow(objectToRow(project, CONFIG.PROJECT_COLUMNS));
   SpreadsheetApp.flush();
@@ -1050,6 +1130,9 @@ function createProject(projectData) {
 }
 
 function updateProject(projectId, updates) {
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+  }
   const sheet = getProjectsSheet();
   const data = sheet.getDataRange().getValues();
   const columns = CONFIG.PROJECT_COLUMNS;
@@ -1058,6 +1141,8 @@ function updateProject(projectId, updates) {
     if (data[i][idIndex] === projectId) {
       const project = rowToObject(data[i], columns);
       Object.assign(project, updates);
+      project.updatedAt = now();
+      project.lastUpdatedBy = getCurrentUserEmail();
       const newRow = objectToRow(project, columns);
       sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
       SpreadsheetApp.flush();
@@ -1065,6 +1150,171 @@ function updateProject(projectId, updates) {
     }
   }
   throw new Error('Project not found: ' + projectId);
+}
+
+function deleteProject(projectId) {
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('project:delete');
+  }
+  const sheet = getProjectsSheet();
+  const data = sheet.getDataRange().getValues();
+  const idIndex = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][idIndex] === projectId) {
+      sheet.deleteRow(i + 1);
+      SpreadsheetApp.flush();
+      logActivity(getCurrentUserEmail(), 'deleted', 'project', projectId, {});
+      return { success: true };
+    }
+  }
+  throw new Error('Project not found: ' + projectId);
+}
+
+function addReleaseNote(projectId, releaseData) {
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+  }
+  const project = getProjectById(projectId);
+  if (!project) throw new Error('Project not found: ' + projectId);
+  var notes = [];
+  try { notes = typeof project.releaseNotes === 'string' ? JSON.parse(project.releaseNotes) : (project.releaseNotes || []); } catch (e) { notes = []; }
+  var entry = {
+    version: releaseData.version || project.version || '0.0.0',
+    date: releaseData.date || now(),
+    type: releaseData.type || 'patch',
+    summary: sanitize(releaseData.summary || '')
+  };
+  if (releaseData.sections && typeof releaseData.sections === 'object') {
+    entry.sections = {};
+    ['added', 'changed', 'fixed', 'removed', 'security'].forEach(function(key) {
+      if (Array.isArray(releaseData.sections[key]) && releaseData.sections[key].length > 0) {
+        entry.sections[key] = releaseData.sections[key].map(function(item) { return sanitize(String(item)); });
+      }
+    });
+  }
+  if (releaseData.notes) entry.notes = sanitize(releaseData.notes);
+  notes.unshift(entry);
+  return updateProject(projectId, {
+    releaseNotes: JSON.stringify(notes),
+    version: releaseData.version || project.version
+  });
+}
+
+function addChangelogEntry(projectId, entry) {
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+  }
+  const project = getProjectById(projectId);
+  if (!project) throw new Error('Project not found: ' + projectId);
+  var log = [];
+  try { log = typeof project.changelog === 'string' ? JSON.parse(project.changelog) : (project.changelog || []); } catch (e) { log = []; }
+  log.unshift({
+    date: entry.date || now(),
+    author: entry.author || getCurrentUserEmail(),
+    type: entry.type || 'update',
+    message: sanitize(entry.message || ''),
+    relatedVersion: entry.relatedVersion || ''
+  });
+  return updateProject(projectId, { changelog: JSON.stringify(log) });
+}
+
+function getOpenSurgeTasks() {
+  const tasks = getAllTasks({}, { skipPermissionCheck: true });
+  return tasks
+    .filter(t => {
+      const labels = Array.isArray(t.labels) ? t.labels : (t.labels ? String(t.labels).split(',').map(l => l.trim()) : []);
+      return labels.includes('surge') && !t.assignee;
+    })
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
+function pickUpTask(taskId) {
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('task:update:own', { ownerId: getCurrentUserEmail() });
+  }
+  const task = getTaskById(taskId);
+  if (!task) throw new Error('Task not found: ' + taskId);
+  const labels = Array.isArray(task.labels) ? task.labels : (task.labels ? String(task.labels).split(',').map(l => l.trim()) : []);
+  if (!labels.includes('surge')) throw new Error('Task is not a surge task');
+  const newLabels = labels.filter(l => l !== 'surge');
+  return updateTask(taskId, {
+    assignee: getCurrentUserEmail(),
+    labels: newLabels.join(', ')
+  });
+}
+
+function getJsonCacheSheet() {
+  const ss = getColonySpreadsheet_();
+  let sheet = ss.getSheetByName(CONFIG.SHEETS.JSON_CACHE);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEETS.JSON_CACHE);
+    sheet.appendRow(CONFIG.JSON_CACHE_COLUMNS);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function writeJsonCache(key, data) {
+  try {
+    const sheet = getJsonCacheSheet();
+    const allData = sheet.getDataRange().getValues();
+    for (let i = 1; i < allData.length; i++) {
+      if (allData[i][0] === key) {
+        sheet.getRange(i + 1, 2, 1, 2).setValues([[JSON.stringify(data), now()]]);
+        return;
+      }
+    }
+    sheet.appendRow([key, JSON.stringify(data), now()]);
+  } catch (e) {
+    console.error('writeJsonCache failed:', e);
+  }
+}
+
+function readJsonCache(key, maxAgeMinutes) {
+  try {
+    const sheet = getJsonCacheSheet();
+    const allData = sheet.getDataRange().getValues();
+    for (let i = 1; i < allData.length; i++) {
+      if (allData[i][0] === key) {
+        if (maxAgeMinutes) {
+          const updatedAt = new Date(allData[i][2]);
+          const age = (Date.now() - updatedAt.getTime()) / 60000;
+          if (age > maxAgeMinutes) return null;
+        }
+        return JSON.parse(allData[i][1]);
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error('readJsonCache failed:', e);
+    return null;
+  }
+}
+
+function backfillJsonData(sheetName, columns) {
+  try {
+    const ss = getColonySpreadsheet_();
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return { success: false, error: 'Sheet not found: ' + sheetName };
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return { success: true, updated: 0 };
+    const jsonDataIndex = columns.indexOf('jsonData');
+    if (jsonDataIndex === -1) return { success: false, error: 'No jsonData column in ' + sheetName };
+    var updated = 0;
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][jsonDataIndex]) continue;
+      var obj = rowToObject(data[i], columns);
+      var cleanObj = {};
+      columns.forEach(function(col) { if (col !== 'jsonData') cleanObj[col] = obj[col] || ''; });
+      sheet.getRange(i + 1, jsonDataIndex + 1).setValue(JSON.stringify(cleanObj));
+      updated++;
+    }
+    SpreadsheetApp.flush();
+    return { success: true, updated: updated };
+  } catch (e) {
+    console.error('backfillJsonData failed:', e);
+    return { success: false, error: e.message };
+  }
 }
 
 function getCommentsForTask(taskId) {
@@ -1448,4 +1698,282 @@ function getRecentActivity(limit = 50, entityId = null) {
   }
   activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   return activities.slice(0, limit);
+}
+
+function getSprintsSheet() {
+  if (!CONFIG || !CONFIG.SPRINT_COLUMNS) {
+    throw new Error('CONFIG.SPRINT_COLUMNS is undefined. Check Config.gs for syntax errors.');
+  }
+  return getSheet(CONFIG.SHEETS.SPRINTS, CONFIG.SPRINT_COLUMNS);
+}
+
+function getAllSprints(projectId) {
+  const sheet = getSprintsSheet();
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  const columns = CONFIG.SPRINT_COLUMNS;
+  let sprints = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row[0]) continue;
+    sprints.push(rowToObject(row, columns));
+  }
+  if (projectId) {
+    sprints = sprints.filter(s => s.projectId === projectId);
+  }
+  return sprints;
+}
+
+function getSprintById(sprintId) {
+  const sprints = getAllSprints();
+  return sprints.find(s => s.id === sprintId) || null;
+}
+
+function createSprint(sprintData) {
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('project:update', { projectId: sprintData.projectId });
+  }
+  const sheet = getSprintsSheet();
+  const currentUser = getCurrentUserEmail();
+  const projectId = sprintData.projectId || '';
+  if (projectId) {
+    const activeSprint = getAllSprints(projectId).find(s => s.status === 'active');
+    if (activeSprint) {
+      throw new Error('Project already has an active sprint: ' + activeSprint.id);
+    }
+  }
+  const sprint = {
+    id: generateId('SPR'),
+    projectId: projectId,
+    name: sanitize(sprintData.name || 'New Sprint'),
+    goal: sanitize(sprintData.goal || ''),
+    startDate: sprintData.startDate || '',
+    endDate: sprintData.endDate || '',
+    status: 'planning',
+    createdAt: now(),
+    createdBy: currentUser,
+    completedAt: ''
+  };
+  sheet.appendRow(objectToRow(sprint, CONFIG.SPRINT_COLUMNS));
+  logActivity(currentUser, 'created', 'sprint', sprint.id, { name: sprint.name });
+  return sprint;
+}
+
+function updateSprint(sprintId, updates) {
+  const sheet = getSprintsSheet();
+  const data = sheet.getDataRange().getValues();
+  const columns = CONFIG.SPRINT_COLUMNS;
+  const idIndex = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][idIndex] === sprintId) {
+      const sprint = rowToObject(data[i], columns);
+      Object.assign(sprint, updates);
+      sheet.getRange(i + 1, 1, 1, columns.length).setValues([objectToRow(sprint, columns)]);
+      return sprint;
+    }
+  }
+  throw new Error('Sprint not found: ' + sprintId);
+}
+
+function startSprint(sprintId) {
+  const sprint = getSprintById(sprintId);
+  if (!sprint) throw new Error('Sprint not found: ' + sprintId);
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('project:update', { projectId: sprint.projectId });
+  }
+  if (sprint.status !== 'planning') {
+    throw new Error('Only sprints in planning status can be started');
+  }
+  const activeSprint = getAllSprints(sprint.projectId).find(s => s.status === 'active' && s.id !== sprintId);
+  if (activeSprint) {
+    throw new Error('Project already has an active sprint: ' + activeSprint.id);
+  }
+  return updateSprint(sprintId, { status: 'active', startDate: now() });
+}
+
+function completeSprint(sprintId) {
+  const sprint = getSprintById(sprintId);
+  if (!sprint) throw new Error('Sprint not found: ' + sprintId);
+  if (typeof PermissionGuard !== 'undefined') {
+    PermissionGuard.requirePermission('project:update', { projectId: sprint.projectId });
+  }
+  if (sprint.status !== 'active') {
+    throw new Error('Only active sprints can be completed');
+  }
+  const incompleteTasks = getAllTasks({ sprint: sprintId }, { skipPermissionCheck: true })
+    .filter(t => t.status !== 'Done');
+  incompleteTasks.forEach(task => {
+    try {
+      updateTask(task.id, { status: 'To Do', sprint: '' });
+    } catch (e) {
+      console.error('completeSprint: failed to roll back task ' + task.id + ':', e);
+    }
+  });
+  return updateSprint(sprintId, { status: 'completed', completedAt: now() });
+}
+
+function getSprintBurndown(sprintId) {
+  const sprint = getSprintById(sprintId);
+  if (!sprint) throw new Error('Sprint not found: ' + sprintId);
+  const sprintTasks = getAllTasks({ sprint: sprintId }, { skipPermissionCheck: true });
+  const totalPoints = sprintTasks.reduce((sum, t) => sum + (parseInt(t.storyPoints) || 0), 0);
+  if (!sprint.startDate) return { sprintId: sprintId, totalPoints: totalPoints, days: [] };
+  const startDate = new Date(sprint.startDate);
+  const endDate = sprint.completedAt ? new Date(sprint.completedAt) : new Date();
+  const days = [];
+  const cursor = new Date(startDate);
+  cursor.setHours(0, 0, 0, 0);
+  while (cursor <= endDate) {
+    const dayEnd = new Date(cursor);
+    dayEnd.setHours(23, 59, 59, 999);
+    const dayIso = cursor.toISOString().split('T')[0];
+    const burnedPoints = sprintTasks
+      .filter(t => t.status === 'Done' && t.completedAt && new Date(t.completedAt) <= dayEnd)
+      .reduce((sum, t) => sum + (parseInt(t.storyPoints) || 0), 0);
+    days.push({ date: dayIso, remaining: totalPoints - burnedPoints });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return { sprintId: sprintId, totalPoints: totalPoints, days: days };
+}
+
+function assignProjectTasksToSprint(sprintId, projectId) {
+  var allTasks = getAllTasks({}, { skipPermissionCheck: true });
+  var eligibleTasks = allTasks.filter(function(t) {
+    return t.projectId === projectId && (!t.sprint || t.sprint === '') && t.status !== 'Done';
+  });
+  var count = 0;
+  eligibleTasks.forEach(function(task) {
+    try {
+      updateTask(task.id, { sprint: sprintId });
+      count++;
+    } catch (e) {
+      console.error('assignProjectTasksToSprint: failed to assign task ' + task.id + ':', e);
+    }
+  });
+  return count;
+}
+
+function syncTaskToCalendar(task) {
+  if (!task || !task.dueDate) return;
+  try {
+    const calendar = CalendarApp.getDefaultCalendar();
+    let customFields = {};
+    if (task.customFields) {
+      try {
+        customFields = typeof task.customFields === 'string'
+          ? JSON.parse(task.customFields)
+          : task.customFields;
+      } catch (e) {
+        customFields = {};
+      }
+    }
+    const title = '[' + (task.id || 'TASK') + '] ' + (task.title || 'Task');
+    const description = (task.description || '') + '\n\nProject: ' + (task.projectId || '') + '\nStatus: ' + (task.status || '');
+    const dueDate = new Date(task.dueDate);
+    const existingEventId = customFields.calendarEventId || null;
+    if (existingEventId) {
+      try {
+        const existingEvent = calendar.getEventById(existingEventId);
+        if (existingEvent) {
+          existingEvent.setTitle(title);
+          existingEvent.setDescription(description);
+          existingEvent.setAllDayDate(dueDate);
+          return;
+        }
+      } catch (e) {
+        console.error('syncTaskToCalendar: event lookup failed, creating new:', e);
+      }
+    }
+    const newEvent = calendar.createAllDayEvent(title, dueDate, { description: description });
+    customFields.calendarEventId = newEvent.getId();
+    updateTask(task.id, { customFields: JSON.stringify(customFields) });
+  } catch (e) {
+    console.error('syncTaskToCalendar failed for task ' + (task.id || '?') + ':', e);
+  }
+}
+
+function removeCalendarEvent(task) {
+  if (!task) return;
+  try {
+    let customFields = {};
+    if (task.customFields) {
+      try {
+        customFields = typeof task.customFields === 'string'
+          ? JSON.parse(task.customFields)
+          : task.customFields;
+      } catch (e) {
+        customFields = {};
+      }
+    }
+    const eventId = customFields.calendarEventId;
+    if (!eventId) return;
+    const calendar = CalendarApp.getDefaultCalendar();
+    try {
+      const event = calendar.getEventById(eventId);
+      if (event) event.deleteEvent();
+    } catch (e) {
+      console.error('removeCalendarEvent: event delete failed for task ' + (task.id || '?') + ':', e);
+    }
+    delete customFields.calendarEventId;
+    updateTask(task.id, { customFields: JSON.stringify(customFields) });
+  } catch (e) {
+    console.error('removeCalendarEvent failed for task ' + (task.id || '?') + ':', e);
+  }
+}
+
+function processRecurringTasks() {
+  const doneTasks = getAllTasks({ status: 'Done' }, { skipPermissionCheck: true })
+    .filter(t => t.recurringConfig && t.recurringConfig !== '');
+  const timestamp = now();
+  doneTasks.forEach(task => {
+    try {
+      let config = {};
+      try {
+        config = typeof task.recurringConfig === 'string'
+          ? JSON.parse(task.recurringConfig)
+          : task.recurringConfig;
+      } catch (e) {
+        return;
+      }
+      const { freq, day, interval, endDate, count } = config;
+      if (!freq) return;
+      if (endDate && new Date(endDate) < new Date()) return;
+      const lastRecurrence = task.lastRecurrenceAt ? new Date(task.lastRecurrenceAt) : new Date(task.completedAt || task.updatedAt);
+      const intervalMs = (parseInt(interval) || 1) * (freq === 'daily' ? 86400000 : freq === 'weekly' ? 604800000 : freq === 'monthly' ? 2592000000 : 0);
+      if (!intervalMs) return;
+      const nextDue = new Date(lastRecurrence.getTime() + intervalMs);
+      if (nextDue > new Date()) return;
+      if (count !== undefined && count !== null && count !== '') {
+        const spawnedCount = parseInt(config._spawnedCount) || 0;
+        if (spawnedCount >= parseInt(count)) return;
+        config._spawnedCount = spawnedCount + 1;
+      }
+      const newDueDate = task.dueDate ? new Date(new Date(task.dueDate).getTime() + intervalMs).toISOString() : '';
+      const newStartDate = task.startDate ? new Date(new Date(task.startDate).getTime() + intervalMs).toISOString() : '';
+      const newTaskData = {
+        projectId: task.projectId,
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        type: task.type,
+        assignee: task.assignee,
+        reporter: task.reporter,
+        dueDate: newDueDate,
+        startDate: newStartDate,
+        sprint: task.sprint,
+        storyPoints: task.storyPoints,
+        estimatedHrs: task.estimatedHrs,
+        labels: task.labels,
+        parentId: task.parentId,
+        customFields: task.customFields,
+        templateId: task.templateId,
+        recurringConfig: task.recurringConfig,
+        status: 'To Do'
+      };
+      createTask(newTaskData);
+      updateTask(task.id, { lastRecurrenceAt: timestamp, recurringConfig: JSON.stringify(config) });
+    } catch (e) {
+      console.error('processRecurringTasks: failed to process task ' + task.id + ':', e);
+    }
+  });
 }

@@ -268,7 +268,7 @@ class MentionAutocomplete {
     this.dropdown.innerHTML = `
       <div class="mention-suggestion mention-no-results" style="cursor: default; opacity: 0.7;">
         <div class="mention-user-info">
-          <div class="mention-user-name" style="color: #6b7280;">${this.escapeHtml(message)}</div>
+          <div class="mention-user-name" style="color: #6b7280;">${escapeHtml(message)}</div>
         </div>
       </div>
     `;
@@ -285,18 +285,12 @@ class MentionAutocomplete {
   }
 
   highlightQuery(text, query) {
-    if (!query) return this.escapeHtml(text);
+    if (!query) return escapeHtml(text);
 
     const regex = new RegExp(`(${this.escapeRegExp(query)})`, "gi");
-    return this.escapeHtml(text).replace(regex, '<span class="mention-highlight">$1</span>');
+    return escapeHtml(text).replace(regex, '<span class="mention-highlight">$1</span>');
   }
 
-  escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
-  }
 
   escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

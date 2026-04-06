@@ -1,0 +1,33 @@
+<script>
+  const escapeHtmlEl = document.createElement("div");
+  function escapeHtml(text) {
+    if (!text) return "";
+    escapeHtmlEl.textContent = text;
+    return escapeHtmlEl.innerHTML;
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  function getPriorityColor(priority) {
+    var colors = {
+      'Critical': 'bg-red-100 text-red-800',
+      'Highest': 'bg-red-50 text-red-700',
+      'High': 'bg-orange-100 text-orange-800',
+      'Medium': 'bg-gray-100 text-gray-700',
+      'Low': 'bg-green-100 text-green-700',
+      'Lowest': 'bg-green-50 text-green-600'
+    };
+    return colors[priority] || 'bg-gray-100 text-gray-700';
+  }
+</script>

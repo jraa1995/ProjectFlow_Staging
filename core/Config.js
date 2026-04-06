@@ -23,8 +23,12 @@ const CONFIG = {
     TEAM_CAPACITY: 'Team_Capacity',
     WEBHOOK_SUBSCRIPTIONS: 'Webhook_Subscriptions',
     SLA_CONFIG: 'SLA_Config',
-    TRIAGE_QUEUE: 'Triage_Queue'
+    TRIAGE_QUEUE: 'Triage_Queue',
+    JSON_CACHE: 'JSON_Cache',
+    SPRINTS: 'Sprints'
   },
+
+  JSON_CACHE_COLUMNS: ['key', 'data', 'updatedAt'],
 
   STATUSES: ['Backlog', 'To Do', 'In Progress', 'Review', 'Testing', 'Done'],
 
@@ -74,7 +78,8 @@ const CONFIG = {
     'milestoneDate',
     'milestoneType',
     'version',
-    'lastModifiedBy'
+    'lastModifiedBy',
+    'jsonData'
   ],
 
   USER_COLUMNS: [
@@ -93,7 +98,8 @@ const CONFIG = {
     'mfaSecret',
     'lastLogin',
     'organizationId',
-    'teamId'
+    'teamId',
+    'jsonData'
   ],
 
   PROJECT_COLUMNS: [
@@ -104,7 +110,16 @@ const CONFIG = {
     'ownerId',
     'startDate',
     'endDate',
-    'createdAt'
+    'createdAt',
+    'updatedAt',
+    'version',
+    'repoUrl',
+    'releaseNotes',
+    'changelog',
+    'tags',
+    'settings',
+    'lastUpdatedBy',
+    'jsonData'
   ],
 
   COMMENT_COLUMNS: [
@@ -356,7 +371,23 @@ const CONFIG = {
     'start_to_finish'
   ],
 
-  FUNNEL_STATUSES: ['pending', 'reviewed', 'imported', 'rejected']
+  FUNNEL_STATUSES: ['pending', 'reviewed', 'imported', 'rejected'],
+
+  SPRINT_COLUMNS: [
+    'id',
+    'projectId',
+    'name',
+    'goal',
+    'startDate',
+    'endDate',
+    'status',
+    'createdAt',
+    'createdBy',
+    'completedAt',
+    'jsonData'
+  ],
+
+  SPRINT_STATUSES: ['planning', 'active', 'completed']
 };
 
 function getColumnIndex(sheetType, columnName) {

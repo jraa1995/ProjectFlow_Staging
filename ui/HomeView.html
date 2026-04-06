@@ -1,0 +1,258 @@
+<div id="homeView" class="h-full overflow-y-auto bg-gray-50">
+  <div class="p-6">
+
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 id="homeGreeting" class="text-2xl font-bold text-gray-900"></h1>
+        <p id="homeDate" class="text-sm text-gray-500 mt-0.5"></p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white border border-gray-200 rounded-lg p-4">
+        <div id="homeStatOverdue" class="text-2xl font-bold text-gray-900">0</div>
+        <div class="text-sm text-gray-500 mt-1">Overdue</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-lg p-4">
+        <div id="homeStatDueWeek" class="text-2xl font-bold text-gray-900">0</div>
+        <div class="text-sm text-gray-500 mt-1">Due This Week</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-lg p-4">
+        <div id="homeStatBlocking" class="text-2xl font-bold text-gray-900">0</div>
+        <div class="text-sm text-gray-500 mt-1">Blocking Others</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-lg p-4">
+        <div id="homeStatOpen" class="text-2xl font-bold text-gray-900">0</div>
+        <div class="text-sm text-gray-500 mt-1">Open</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white border border-gray-200 rounded-lg">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-gray-700">Overdue Tasks</h2>
+          <a id="homeOverdueViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-xs text-gray-400 hover:text-gray-600">View all on board &rarr;</a>
+        </div>
+        <div id="homeOverdueList" class="divide-y divide-gray-100"></div>
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-lg">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-gray-700">Due This Week</h2>
+          <a id="homeDueWeekViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-xs text-gray-400 hover:text-gray-600">View all on board &rarr;</a>
+        </div>
+        <div id="homeDueWeekList" class="divide-y divide-gray-100"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white border border-gray-200 rounded-lg">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-gray-700">Tasks I'm Blocking Others On</h2>
+          <a id="homeBlockingViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-xs text-gray-400 hover:text-gray-600">View all on board &rarr;</a>
+        </div>
+        <div id="homeBlockingList" class="divide-y divide-gray-100"></div>
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-lg">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-gray-700"><i class="fas fa-at text-gray-400 mr-1.5"></i>Recent Mentions</h2>
+        </div>
+        <div id="homeMentionsList" class="divide-y divide-gray-100">
+          <div class="px-4 py-6 text-sm text-gray-400 text-center"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const HomePage = {
+  init() {
+    this.render();
+    this.loadMentions();
+  },
+
+  render() {
+    var tasks = (typeof State !== 'undefined' && State.cache && State.cache.tasks) ? State.cache.tasks.data : [];
+    var userEmail = (typeof State !== 'undefined' && State.user) ? State.user.email : '';
+    var userName = (typeof State !== 'undefined' && State.user) ? (State.user.name || '').split(' ')[0] : '';
+    var myTasks = tasks.filter(function(t) { return t.assignee && t.assignee.toLowerCase() === userEmail.toLowerCase(); });
+    var now = new Date();
+    var weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    var overdue = myTasks.filter(function(t) {
+      return t.dueDate && new Date(t.dueDate) < now && t.status !== 'Done';
+    }).sort(function(a, b) { return new Date(a.dueDate) - new Date(b.dueDate); });
+
+    var dueThisWeek = myTasks.filter(function(t) {
+      if (!t.dueDate || t.status === 'Done') return false;
+      var d = new Date(t.dueDate);
+      return d >= now && d <= weekFromNow;
+    }).sort(function(a, b) { return new Date(a.dueDate) - new Date(b.dueDate); });
+
+    var blocking = myTasks.filter(function(t) {
+      return t.status !== 'Done' && tasks.some(function(other) {
+        if (!other.dependencies || other.assignee === userEmail) return false;
+        var deps = typeof other.dependencies === 'string'
+          ? other.dependencies.split(',').map(function(d) { return d.trim(); })
+          : [];
+        return deps.includes(t.id);
+      });
+    });
+
+    var openTasks = myTasks.filter(function(t) { return t.status !== 'Done'; });
+
+    var hour = now.getHours();
+    var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    var greetingEl = document.getElementById('homeGreeting');
+    if (greetingEl) greetingEl.textContent = greeting + (userName ? ', ' + userName : '');
+
+    var dateEl = document.getElementById('homeDate');
+    if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+    var overdueEl = document.getElementById('homeStatOverdue');
+    if (overdueEl) {
+      overdueEl.textContent = overdue.length;
+      overdueEl.className = 'text-2xl font-bold ' + (overdue.length > 0 ? 'text-red-600' : 'text-gray-900');
+    }
+    var dueWeekEl = document.getElementById('homeStatDueWeek');
+    if (dueWeekEl) dueWeekEl.textContent = dueThisWeek.length;
+    var blockingEl = document.getElementById('homeStatBlocking');
+    if (blockingEl) blockingEl.textContent = blocking.length;
+    var openEl = document.getElementById('homeStatOpen');
+    if (openEl) openEl.textContent = openTasks.length;
+
+    var projects = (typeof State !== 'undefined' && State.cache && State.cache.projects) ? State.cache.projects.data : [];
+
+    this._renderTaskList('homeOverdueList', overdue, projects, 'homeOverdueViewAll', overdue.length);
+    this._renderTaskList('homeDueWeekList', dueThisWeek, projects, 'homeDueWeekViewAll', dueThisWeek.length);
+    this._renderBlockingList('homeBlockingList', blocking, tasks, userEmail, 'homeBlockingViewAll', blocking.length);
+  },
+
+  _renderTaskList(containerId, tasks, projects, viewAllId, total) {
+    var el = document.getElementById(containerId);
+    var viewAllEl = document.getElementById(viewAllId);
+    if (!el) return;
+
+    if (total > 10 && viewAllEl) viewAllEl.classList.remove('hidden');
+
+    var slice = tasks.slice(0, 10);
+
+    if (slice.length === 0) {
+      var icon = containerId === 'homeOverdueList'
+        ? '<i class="fas fa-check-circle text-green-400 mr-2"></i>No overdue tasks'
+        : '<i class="fas fa-calendar-check text-gray-400 mr-2"></i>Nothing due this week';
+      el.innerHTML = '<div class="px-4 py-6 text-sm text-gray-400 text-center">' + icon + '</div>';
+      return;
+    }
+
+    el.innerHTML = slice.map(function(task) {
+      var proj = projects.find(function(p) { return p.id === task.projectId; });
+      var projName = proj ? proj.name : (task.projectId || '');
+      return HomePage._taskRow(task, projName);
+    }).join('');
+  },
+
+  _taskRow(task, projName) {
+    var priorityDot = HomePage._priorityDot(task.priority);
+    var priorityBadge = '<span class="text-xs px-1.5 py-0.5 rounded ' + getPriorityColor(task.priority) + '">' + escapeHtml(task.priority || '') + '</span>';
+    var dateStr = task.dueDate ? '<span class="text-xs text-gray-400 whitespace-nowrap">' + formatDate(task.dueDate) + '</span>' : '';
+    return '<div class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors" onclick="HomePage.openTask(\'' + escapeHtml(task.id) + '\')">'
+      + '<span class="flex-shrink-0 w-2 h-2 rounded-full ' + priorityDot + '"></span>'
+      + '<div class="flex-1 min-w-0">'
+      + '<div class="text-sm text-gray-800 truncate">' + escapeHtml(task.title || task.name || '') + '</div>'
+      + '<div class="text-xs text-gray-400 truncate">' + escapeHtml(projName) + '</div>'
+      + '</div>'
+      + priorityBadge
+      + dateStr
+      + '</div>';
+  },
+
+  _renderBlockingList(containerId, tasks, allTasks, userEmail, viewAllId, total) {
+    var el = document.getElementById(containerId);
+    var viewAllEl = document.getElementById(viewAllId);
+    if (!el) return;
+
+    if (total > 10 && viewAllEl) viewAllEl.classList.remove('hidden');
+
+    var slice = tasks.slice(0, 10);
+
+    if (slice.length === 0) {
+      el.innerHTML = '<div class="px-4 py-6 text-sm text-gray-400 text-center"><i class="fas fa-handshake text-gray-300 mr-2"></i>Not blocking anyone right now</div>';
+      return;
+    }
+
+    el.innerHTML = slice.map(function(task) {
+      var blockedTasks = allTasks.filter(function(other) {
+        if (!other.dependencies || other.assignee === userEmail) return false;
+        var deps = typeof other.dependencies === 'string'
+          ? other.dependencies.split(',').map(function(d) { return d.trim(); })
+          : [];
+        return deps.includes(task.id);
+      });
+      var blockedNames = blockedTasks.map(function(t) { return escapeHtml(t.title || t.name || t.id); }).join(', ');
+      return '<div class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors" onclick="HomePage.openTask(\'' + escapeHtml(task.id) + '\')">'
+        + '<span class="flex-shrink-0 w-2 h-2 rounded-full mt-1.5 ' + HomePage._priorityDot(task.priority) + '"></span>'
+        + '<div class="flex-1 min-w-0">'
+        + '<div class="text-sm text-gray-800 truncate">' + escapeHtml(task.title || task.name || '') + '</div>'
+        + '<div class="text-xs text-gray-400">blocks: ' + blockedNames + '</div>'
+        + '</div>'
+        + '<span class="text-xs px-1.5 py-0.5 rounded ' + getPriorityColor(task.priority) + '">' + escapeHtml(task.priority || '') + '</span>'
+        + '</div>';
+    }).join('');
+  },
+
+  _priorityDot(priority) {
+    var dots = {
+      'Critical': 'bg-red-600',
+      'Highest': 'bg-red-400',
+      'High': 'bg-orange-400',
+      'Medium': 'bg-gray-400',
+      'Low': 'bg-green-400',
+      'Lowest': 'bg-green-300'
+    };
+    return dots[priority] || 'bg-gray-300';
+  },
+
+
+  loadMentions() {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        var el = document.getElementById('homeMentionsList');
+        if (!el) return;
+        var mentions = (result.notifications || []).filter(function(n) { return n.type === 'mention'; }).slice(0, 8);
+        if (mentions.length === 0) {
+          el.innerHTML = '<div class="px-4 py-6 text-sm text-gray-400 text-center"><i class="fas fa-at text-gray-300 mr-2"></i>No recent mentions</div>';
+          return;
+        }
+        el.innerHTML = mentions.map(function(n) {
+          var isUnread = !n.read;
+          return '<div class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors' + (isUnread ? ' bg-blue-50/30' : '') + '"'
+            + ' onclick="HomePage.openTask(\'' + escapeHtml(n.entityId || '') + '\')">'
+            + '<span class="flex-shrink-0 w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs mt-0.5"><i class="fas fa-at"></i></span>'
+            + '<div class="flex-1 min-w-0">'
+            + '<div class="text-sm text-gray-800">' + escapeHtml(n.message || n.title || '') + '</div>'
+            + '<div class="text-xs text-gray-400 mt-0.5">' + formatDate(n.createdAt) + '</div>'
+            + '</div>'
+            + (isUnread ? '<span class="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-2"></span>' : '')
+            + '</div>';
+        }).join('');
+      })
+      .withFailureHandler(function(error) {
+        console.error('Failed to load mentions:', error);
+        var el = document.getElementById('homeMentionsList');
+        if (el) el.innerHTML = '<div class="px-4 py-6 text-sm text-gray-400 text-center">Could not load mentions</div>';
+      })
+      .getNotificationsWithCount();
+  },
+
+  openTask(taskId) {
+    if (typeof switchView === 'function') switchView('my');
+    setTimeout(function() {
+      if (typeof openTaskDetailPanel === 'function') openTaskDetailPanel(taskId);
+    }, 200);
+  }
+};
+</script>

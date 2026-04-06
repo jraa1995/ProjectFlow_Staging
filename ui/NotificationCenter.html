@@ -497,8 +497,8 @@ const NotificationCenter = {
           ${icon}
         </div>
         <div class="notification-content">
-          <div class="notification-title">${this.escapeHtml(notification.title)}</div>
-          <div class="notification-message">${this.escapeHtml(notification.message)}</div>
+          <div class="notification-title">${escapeHtml(notification.title)}</div>
+          <div class="notification-message">${escapeHtml(notification.message)}</div>
           <div class="notification-time">${timeAgo}</div>
         </div>
         ${notification.read ? '' : '<div class="notification-unread-dot"></div>'}
@@ -637,12 +637,6 @@ const NotificationCenter = {
     return date.toLocaleDateString();
   },
 
-  escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
 };
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -45,43 +45,75 @@ tailwind.config = {
 </div>
 </div>
 <nav class="flex-1 py-4 overflow-y-auto">
-<div class="px-3 mb-4">
-<p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-Views
-</p>
-<span class="nav-link active" data-view="my" onclick="switchView('my')">
+<div class="px-3 mb-2">
+<span class="nav-link active" data-view="home" onclick="switchView('home')">
+<i class="fas fa-home w-5"></i> Home
+</span>
+<span class="nav-link" data-view="my" onclick="switchView('my')">
 <i class="fas fa-user w-5"></i> My Board
 </span>
-<span class="nav-link" data-view="master" data-min-role="manager" onclick="switchView('master')" style="display:none;">
-<i class="fas fa-layer-group w-5"></i> Master Board
+<span class="nav-link" data-view="projects" onclick="switchView('projects')">
+<i class="fas fa-folder-open w-5"></i> Projects
+</span>
+</div>
+<div class="px-3 mb-2">
+<div class="sidebar-group-header" onclick="toggleSidebarGroup('workViews')">
+<span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Work Views</span>
+<i id="sidebarChevron-workViews" class="fas fa-chevron-down text-xs text-gray-500"></i>
+</div>
+<div id="sidebarGroup-workViews" class="sidebar-group-content">
+<span class="nav-link" data-view="list" onclick="switchView('list')">
+<i class="fas fa-list w-5"></i> List View
 </span>
 <span class="nav-link" data-view="timeline" onclick="switchView('timeline')">
 <i class="fas fa-chart-gantt w-5"></i> Timeline
 </span>
+<span class="nav-link" data-view="milestones" onclick="switchView('milestones')">
+<i class="fas fa-flag-checkered w-5"></i> Milestones
+</span>
+<span class="nav-link" data-view="sprints" onclick="switchView('sprints')">
+<i class="fas fa-running w-5"></i> Sprints
+</span>
+</div>
+</div>
+<div class="px-3 mb-2" data-min-role="manager" style="display:none;">
+<div class="sidebar-group-header" onclick="toggleSidebarGroup('management')">
+<span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Management</span>
+<i id="sidebarChevron-management" class="fas fa-chevron-down text-xs text-gray-500"></i>
+</div>
+<div id="sidebarGroup-management" class="sidebar-group-content">
+<span class="nav-link" data-view="master" data-min-role="manager" onclick="switchView('master')" style="display:none;">
+<i class="fas fa-layer-group w-5"></i> Master Board
+</span>
 <span class="nav-link" data-view="analytics" data-min-role="manager" onclick="switchView('analytics')" style="display:none;">
 <i class="fas fa-chart-bar w-5"></i> Analytics
-</span>
-<span class="nav-link" data-view="list" onclick="switchView('list')">
-<i class="fas fa-list w-5"></i> List View
 </span>
 <span class="nav-link" data-view="funnel" data-min-role="manager" onclick="switchView('funnel')" style="display:none;">
 <i class="fas fa-filter w-5"></i> Funnel
 </span>
-<span class="nav-link" data-view="milestones" onclick="switchView('milestones')">
-<i class="fas fa-flag-checkered w-5"></i> Milestones
+</div>
+</div>
+<div class="px-3 mb-2">
+<span class="nav-link" data-view="surge" onclick="switchView('surge')">
+<i class="fas fa-hand-paper w-5"></i> Pick Ups
 </span>
 </div>
 <div class="px-3 mb-4">
-<p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-Projects
-</p>
-<div id="projectNav">
-<span class="nav-link project-link active" data-project=""
-onclick="selectProject(null)">
-<i class="fas fa-folder w-5"></i> All Projects
-</span>
+<p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Projects</p>
+<div class="relative" id="projectSelectorContainer">
+  <button id="projectSelectorBtn" onclick="toggleProjectDropdown()" class="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors text-left">
+    <i class="fas fa-folder text-gray-500"></i>
+    <span id="projectSelectorLabel" class="flex-1 truncate">All Projects</span>
+    <i class="fas fa-chevron-down text-xs text-gray-500" id="projectSelectorChevron"></i>
+  </button>
+  <div id="projectDropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-gray-800 rounded-lg shadow-xl z-50 border border-gray-700 overflow-hidden">
+    <div class="p-2 border-b border-gray-700">
+      <input id="projectSearchInput" type="text" placeholder="Search projects..." oninput="filterProjectDropdown()" class="w-full px-3 py-1.5 text-sm bg-gray-900 text-gray-200 rounded-md border border-gray-600 placeholder-gray-500 focus:outline-none focus:border-gray-400" />
+    </div>
+    <div id="projectDropdownList" class="overflow-y-auto max-h-48"></div>
+  </div>
 </div>
-<span class="nav-link text-primary-300" onclick="openProjectModal()">
+<span class="nav-link text-primary-300 mt-2" onclick="openProjectModal()">
 <i class="fas fa-plus w-5"></i> New Project
 </span>
 </div>
@@ -134,9 +166,9 @@ class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
 ></i>
 </div>
 </div>
-<div class="flex items-center gap-3">
+<div class="flex items-center gap-3 header-actions">
 <button
-onclick="loadBoard()"
+onclick="refreshCurrentView()"
 class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
 title="Refresh"
 >
@@ -176,6 +208,9 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 <span id="statOverdue" class="font-semibold text-red-600">0</span>
 </div>
 </div>
+</div>
+<div id="homeViewContainer" class="flex-1 overflow-auto hidden">
+<?!= include('ui/HomeView'); ?>
 </div>
 <div id="boardView" class="flex-1 overflow-auto p-6">
 <div id="board" class="flex gap-4 h-full"></div>
@@ -266,6 +301,15 @@ timeline...
 <!-- Phase 3.1: List View -->
 <div id="listView" class="flex-1 overflow-auto hidden">
 <?!= include('ui/ListView'); ?>
+</div>
+<div id="projectsView" class="flex-1 overflow-auto hidden">
+<?!= include('ui/ProjectView'); ?>
+</div>
+<div id="surgeView" class="flex-1 overflow-auto p-4 hidden">
+<?!= include('ui/SurgeView'); ?>
+</div>
+<div id="sprintView" class="flex-1 overflow-hidden hidden">
+<?!= include('ui/SprintView'); ?>
 </div>
 <!-- Phase 1: Milestone View -->
 <div id="milestoneViewContainer" class="flex-1 overflow-hidden hidden">
@@ -495,6 +539,7 @@ class="w-full px-3 py-2 border border-gray-300 rounded-lg"
 type="date"
 id="taskDueDate"
 class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+onchange="autoCalcTaskStoryPoints()"
 />
 </div>
 </div>
@@ -506,6 +551,7 @@ class="w-full px-3 py-2 border border-gray-300 rounded-lg"
 type="date"
 id="taskStartDate"
 class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+onchange="autoCalcTaskStoryPoints()"
 />
 </div>
 <div>
@@ -611,77 +657,124 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 </div>
 <!-- Toast Container -->
 <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
-<!-- Login Modal -->
-<div id="loginModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-<div class="bg-white rounded-xl shadow-xl w-full max-w-md p-8">
-<!-- Logo and Branding -->
+<div id="confirmModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] hidden">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
+    <p id="confirmModalMessage" class="text-gray-900 font-medium mb-4"></p>
+    <div class="flex gap-3 justify-end">
+      <button id="confirmModalCancel" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+      <button id="confirmModalConfirm" class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">Confirm</button>
+    </div>
+  </div>
+</div>
+<div id="promptModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] hidden">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
+    <p id="promptModalMessage" class="text-gray-900 font-medium mb-3"></p>
+    <input id="promptModalInput" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-1 focus:ring-gray-400" />
+    <div class="flex gap-3 justify-end">
+      <button id="promptModalCancel" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+      <button id="promptModalConfirm" class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">OK</button>
+    </div>
+  </div>
+</div>
+<div id="loginPage" class="fixed inset-0 z-[60] hidden" style="background:#111827;">
+<canvas id="loginCanvas" class="absolute inset-0"></canvas>
+<div class="absolute inset-0 flex items-center justify-center p-4">
+<div id="loginCard" class="w-full max-w-md p-8 rounded-2xl border shadow-2xl" style="background:rgba(255,255,255,0.05);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-color:rgba(255,255,255,0.1);">
 <div class="text-center mb-8">
-<div class="flex items-center justify-center gap-3 mb-4">
-<i class="fas fa-circle-nodes text-primary-600 text-3xl"></i>
-<span class="font-bold text-2xl text-gray-900">COLONY</span>
+<div class="flex items-center justify-center gap-3 mb-3">
+<i class="fas fa-circle-nodes text-gray-400 text-3xl"></i>
+<span class="font-bold text-2xl text-white tracking-wide">COLONY</span>
 </div>
-<p class="text-gray-600">Sign in to continue to your workspace</p>
+<p id="loginSubtitle" class="text-gray-400 text-sm">Sign in to continue to your workspace</p>
 </div>
-<!-- Login Form -->
+<div id="loginState">
 <form id="loginForm" onsubmit="LoginModal.handleLogin(event)">
 <div class="mb-4">
-<label for="loginEmail" class="block text-sm font-medium text-gray-700 mb-2">
-Email Address
-</label>
+<label class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Email</label>
 <div class="relative">
-<span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-<i class="fas fa-envelope"></i>
-</span>
-<input
-type="email"
-id="loginEmail"
-name="email"
-required
-placeholder="you@company.com"
-class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-600 focus:border-primary-600 text-gray-900"
-autocomplete="email"
-/>
+<span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500"><i class="fas fa-envelope"></i></span>
+<input type="email" id="loginEmail" name="email" required placeholder="you@company.com" autocomplete="email" class="w-full pl-10 pr-4 py-3 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.1);" />
 </div>
 </div>
 <div class="mb-4" id="passwordFieldContainer">
-<label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-2">
-Password
-</label>
+<label class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Password</label>
 <div class="relative">
-<span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-<i class="fas fa-lock"></i>
-</span>
-<input
-type="password"
-id="loginPassword"
-name="password"
-placeholder="Enter your password"
-class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-600 focus:border-primary-600 text-gray-900"
-autocomplete="current-password"
-/>
+<span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500"><i class="fas fa-lock"></i></span>
+<input type="password" id="loginPassword" name="password" placeholder="Enter your password" autocomplete="current-password" class="w-full pl-10 pr-4 py-3 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.1);" />
 </div>
-<p id="passwordHint" class="text-xs text-gray-400 mt-1 hidden">First time? Leave blank to set up your password.</p>
+<p id="passwordHint" class="text-xs text-gray-500 mt-1 hidden">First time? Leave blank to set up your password.</p>
 </div>
-<!-- Error Message Display -->
-<div id="loginError" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm hidden">
+<div id="loginError" class="mb-4 p-3 rounded-lg text-sm hidden" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">
 <div class="flex items-center gap-2">
 <i class="fas fa-exclamation-circle"></i>
 <span id="loginErrorText">An error occurred</span>
 </div>
 </div>
-<!-- Submit Button -->
-<button
-type="submit"
-id="loginSubmitBtn"
-class="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
->
+<button type="submit" id="loginSubmitBtn" class="w-full py-3 bg-gray-500 hover:bg-gray-400 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors">
 <span id="loginBtnText">Sign In</span>
 <i id="loginSpinner" class="fas fa-spinner fa-spin hidden"></i>
 </button>
 </form>
-<!-- Help Text -->
-<div class="mt-6 text-center text-sm text-gray-500">
+<div class="mt-4 text-center">
+<button onclick="LoginModal.showForgotPassword()" class="text-sm text-gray-500 hover:text-white transition-colors">Forgot your password?</button>
+</div>
+</div>
+<div id="forgotEmailState" class="hidden">
+<form onsubmit="LoginModal.handleRequestReset(event)">
+<p class="text-sm text-gray-400 mb-4">Enter your email and we'll send you a reset code.</p>
+<div class="mb-4">
+<label class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Email</label>
+<div class="relative">
+<span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500"><i class="fas fa-envelope"></i></span>
+<input type="email" id="resetEmail" required placeholder="you@company.com" class="w-full pl-10 pr-4 py-3 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.1);" />
+</div>
+</div>
+<div id="resetEmailError" class="mb-4 p-3 rounded-lg text-sm hidden" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">
+<span id="resetEmailErrorText"></span>
+</div>
+<button type="submit" id="resetEmailBtn" class="w-full py-3 bg-gray-500 hover:bg-gray-400 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors">
+<span id="resetEmailBtnText">Send Reset Code</span>
+<i id="resetEmailSpinner" class="fas fa-spinner fa-spin hidden"></i>
+</button>
+</form>
+<div class="mt-4 text-center">
+<button onclick="LoginModal.showLoginState()" class="text-sm text-gray-500 hover:text-white transition-colors"><i class="fas fa-arrow-left mr-1"></i> Back to Sign In</button>
+</div>
+</div>
+<div id="forgotVerifyState" class="hidden">
+<form onsubmit="LoginModal.handleResetPassword(event)">
+<p class="text-sm text-gray-400 mb-1">Enter the 6-digit code sent to your email.</p>
+<p id="resetVerifyEmail" class="text-xs text-gray-500 mb-4"></p>
+<div class="mb-4">
+<label class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Reset Code</label>
+<input type="text" id="resetCode" required maxlength="6" placeholder="000000" class="w-full px-4 py-3 rounded-lg text-white text-center text-xl tracking-widest placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400 font-mono" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.1);" />
+</div>
+<div class="mb-4">
+<label class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">New Password</label>
+<input type="password" id="resetNewPassword" required minlength="8" placeholder="Min 8 chars, upper, lower, number" class="w-full px-4 py-3 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.1);" />
+</div>
+<div class="mb-4">
+<label class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Confirm Password</label>
+<input type="password" id="resetConfirmPassword" required placeholder="Confirm your password" class="w-full px-4 py-3 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.1);" />
+</div>
+<div id="resetVerifyError" class="mb-4 p-3 rounded-lg text-sm hidden" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">
+<span id="resetVerifyErrorText"></span>
+</div>
+<button type="submit" id="resetVerifyBtn" class="w-full py-3 bg-gray-500 hover:bg-gray-400 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors">
+<span id="resetVerifyBtnText">Reset Password</span>
+<i id="resetVerifySpinner" class="fas fa-spinner fa-spin hidden"></i>
+</button>
+</form>
+<div class="mt-3 flex items-center justify-between">
+<button onclick="LoginModal.showLoginState()" class="text-sm text-gray-500 hover:text-white transition-colors"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+<button id="resendCodeBtn" onclick="LoginModal.resendCode()" class="text-sm text-gray-500 hover:text-white transition-colors" disabled>
+<span id="resendCodeText">Resend in 60s</span>
+</button>
+</div>
+</div>
+<div class="mt-6 text-center text-xs text-gray-600">
 <p>Need access? Contact your administrator.</p>
+</div>
 </div>
 </div>
 </div>
@@ -736,12 +829,31 @@ class="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg fon
 </form>
 </div>
 </div>
+<?!= include('ui/Utils'); ?>
 <?!= include('ui/CacheService'); ?>
+<?!= include('ui/DataSync'); ?>
+<?!= include('ui/LoginModule'); ?>
+<?!= include('ui/Dialogs'); ?>
+<?!= include('ui/Sidebar'); ?>
+<?!= include('ui/BoardView'); ?>
+<?!= include('ui/TimelineModule'); ?>
+<?!= include('ui/AnalyticsModule'); ?>
 <?!= include('ui/Scripts'); ?>
+<?!= include('ui/Shortcuts'); ?>
 <?!= include('ui/MentionAutocomplete'); ?>
 <?!= include('ui/TaskDetailPanel'); ?>
 <?!= include('ui/TaskEditModal'); ?>
 <?!= include('ui/DependencyPicker'); ?>
 <?!= include('ui/NotificationCenter'); ?>
+<div id="commandPalette" class="fixed inset-0 bg-black/40 flex items-start justify-center pt-[15vh] z-[70] hidden" onclick="CommandPalette.close()">
+  <div class="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-200">
+      <i class="fas fa-search text-gray-400"></i>
+      <input id="commandPaletteInput" type="text" placeholder="Search tasks, projects, or type a command..." class="flex-1 text-sm text-gray-900 placeholder-gray-400 outline-none" oninput="CommandPalette.search(this.value)" />
+      <kbd class="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">ESC</kbd>
+    </div>
+    <div id="commandPaletteResults" class="max-h-80 overflow-y-auto"></div>
+  </div>
+</div>
 </body>
 </html>

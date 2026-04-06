@@ -91,13 +91,13 @@ autocomplete="off"
 <label for="taskEditStartDate" class="form-label">
 <i class="far fa-calendar text-gray-400 mr-1"></i> Start Date
 </label>
-<input type="date" id="taskEditStartDate" class="form-input" />
+<input type="date" id="taskEditStartDate" class="form-input" onchange="TaskEditModal.autoCalcStoryPoints()" />
 </div>
 <div class="form-field">
 <label for="taskEditDueDate" class="form-label">
 <i class="far fa-calendar-check text-gray-400 mr-1"></i> Due Date
 </label>
-<input type="date" id="taskEditDueDate" class="form-input" />
+<input type="date" id="taskEditDueDate" class="form-input" onchange="TaskEditModal.autoCalcStoryPoints()" />
 </div>
 </div>
 <div class="grid grid-cols-3 gap-4">
@@ -162,6 +162,54 @@ Milestones are key deliverables or checkpoints in your project timeline
 <i class="fas fa-info-circle text-gray-700 mt-0.5"></i>
 <div class="text-xs text-gray-900">
 <strong>Tip:</strong> Milestone tasks are highlighted in the dedicated Milestones view.
+</div>
+</div>
+</div>
+<div class="form-field border-t border-gray-200 pt-5 mt-5">
+<label class="flex items-center gap-3 cursor-pointer group">
+<input type="checkbox" id="taskEditRecurringEnabled" class="form-checkbox w-5 h-5 text-gray-700 focus:ring-gray-600 rounded transition-all" onchange="TaskEditModal.toggleRecurrenceFields(this.checked)" />
+<span class="text-base font-semibold text-gray-700 group-hover:text-gray-700 transition-colors">Enable Recurrence</span>
+</label>
+</div>
+<div id="taskEditRecurrenceFields" class="hidden space-y-4 p-5 bg-gray-50 border border-gray-200 rounded-xl">
+<div class="grid grid-cols-2 gap-4">
+<div class="form-field">
+<label for="taskEditRecurFreq" class="form-label">Frequency</label>
+<select id="taskEditRecurFreq" class="form-select" onchange="TaskEditModal.onRecurFreqChange()">
+<option value="daily">Daily</option>
+<option value="weekly">Weekly</option>
+<option value="biweekly">Biweekly</option>
+<option value="monthly">Monthly</option>
+</select>
+</div>
+<div class="form-field" id="taskEditRecurDayField">
+<label for="taskEditRecurDay" class="form-label">Day of Week</label>
+<select id="taskEditRecurDay" class="form-select">
+<option value="monday">Monday</option>
+<option value="tuesday">Tuesday</option>
+<option value="wednesday">Wednesday</option>
+<option value="thursday">Thursday</option>
+<option value="friday">Friday</option>
+<option value="saturday">Saturday</option>
+<option value="sunday">Sunday</option>
+</select>
+</div>
+</div>
+<div class="form-field">
+<label class="form-label">End Condition</label>
+<div class="flex flex-col gap-2">
+<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+<input type="radio" name="taskEditRecurEndType" value="never" checked onchange="TaskEditModal.onRecurEndTypeChange('never')" class="text-gray-700 focus:ring-gray-600" /> Never
+</label>
+<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+<input type="radio" name="taskEditRecurEndType" value="count" onchange="TaskEditModal.onRecurEndTypeChange('count')" class="text-gray-700 focus:ring-gray-600" /> After
+<input type="number" id="taskEditRecurEndCount" class="form-input w-20 ml-1" min="1" placeholder="N" disabled />
+<span class="text-gray-500">occurrences</span>
+</label>
+<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+<input type="radio" name="taskEditRecurEndType" value="date" onchange="TaskEditModal.onRecurEndTypeChange('date')" class="text-gray-700 focus:ring-gray-600" /> Until
+<input type="date" id="taskEditRecurEndDate" class="form-input ml-1" disabled />
+</label>
 </div>
 </div>
 </div>
@@ -531,6 +579,26 @@ const TaskEditModal = {
   isOpen: false,
   hasUnsavedChanges: false,
 
+  autoCalcStoryPoints() {
+    var startDate = document.getElementById('taskEditStartDate')?.value;
+    var dueDate = document.getElementById('taskEditDueDate')?.value;
+    if (!startDate || !dueDate) return;
+    var start = new Date(startDate);
+    var end = new Date(dueDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return;
+    var workingDays = 0;
+    var current = new Date(start);
+    while (current <= end) {
+      var day = current.getDay();
+      if (day !== 0 && day !== 6) workingDays++;
+      current.setDate(current.getDate() + 1);
+    }
+    var spEl = document.getElementById('taskEditStoryPoints');
+    var ehEl = document.getElementById('taskEditEstimatedHrs');
+    if (spEl) spEl.value = workingDays;
+    if (ehEl) ehEl.value = workingDays * 8;
+  },
+
   open(taskId) {
     if (!taskId) {
       console.error('TaskEditModal.open: taskId is required');
@@ -604,9 +672,16 @@ const TaskEditModal = {
         .loadTask(taskId);
       return;
     }
+    showLoading(true);
     google.script.run
-      .withSuccessHandler((task) => this.handleTaskLoaded(task))
-      .withFailureHandler((error) => this.handleLoadError(error))
+      .withSuccessHandler((task) => {
+        showLoading(false);
+        this.handleTaskLoaded(task);
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        this.handleLoadError(error);
+      })
       .loadTask(taskId);
   },
 
@@ -669,6 +744,7 @@ const TaskEditModal = {
     this.setInputValue('taskEditMilestoneDate', task.milestoneDate || '');
     this.setInputValue('taskEditMilestoneType', task.milestoneType || '');
     this.toggleMilestoneFields(isMilestone);
+    this.populateRecurrenceForm(task.recurringConfig);
     this.populateSelectOptions();
     this.loadDependencies();
     this.updateSaveButtonState();
@@ -684,7 +760,7 @@ const TaskEditModal = {
     if (statusSelect) {
       const statuses = config.statuses || defaultStatuses;
       statusSelect.innerHTML = statuses
-        .map(s => `<option value="${s}" ${s === this.task?.status ? 'selected' : ''}>${this.escapeHtml(s)}</option>`)
+        .map(s => `<option value="${s}" ${s === this.task?.status ? 'selected' : ''}>${escapeHtml(s)}</option>`)
         .join('');
     }
 
@@ -692,7 +768,7 @@ const TaskEditModal = {
     if (prioritySelect) {
       const priorities = config.priorities || defaultPriorities;
       prioritySelect.innerHTML = priorities
-        .map(p => `<option value="${p}" ${p === this.task?.priority ? 'selected' : ''}>${this.escapeHtml(p)}</option>`)
+        .map(p => `<option value="${p}" ${p === this.task?.priority ? 'selected' : ''}>${escapeHtml(p)}</option>`)
         .join('');
     }
 
@@ -700,7 +776,7 @@ const TaskEditModal = {
     if (typeSelect) {
       const types = config.types || defaultTypes;
       typeSelect.innerHTML = types
-        .map(t => `<option value="${t}" ${t === this.task?.type ? 'selected' : ''}>${this.escapeHtml(t)}</option>`)
+        .map(t => `<option value="${t}" ${t === this.task?.type ? 'selected' : ''}>${escapeHtml(t)}</option>`)
         .join('');
     }
 
@@ -709,7 +785,7 @@ const TaskEditModal = {
       const projects = State.projects || [];
       projectSelect.innerHTML = '<option value="">No Project</option>' +
         projects.map(p =>
-          `<option value="${p.id}" ${p.id === this.task?.projectId ? 'selected' : ''}>${this.escapeHtml(p.name)}</option>`
+          `<option value="${p.id}" ${p.id === this.task?.projectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
         ).join('');
     }
 
@@ -718,7 +794,7 @@ const TaskEditModal = {
       const users = State.users || [];
       assigneeSelect.innerHTML = '<option value="">Unassigned</option>' +
         users.map(u =>
-          `<option value="${u.email}" ${u.email === this.task?.assignee ? 'selected' : ''}>${this.escapeHtml(u.name || u.email)}</option>`
+          `<option value="${u.email}" ${u.email === this.task?.assignee ? 'selected' : ''}>${escapeHtml(u.name || u.email)}</option>`
         ).join('');
     }
   },
@@ -832,6 +908,31 @@ const TaskEditModal = {
     }
   },
 
+  populateRecurrenceForm(config) {
+    const enabledEl = document.getElementById('taskEditRecurringEnabled');
+    if (!config || !enabledEl) {
+      if (enabledEl) enabledEl.checked = false;
+      this.toggleRecurrenceFields(false);
+      return;
+    }
+    try { var cfg = typeof config === 'string' ? JSON.parse(config) : config; } catch (e) { this.toggleRecurrenceFields(false); return; }
+    enabledEl.checked = true;
+    this.toggleRecurrenceFields(true);
+    this.setInputValue('taskEditRecurFreq', cfg.freq || 'weekly');
+    this.setInputValue('taskEditRecurDay', cfg.day || 'monday');
+    this.onRecurFreqChange();
+    var endType = cfg.endType || 'never';
+    var radios = document.querySelectorAll('input[name="taskEditRecurEndType"]');
+    radios.forEach(r => { r.checked = r.value === endType; });
+    this.onRecurEndTypeChange(endType);
+    if (endType === 'count' && cfg.endCount != null) {
+      this.setInputValue('taskEditRecurEndCount', String(cfg.endCount));
+    }
+    if (endType === 'date' && cfg.endDate) {
+      this.setInputValue('taskEditRecurEndDate', cfg.endDate);
+    }
+  },
+
   loadDependencies() {
     if (!this.task || !this.task.id) return;
 
@@ -878,9 +979,9 @@ const TaskEditModal = {
           ${predecessors.map(dep => dep.task ? `
             <div class="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg mb-2">
               <div class="flex items-center gap-2 flex-1 min-w-0">
-                <span class="text-xs font-mono text-red-700 bg-red-100 px-2 py-0.5 rounded">${this.escapeHtml(dep.task.id)}</span>
-                <span class="text-sm text-red-900 font-medium truncate">${this.escapeHtml(dep.task.title)}</span>
-                <span class="text-xs px-2 py-0.5 rounded bg-white text-gray-600">${this.escapeHtml(dep.task.status)}</span>
+                <span class="text-xs font-mono text-red-700 bg-red-100 px-2 py-0.5 rounded">${escapeHtml(dep.task.id)}</span>
+                <span class="text-sm text-red-900 font-medium truncate">${escapeHtml(dep.task.title)}</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-white text-gray-600">${escapeHtml(dep.task.status)}</span>
               </div>
               <button onclick="TaskEditModal.removeDependency('${dep.id}')" class="text-red-500 hover:text-red-700 p-1" title="Remove">
                 <i class="fas fa-times"></i>
@@ -900,9 +1001,9 @@ const TaskEditModal = {
           ${successors.map(dep => dep.task ? `
             <div class="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg mb-2">
               <div class="flex items-center gap-2 flex-1 min-w-0">
-                <span class="text-xs font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">${this.escapeHtml(dep.task.id)}</span>
-                <span class="text-sm text-blue-900 font-medium truncate">${this.escapeHtml(dep.task.title)}</span>
-                <span class="text-xs px-2 py-0.5 rounded bg-white text-gray-600">${this.escapeHtml(dep.task.status)}</span>
+                <span class="text-xs font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">${escapeHtml(dep.task.id)}</span>
+                <span class="text-sm text-blue-900 font-medium truncate">${escapeHtml(dep.task.title)}</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-white text-gray-600">${escapeHtml(dep.task.status)}</span>
               </div>
               <button onclick="TaskEditModal.removeDependency('${dep.id}')" class="text-blue-500 hover:text-blue-700 p-1" title="Remove">
                 <i class="fas fa-times"></i>
@@ -928,10 +1029,12 @@ const TaskEditModal = {
     }
   },
 
-  removeDependency(dependencyId) {
-    if (!confirm('Remove this dependency?')) return;
+  async removeDependency(dependencyId) {
+    if (!await ConfirmModal('Remove this dependency?')) return;
+    showLoading(true);
     google.script.run
       .withSuccessHandler((result) => {
+        showLoading(false);
         if (result.success) {
           toast('Dependency removed', 'success');
           this.loadDependencies();
@@ -940,8 +1043,9 @@ const TaskEditModal = {
         }
       })
       .withFailureHandler((error) => {
-        toast('Failed to remove dependency', 'error');
+        showLoading(false);
         console.error('Remove dependency failed:', error);
+        toast('Failed to remove dependency', 'error');
       })
       .removeDependency(dependencyId);
   },
@@ -964,8 +1068,45 @@ const TaskEditModal = {
       description: this.getInputValue('taskEditDescription').trim(),
       isMilestone: isMilestone,
       milestoneDate: this.getInputValue('taskEditMilestoneDate'),
-      milestoneType: this.getInputValue('taskEditMilestoneType')
+      milestoneType: this.getInputValue('taskEditMilestoneType'),
+      recurringConfig: this.getRecurringConfig()
     };
+  },
+
+  getRecurringConfig() {
+    const enabled = document.getElementById('taskEditRecurringEnabled');
+    if (!enabled || !enabled.checked) return null;
+    const freq = this.getInputValue('taskEditRecurFreq') || 'weekly';
+    const day = this.getInputValue('taskEditRecurDay') || 'monday';
+    const endTypeEl = document.querySelector('input[name="taskEditRecurEndType"]:checked');
+    const endType = endTypeEl ? endTypeEl.value : 'never';
+    const endCount = endType === 'count' ? (parseInt(this.getInputValue('taskEditRecurEndCount')) || null) : null;
+    const endDate = endType === 'date' ? (this.getInputValue('taskEditRecurEndDate') || null) : null;
+    return { freq, day, endType, endCount, endDate };
+  },
+
+  toggleRecurrenceFields(enabled) {
+    const fields = document.getElementById('taskEditRecurrenceFields');
+    if (fields) {
+      if (enabled) fields.classList.remove('hidden');
+      else fields.classList.add('hidden');
+    }
+  },
+
+  onRecurFreqChange() {
+    const freq = this.getInputValue('taskEditRecurFreq');
+    const dayField = document.getElementById('taskEditRecurDayField');
+    if (dayField) {
+      if (freq === 'weekly' || freq === 'biweekly') dayField.classList.remove('hidden');
+      else dayField.classList.add('hidden');
+    }
+  },
+
+  onRecurEndTypeChange(type) {
+    const countInput = document.getElementById('taskEditRecurEndCount');
+    const dateInput = document.getElementById('taskEditRecurEndDate');
+    if (countInput) countInput.disabled = type !== 'count';
+    if (dateInput) dateInput.disabled = type !== 'date';
   },
 
   save() {
@@ -1007,8 +1148,10 @@ const TaskEditModal = {
     }
 
     toast('Saving changes...', 'info');
+    showLoading(true);
     google.script.run
       .withSuccessHandler(() => {
+        showLoading(false);
         toast('Task updated successfully', 'success');
         if (typeof loadBoard === 'function') {
           loadBoard();
@@ -1019,6 +1162,7 @@ const TaskEditModal = {
         }
       })
       .withFailureHandler((error) => {
+        showLoading(false);
         console.error('Failed to save task:', error);
         toast('Failed to save changes. Please try again.', 'error');
         if (saveBtn) {
@@ -1029,24 +1173,25 @@ const TaskEditModal = {
       .saveTaskUpdate(this.task.id, formData);
   },
 
-  cancel() {
+  async cancel() {
     if (this.hasUnsavedChanges) {
-      if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
+      if (!await ConfirmModal('You have unsaved changes. Are you sure you want to close?')) {
         return;
       }
     }
     this.close();
   },
 
-  deleteTask() {
+  async deleteTask() {
     if (!this.task || !this.task.id) return;
     const taskTitle = this.task.title || 'this task';
-    const confirmed = confirm(`Are you sure you want to delete "${taskTitle}"?\n\nThis action cannot be undone.`);
-    if (!confirmed) return;
+    if (!await ConfirmModal(`Are you sure you want to delete "${taskTitle}"? This action cannot be undone.`, { destructive: true })) return;
 
     toast('Deleting task...', 'info');
+    showLoading(true);
     google.script.run
       .withSuccessHandler(() => {
+        showLoading(false);
         toast('Task deleted successfully', 'success');
         if (typeof loadBoard === 'function') {
           loadBoard();
@@ -1057,6 +1202,7 @@ const TaskEditModal = {
         }
       })
       .withFailureHandler((error) => {
+        showLoading(false);
         console.error('Failed to delete task:', error);
         toast('Failed to delete task. Please try again.', 'error');
       })
@@ -1076,13 +1222,6 @@ const TaskEditModal = {
   getInputValue(id) {
     const el = document.getElementById(id);
     return el ? el.value : '';
-  },
-
-  escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   },
 
   comments: [],
@@ -1134,10 +1273,12 @@ const TaskEditModal = {
 
   refreshUsers() {
     toast('Refreshing users...', 'info');
+    showLoading(true);
     google.script.run
       .withSuccessHandler(() => {
         google.script.run
           .withSuccessHandler((users) => {
+            showLoading(false);
             this.cachedUsers = (users || []).map(u => ({
               email: u.email,
               name: u.name || u.email.split('@')[0],
@@ -1150,12 +1291,14 @@ const TaskEditModal = {
             }
           })
           .withFailureHandler((error) => {
+            showLoading(false);
             console.error('refreshUsers: Failed to load users:', error);
             toast('Failed to refresh users', 'error');
           })
           .getAllUsersForMentions(true);
       })
       .withFailureHandler((error) => {
+        showLoading(false);
         this.prefetchUsers();
       })
       .clearUserCache();
@@ -1282,11 +1425,11 @@ const TaskEditModal = {
       <div class="comment-item bg-white rounded-lg p-3 shadow-sm border border-gray-100" data-comment-id="${comment.id}">
         <div class="flex items-start gap-3">
           <div class="w-8 h-8 rounded-full bg-gradient-to-br from-gray-500 to-gray-600 text-white text-xs flex items-center justify-center flex-shrink-0 font-medium">
-            ${this.escapeHtml(initials)}
+            ${escapeHtml(initials)}
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
-              <span class="font-medium text-sm text-gray-900">${this.escapeHtml(userName)}</span>
+              <span class="font-medium text-sm text-gray-900">${escapeHtml(userName)}</span>
               <span class="text-xs text-gray-400">${timeAgo}</span>
               ${isEdited}
             </div>
@@ -1493,11 +1636,11 @@ const TaskEditModal = {
              data-index="${index}"
              onclick="TaskEditModal.selectMentionAtIndex(${index})">
           <div class="w-7 h-7 rounded-full bg-gradient-to-br from-gray-500 to-gray-600 text-white text-xs flex items-center justify-center font-medium">
-            ${this.escapeHtml(initials)}
+            ${escapeHtml(initials)}
           </div>
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-gray-900 truncate">${this.escapeHtml(user.name || user.email)}</div>
-            <div class="text-xs text-gray-500 truncate">${this.escapeHtml(user.email)}</div>
+            <div class="text-sm font-medium text-gray-900 truncate">${escapeHtml(user.name || user.email)}</div>
+            <div class="text-xs text-gray-500 truncate">${escapeHtml(user.email)}</div>
           </div>
         </div>
       `;

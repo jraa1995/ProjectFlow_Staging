@@ -422,7 +422,7 @@ const AuthService = {
           'COLONY Login Code',
           `Your login verification code is: ${code}\n\nThis code expires in 5 minutes.`,
           {
-            name: 'COLONY',
+            name: 'COLONY.SYSTEM',
             htmlBody: `
             <div style="font-family: sans-serif; padding: 20px;">
             <h2 style="color: #525252;">COLONY Login Code</h2>
@@ -598,6 +598,145 @@ const AuthService = {
       }
     } catch (error) {
       console.error('Failed to update last login:', error);
+    }
+  },
+
+  requestPasswordReset(email) {
+    try {
+      email = (email || '').toLowerCase().trim();
+      if (!email) return { success: false, error: 'Email is required' };
+
+      var rateCheck = this.checkRateLimit(email);
+      if (!rateCheck.allowed) return { success: false, error: rateCheck.message };
+
+      var user = this.getUserWithPassword(email);
+      if (!user) return { success: true };
+
+      var code = this.generateMfaCode();
+      var expiresAt = new Date(Date.now() + this.MFA_CODE_EXPIRY_MS);
+
+      this.saveMfaCode({
+        userId: email,
+        code: code,
+        createdAt: new Date().toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        used: false,
+        channel: 'password_reset'
+      });
+
+      CacheService.getScriptCache().put(
+        'PWRESET_' + email,
+        JSON.stringify({ code: code, expiresAt: expiresAt.toISOString() }),
+        300
+      );
+
+      try {
+        if (typeof EmailNotificationService !== 'undefined' && EmailNotificationService.sendEmailWithRetry) {
+          EmailNotificationService.sendEmailWithRetry(
+            email,
+            'COLONY Password Reset Code',
+            '<div style="font-family:sans-serif;padding:20px;">' +
+            '<h2 style="color:#525252;">COLONY Password Reset</h2>' +
+            '<p>Your password reset code is:</p>' +
+            '<p style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#1f2937;">' + code + '</p>' +
+            '<p style="color:#6b7280;">This code expires in 5 minutes. If you did not request this, ignore this email.</p>' +
+            '</div>',
+            'Your COLONY password reset code is: ' + code + '. This code expires in 5 minutes.'
+          );
+        } else {
+          GmailApp.sendEmail(email, 'COLONY Password Reset Code',
+            'Your password reset code is: ' + code + '\n\nThis code expires in 5 minutes.',
+            {
+              name: 'COLONY.SYSTEM',
+              htmlBody: '<div style="font-family:sans-serif;padding:20px;">' +
+                '<h2 style="color:#525252;">COLONY Password Reset</h2>' +
+                '<p>Your password reset code is:</p>' +
+                '<p style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#1f2937;">' + code + '</p>' +
+                '<p style="color:#6b7280;">This code expires in 5 minutes. If you did not request this, ignore this email.</p>' +
+                '</div>'
+            }
+          );
+        }
+      } catch (emailErr) {
+        console.error('Failed to send reset email:', emailErr);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('requestPasswordReset failed:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  verifyResetCode(email, code) {
+    email = (email || '').toLowerCase().trim();
+    var cached = CacheService.getScriptCache().get('PWRESET_' + email);
+    if (cached) {
+      try {
+        var data = JSON.parse(cached);
+        if (data.code === code && new Date(data.expiresAt) > new Date()) {
+          CacheService.getScriptCache().remove('PWRESET_' + email);
+          return true;
+        }
+      } catch (e) {}
+    }
+
+    var sheet = this.getMfaCodesSheet();
+    var sheetData = sheet.getDataRange().getValues();
+    var columns = CONFIG.MFA_CODE_COLUMNS;
+    var userIdIndex = columns.indexOf('userId');
+    var codeIndex = columns.indexOf('code');
+    var expiresAtIndex = columns.indexOf('expiresAt');
+    var usedIndex = columns.indexOf('used');
+    var channelIndex = columns.indexOf('channel');
+    var now = new Date();
+
+    for (var i = sheetData.length - 1; i >= 1; i--) {
+      var row = sheetData[i];
+      if (row[userIdIndex] === email && row[codeIndex] === code && row[channelIndex] === 'password_reset') {
+        if (new Date(row[expiresAtIndex]) > now && !row[usedIndex]) {
+          sheet.getRange(i + 1, usedIndex + 1).setValue(true);
+          return true;
+        }
+      }
+    }
+    return false;
+  },
+
+  resetPasswordWithCode(email, code, newPassword) {
+    try {
+      email = (email || '').toLowerCase().trim();
+      if (!email || !code || !newPassword) return { success: false, error: 'All fields are required' };
+
+      var rateCheck = this.checkRateLimit(email);
+      if (!rateCheck.allowed) return { success: false, error: rateCheck.message };
+
+      if (!this.verifyResetCode(email, code)) {
+        this.recordFailedAttempt(email);
+        return { success: false, error: 'Invalid or expired reset code' };
+      }
+
+      try {
+        if (typeof PasswordService !== 'undefined') {
+          PasswordService.validatePasswordStrength(newPassword);
+        } else if (newPassword.length < 8) {
+          return { success: false, error: 'Password must be at least 8 characters' };
+        }
+      } catch (valErr) {
+        return { success: false, error: valErr.message };
+      }
+
+      if (typeof PasswordService === 'undefined') return { success: false, error: 'Password service unavailable' };
+      var hashResult = PasswordService.createPasswordHash(newPassword);
+      this.updateUserPassword(email, hashResult.hash, hashResult.salt);
+      this.invalidateAllUserSessions(email);
+      this.clearRateLimit(email);
+      CacheService.getScriptCache().remove('PWRESET_' + email);
+
+      return { success: true };
+    } catch (error) {
+      console.error('resetPasswordWithCode failed:', error);
+      return { success: false, error: error.message };
     }
   }
 };

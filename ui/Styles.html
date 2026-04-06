@@ -296,8 +296,8 @@ input[type="checkbox"]:focus {
 }
 
 .board-column {
-  width:300px;
-  min-width:300px;
+  min-width:200px;
+  flex:1;
   background:#f3f4f6;
   border-radius:0.75rem;
   display:flex;
@@ -532,6 +532,82 @@ input[type="checkbox"]:focus {
 
 .task-card:hover .fa-link {
   opacity:1;
+}
+
+.sidebar-group-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:4px 8px;
+  margin-bottom:2px;
+  cursor:pointer;
+  user-select:none;
+  border-radius:6px;
+}
+
+.sidebar-group-header:hover {
+  background:rgba(255,255,255,0.05);
+}
+
+.sidebar-group-content {
+  max-height:500px;
+  opacity:1;
+  overflow:hidden;
+  transition:max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.sidebar-group-collapsed {
+  max-height:0 !important;
+  opacity:0 !important;
+  overflow:hidden;
+}
+
+.split-pane {
+  display:flex;
+  height:100%;
+  overflow:hidden;
+}
+
+.split-pane-left {
+  overflow:auto;
+  flex-shrink:0;
+}
+
+.split-pane-right {
+  flex:1;
+  overflow:auto;
+  min-width:0;
+}
+
+.split-pane-divider {
+  width:4px;
+  cursor:col-resize;
+  background:var(--co-gray-200);
+  flex-shrink:0;
+  transition:background 0.15s;
+}
+
+.split-pane-divider:hover,
+.split-pane-divider.active {
+  background:var(--co-primary-400);
+}
+
+@keyframes loginFadeOut {
+  from { opacity:1; }
+  to { opacity:0; }
+}
+
+@keyframes cardSlideUp {
+  from { transform:translateY(0); opacity:1; }
+  to { transform:translateY(-30px); opacity:0; }
+}
+
+.login-exit {
+  animation:loginFadeOut 0.4s ease forwards;
+}
+
+.card-exit {
+  animation:cardSlideUp 0.3s ease forwards;
 }
 
 @keyframes blocked-pulse {
@@ -1087,15 +1163,11 @@ input[type="checkbox"]:focus {
   color:#111827;
 }
 
-#loginModal {
-  backdrop-filter:blur(4px);
-}
-
-#loginModal input:focus {
+#loginPage input:focus {
   outline:none;
 }
 
-#loginModal .login-loading {
+#loginPage .login-loading {
   pointer-events:none;
   opacity:0.7;
 }
