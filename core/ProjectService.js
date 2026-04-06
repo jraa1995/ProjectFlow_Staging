@@ -192,6 +192,16 @@ function updateProjectAssignees(projectId, ownerId, secondaryUsers) {
   }
 }
 
+function importWorkLogProjects(workbookId) {
+  try {
+    var result = importProjectsFromWorkLog(workbookId);
+    return result;
+  } catch (error) {
+    console.error('importWorkLogProjects failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function autoPopulateSprintTasks(sprintId, projectId) {
   try {
     var count = assignProjectTasksToSprint(sprintId, projectId);
