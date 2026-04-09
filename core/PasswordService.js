@@ -1,5 +1,5 @@
 const PasswordService = {
-  ITERATIONS: 10000,
+  ITERATIONS: 1000,
   SALT_LENGTH: 32,
   HASH_ALGORITHM: Utilities.DigestAlgorithm.SHA_256,
 
