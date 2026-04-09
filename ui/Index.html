@@ -74,7 +74,7 @@ function _pc(pageName, method) {
 <i class="fas fa-list w-5"></i> List View
 </span>
 <span class="nav-link" data-view="timeline" onclick="switchView('timeline')">
-<i class="fas fa-chart-gantt w-5"></i> Timeline
+<i class="fas fa-calendar-days w-5"></i> Calendar
 </span>
 <span class="nav-link" data-view="milestones" onclick="switchView('milestones')">
 <i class="fas fa-flag-checkered w-5"></i> Milestones
@@ -224,82 +224,41 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 <div id="board" class="flex gap-4 h-full"></div>
 </div>
 <div id="timelineView" class="flex-1 overflow-auto p-4 hidden">
-<!-- Timeline Header -->
 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
 <div class="flex items-center justify-between mb-4">
-<h2 class="text-lg font-semibold text-gray-900">
-Project Timeline
-</h2>
 <div class="flex items-center gap-3">
-<div class="flex items-center bg-gray-100 rounded-lg p-1">
-<button
-onclick="setTimelineViewMode('Week')"
-class="px-3 py-1 text-sm rounded-md bg-white shadow-sm font-medium"
->
-Week
-</button>
-<button
-onclick="setTimelineViewMode('Month')"
-class="px-3 py-1 text-sm rounded-md text-gray-600 hover:bg-white"
->
-Month
-</button>
+<button onclick="TimelineModule.navigateMonth(-1)" class="p-2 hover:bg-gray-100 rounded-lg text-gray-600"><i class="fas fa-chevron-left"></i></button>
+<h2 id="calendarMonthLabel" class="text-lg font-semibold text-gray-900 min-w-[180px] text-center"></h2>
+<button onclick="TimelineModule.navigateMonth(1)" class="p-2 hover:bg-gray-100 rounded-lg text-gray-600"><i class="fas fa-chevron-right"></i></button>
+<button onclick="TimelineModule.goToToday()" class="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-300">Today</button>
 </div>
-<button
-onclick="loadTimelineData()"
-class="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700"
->
-<i class="fas fa-sync-alt mr-1"></i> Refresh
-</button>
+<div class="flex items-center gap-3">
+<button onclick="TimelineModule.loadTimelineData()" class="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700"><i class="fas fa-sync-alt mr-1"></i> Refresh</button>
 </div>
 </div>
 <div class="flex items-center gap-4">
-<select
-id="timelineStatusFilter"
-onchange="applyTimelineFilters()"
-class="px-3 py-2 border border-gray-300 rounded-lg text-sm"
->
+<select id="timelineStatusFilter" onchange="TimelineModule.applyTimelineFilters()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
 <option value="">All Statuses</option>
 </select>
-<select
-id="timelinePriorityFilter"
-onchange="applyTimelineFilters()"
-class="px-3 py-2 border border-gray-300 rounded-lg text-sm"
->
+<select id="timelinePriorityFilter" onchange="TimelineModule.applyTimelineFilters()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
 <option value="">All Priorities</option>
 </select>
-<input
-type="text"
-id="timelineSearch"
-placeholder="Search tasks..."
-onkeyup="applyTimelineFilters()"
-class="px-3 py-2 border border-gray-300 rounded-lg text-sm w-48"
-/>
-<button
-onclick="clearTimelineFilters()"
-class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm"
->
-Clear Filters
-</button>
+<input type="text" id="timelineSearch" placeholder="Search tasks..." onkeyup="TimelineModule.applyTimelineFilters()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm w-48" />
+<button onclick="TimelineModule.clearTimelineFilters()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Clear Filters</button>
 </div>
 </div>
-<!-- Filters -->
 <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-<div id="ganttContainer" class="p-4 min-h-[400px]">
+<div id="calendarContainer" class="p-4 min-h-[400px]">
 <div class="flex items-center justify-center h-64 text-gray-500">
-<i class="fas fa-spinner fa-spin text-2xl mr-2"></i> Loading
-timeline...
+<i class="fas fa-spinner fa-spin text-2xl mr-2"></i> Loading calendar...
 </div>
 </div>
 </div>
-<!-- Timeline List View -->
 <div id="timelineListContainer" class="bg-white rounded-lg shadow-sm border border-gray-200 mt-4">
 <div class="p-4 border-b border-gray-200">
-<h3 class="font-medium text-gray-900">Timeline Tasks</h3>
+<h3 class="font-medium text-gray-900">Calendar Tasks</h3>
 </div>
-<div id="timelineList" class="divide-y divide-gray-200">
-<!-- Timeline list items rendered by JS -->
-</div>
+<div id="timelineList" class="divide-y divide-gray-200"></div>
 </div>
 </div>
 <!-- Funnel View -->

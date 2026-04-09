@@ -1336,13 +1336,33 @@ function backfillJsonData(sheetName, columns) {
     const jsonDataIndex = columns.indexOf('jsonData');
     if (jsonDataIndex === -1) return { success: false, error: 'No jsonData column in ' + sheetName };
     var updated = 0;
+    var pendingValues = [];
+    var pendingRows = [];
     for (var i = 1; i < data.length; i++) {
       if (data[i][jsonDataIndex]) continue;
       var obj = rowToObject(data[i], columns);
       var cleanObj = {};
       columns.forEach(function(col) { if (col !== 'jsonData') cleanObj[col] = obj[col] || ''; });
-      sheet.getRange(i + 1, jsonDataIndex + 1).setValue(JSON.stringify(cleanObj));
+      pendingRows.push(i + 1);
+      pendingValues.push(JSON.stringify(cleanObj));
       updated++;
+    }
+    if (pendingRows.length > 0) {
+      var colNum = jsonDataIndex + 1;
+      var batchStart = 0;
+      while (batchStart < pendingRows.length) {
+        var batchEnd = batchStart;
+        while (batchEnd + 1 < pendingRows.length &&
+               pendingRows[batchEnd + 1] === pendingRows[batchEnd] + 1) {
+          batchEnd++;
+        }
+        var vals = [];
+        for (var b = batchStart; b <= batchEnd; b++) {
+          vals.push([pendingValues[b]]);
+        }
+        sheet.getRange(pendingRows[batchStart], colNum, vals.length, 1).setValues(vals);
+        batchStart = batchEnd + 1;
+      }
     }
     SpreadsheetApp.flush();
     return { success: true, updated: updated };

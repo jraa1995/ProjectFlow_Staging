@@ -358,21 +358,74 @@ function updateFunnelTicket(funnelId, updates) {
       throw new Error(`Funnel ticket not found: ${funnelId}`);
     }
 
-    Object.keys(updates).forEach(field => {
-      const colIndex = headers.indexOf(field);
+    var row = data[rowIndex].slice();
+    Object.keys(updates).forEach(function(field) {
+      var colIndex = headers.indexOf(field);
       if (colIndex !== -1) {
-        let value = updates[field];
+        var value = updates[field];
         if ((field === 'mappedData' || field === 'rawData') && typeof value === 'object') {
           value = JSON.stringify(value);
         }
-        sheet.getRange(rowIndex + 1, colIndex + 1).setValue(value);
+        row[colIndex] = value;
       }
     });
+    sheet.getRange(rowIndex + 1, 1, 1, headers.length).setValues([row]);
 
     return true;
   } catch (error) {
     console.error('updateFunnelTicket error:', error);
     return false;
+  }
+}
+
+function bulkUpdateFunnelTickets(updates) {
+  try {
+    var sheet = getFunnelStagingSheet();
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var idMap = {};
+    for (var i = 1; i < data.length; i++) {
+      idMap[data[i][0]] = i;
+    }
+    var rangesToWrite = [];
+    updates.forEach(function(update) {
+      var rowIndex = idMap[update.id];
+      if (rowIndex === undefined) return;
+      var row = data[rowIndex].slice();
+      Object.keys(update.changes).forEach(function(field) {
+        var colIndex = headers.indexOf(field);
+        if (colIndex !== -1) {
+          var value = update.changes[field];
+          if ((field === 'mappedData' || field === 'rawData') && typeof value === 'object') {
+            value = JSON.stringify(value);
+          }
+          row[colIndex] = value;
+        }
+      });
+      data[rowIndex] = row;
+      rangesToWrite.push({ rowIndex: rowIndex + 1, rowData: row });
+    });
+    if (rangesToWrite.length === 0) return { success: true, updated: 0 };
+    rangesToWrite.sort(function(a, b) { return a.rowIndex - b.rowIndex; });
+    var batchStart = 0;
+    while (batchStart < rangesToWrite.length) {
+      var batchEnd = batchStart;
+      while (batchEnd + 1 < rangesToWrite.length &&
+             rangesToWrite[batchEnd + 1].rowIndex === rangesToWrite[batchEnd].rowIndex + 1) {
+        batchEnd++;
+      }
+      var startRow = rangesToWrite[batchStart].rowIndex;
+      var batchData = [];
+      for (var b = batchStart; b <= batchEnd; b++) {
+        batchData.push(rangesToWrite[b].rowData);
+      }
+      sheet.getRange(startRow, 1, batchData.length, headers.length).setValues(batchData);
+      batchStart = batchEnd + 1;
+    }
+    return { success: true, updated: rangesToWrite.length };
+  } catch (error) {
+    console.error('bulkUpdateFunnelTickets error:', error);
+    return { success: false, error: error.message };
   }
 }
 

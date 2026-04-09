@@ -400,12 +400,7 @@ var NotificationCenter = {
     }
 
     try {
-      const result = await new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .getNotificationsWithCount();
-      });
+      const result = await gasCall('getNotificationsWithCount');
 
       this.notifications = result.notifications || [];
       this.unreadCount = result.unreadCount || 0;
@@ -427,12 +422,7 @@ var NotificationCenter = {
 
   async loadUnreadCount() {
     try {
-      const count = await new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .getUnreadNotificationCount();
-      });
+      const count = await gasCall('getUnreadNotificationCount');
 
       this.unreadCount = count || 0;
       this.updateBadge();
@@ -543,12 +533,7 @@ var NotificationCenter = {
 
   async markAsRead(notificationId) {
     try {
-      await new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .markNotificationRead(notificationId);
-      });
+      await gasCall('markNotificationRead', notificationId);
 
       const notification = this.notifications.find(n => n.id === notificationId);
       if (notification && !notification.read) {
@@ -564,12 +549,7 @@ var NotificationCenter = {
 
   async markAllRead() {
     try {
-      await new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .markAllNotificationsRead();
-      });
+      await gasCall('markAllNotificationsRead');
 
       this.notifications.forEach(n => n.read = true);
       this.unreadCount = 0;

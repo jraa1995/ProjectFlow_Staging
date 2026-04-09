@@ -427,18 +427,46 @@ function bulkMoveTasksToStatus(fromStatus, toStatus) {
 }
 
 function bulkAssignTasks(taskIds, assigneeEmail) {
-  let assigned = 0;
+  var sheet = getTasksSheet();
+  var columns = CONFIG.TASK_COLUMNS;
+  var data = sheet.getDataRange().getValues();
+  var idIndex = 0;
+  var assigneeIndex = columns.indexOf('assignee');
+  var updatedAtIndex = columns.indexOf('updatedAt');
+  if (assigneeIndex === -1) return 0;
 
-  taskIds.forEach(taskId => {
-    try {
-      updateTask(taskId, { assignee: assigneeEmail });
-      assigned++;
-    } catch (e) {
-      console.error(`Failed to assign ${taskId}: ${e.message}`);
+  var idSet = {};
+  taskIds.forEach(function(id) { idSet[id] = true; });
+
+  var rangesToWrite = [];
+  var timestamp = now();
+  for (var i = 1; i < data.length; i++) {
+    if (idSet[data[i][idIndex]]) {
+      data[i][assigneeIndex] = assigneeEmail;
+      if (updatedAtIndex !== -1) data[i][updatedAtIndex] = timestamp;
+      rangesToWrite.push({ rowIndex: i + 1, rowData: data[i] });
     }
-  });
+  }
 
-  return assigned;
+  if (rangesToWrite.length === 0) return 0;
+  rangesToWrite.sort(function(a, b) { return a.rowIndex - b.rowIndex; });
+
+  var batchStart = 0;
+  while (batchStart < rangesToWrite.length) {
+    var batchEnd = batchStart;
+    while (batchEnd + 1 < rangesToWrite.length &&
+           rangesToWrite[batchEnd + 1].rowIndex === rangesToWrite[batchEnd].rowIndex + 1) {
+      batchEnd++;
+    }
+    var startRow = rangesToWrite[batchStart].rowIndex;
+    var batchData = [];
+    for (var b = batchStart; b <= batchEnd; b++) {
+      batchData.push(rangesToWrite[b].rowData);
+    }
+    sheet.getRange(startRow, 1, batchData.length, columns.length).setValues(batchData);
+    batchStart = batchEnd + 1;
+  }
+  return rangesToWrite.length;
 }
 
 function archiveOldCompletedTasks(daysOld) {

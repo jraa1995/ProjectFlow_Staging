@@ -1002,28 +1002,24 @@ var FunnelPage = {
   },
 
   bulkAssign(assignee) {
-    const selectedIds = Array.from(this.selectedTickets);
-    const count = selectedIds.length;
-    let completed = 0;
-    let errors = 0;
-
-    showLoading(true);
-    selectedIds.forEach(ticketId => {
-      google.script.run
-        .withSuccessHandler(() => {
-          completed++;
-          if (completed + errors === count) {
-            this.handleBulkAssignComplete(completed, errors);
-          }
-        })
-        .withFailureHandler(() => {
-          errors++;
-          if (completed + errors === count) {
-            this.handleBulkAssignComplete(completed, errors);
-          }
-        })
-        .updateFunnelTicket(ticketId, { assignedTo: assignee });
+    var selectedIds = Array.from(this.selectedTickets);
+    var updates = selectedIds.map(function(id) {
+      return { id: id, changes: { assignedTo: assignee } };
     });
+    var self = this;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          self.handleBulkAssignComplete(result.updated, 0);
+        } else {
+          self.handleBulkAssignComplete(0, selectedIds.length);
+        }
+      })
+      .withFailureHandler(function() {
+        self.handleBulkAssignComplete(0, selectedIds.length);
+      })
+      .bulkUpdateFunnelTickets(updates);
   },
 
   handleBulkAssignComplete(completed, errors) {

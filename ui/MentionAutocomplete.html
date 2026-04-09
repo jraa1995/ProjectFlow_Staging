@@ -213,12 +213,7 @@ class MentionAutocomplete {
     this.isLoading = true;
 
     try {
-      const suggestions = await new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .getUserSuggestions(query, []);
-      });
+      const suggestions = await gasCall('getUserSuggestions', [query, []]);
 
       if (this.destroyed) return;
 

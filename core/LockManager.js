@@ -3,47 +3,40 @@ const LockManager = {
   SCRIPT_LOCK_TIMEOUT_MS: 30000,
 
   updateTaskWithLocking(taskId, updates, expectedVersion) {
-    const sheet = getTasksSheet();
-    const data = sheet.getDataRange().getValues();
-    const columns = CONFIG.TASK_COLUMNS;
-    const idIndex = 0;
-    const versionIndex = columns.indexOf('version');
-    const lastModifiedByIndex = columns.indexOf('lastModifiedBy');
+    var sheet = getTasksSheet();
+    var columns = CONFIG.TASK_COLUMNS;
+    var rowIndex = findRowWithCache(sheet, 'Tasks', taskId, 0);
+    if (!rowIndex) throw new Error('Task not found: ' + taskId);
 
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][idIndex] === taskId) {
-        const task = rowToObject(data[i], columns);
-        const currentVersion = parseInt(task.version) || 0;
+    var rowData = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var task = rowToObject(rowData, columns);
+    var currentVersion = parseInt(task.version) || 0;
 
-        if (expectedVersion !== undefined && expectedVersion !== null) {
-          if (currentVersion !== expectedVersion) {
-            throw new Error(JSON.stringify({
-              code: 'VERSION_CONFLICT',
-              message: 'This task was modified by another user. Please refresh and try again.',
-              currentVersion: currentVersion,
-              expectedVersion: expectedVersion,
-              lastModifiedBy: task.lastModifiedBy
-            }));
-          }
-        }
-
-        Object.assign(task, updates);
-        task.version = currentVersion + 1;
-        task.lastModifiedBy = getCurrentUserEmail();
-        task.updatedAt = now();
-
-        if (updates.status === 'Done' && !task.completedAt) {
-          task.completedAt = now();
-        }
-
-        const newRow = objectToRow(task, columns);
-        sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
-        this.invalidateTaskCaches(taskId);
-        return task;
+    if (expectedVersion !== undefined && expectedVersion !== null) {
+      if (currentVersion !== expectedVersion) {
+        throw new Error(JSON.stringify({
+          code: 'VERSION_CONFLICT',
+          message: 'This task was modified by another user. Please refresh and try again.',
+          currentVersion: currentVersion,
+          expectedVersion: expectedVersion,
+          lastModifiedBy: task.lastModifiedBy
+        }));
       }
     }
 
-    throw new Error('Task not found: ' + taskId);
+    Object.assign(task, updates);
+    task.version = currentVersion + 1;
+    task.lastModifiedBy = getCurrentUserEmail();
+    task.updatedAt = now();
+
+    if (updates.status === 'Done' && !task.completedAt) {
+      task.completedAt = now();
+    }
+
+    var newRow = objectToRow(task, columns);
+    sheet.getRange(rowIndex, 1, 1, columns.length).setValues([newRow]);
+    this.invalidateTaskCaches(taskId);
+    return task;
   },
 
   createTaskWithVersion(taskData) {
@@ -212,23 +205,62 @@ const LockManager = {
     }
   },
 
-  getCached(key, fetchFn, options = {}) {
-    const scriptTTL = options.scriptTTL || 300;
-    const userTTL = options.userTTL || 1800;
+  putChunked(key, jsonStr, ttl) {
+    var scriptCache = CacheService.getScriptCache();
+    if (jsonStr.length <= 95000) {
+      scriptCache.put(key, jsonStr, ttl);
+      return;
+    }
+    var chunkSize = 95000;
+    var count = Math.ceil(jsonStr.length / chunkSize);
+    var batch = {};
+    batch[key] = JSON.stringify({ chunked: true, count: count, size: jsonStr.length });
+    for (var c = 0; c < count; c++) {
+      batch[key + '_chunk_' + c] = jsonStr.substring(c * chunkSize, (c + 1) * chunkSize);
+    }
+    scriptCache.putAll(batch, ttl);
+  },
+
+  getChunked(key) {
+    var scriptCache = CacheService.getScriptCache();
+    var raw = scriptCache.get(key);
+    if (!raw) return null;
+    try {
+      var manifest = JSON.parse(raw);
+      if (manifest && manifest.chunked === true) {
+        var chunkKeys = [];
+        for (var c = 0; c < manifest.count; c++) {
+          chunkKeys.push(key + '_chunk_' + c);
+        }
+        var chunks = scriptCache.getAll(chunkKeys);
+        var result = '';
+        for (var c = 0; c < manifest.count; c++) {
+          var chunk = chunks[key + '_chunk_' + c];
+          if (!chunk) return null;
+          result += chunk;
+        }
+        return result;
+      }
+    } catch (e) {}
+    return raw;
+  },
+
+  getCached(key, fetchFn, options) {
+    options = options || {};
+    var scriptTTL = options.scriptTTL || 300;
 
     if (typeof RequestCache !== 'undefined') {
-      const requestCached = RequestCache[key];
+      var requestCached = RequestCache[key];
       if (requestCached !== undefined) {
         return requestCached;
       }
     }
 
-    const scriptCache = CacheService.getScriptCache();
-    const scriptCached = scriptCache.get(key);
+    var scriptCached = this.getChunked(key);
 
     if (scriptCached) {
       try {
-        const data = JSON.parse(scriptCached);
+        var data = JSON.parse(scriptCached);
         if (typeof RequestCache !== 'undefined') {
           RequestCache[key] = data;
         }
@@ -237,12 +269,10 @@ const LockManager = {
       }
     }
 
-    const data = fetchFn();
-    const jsonData = JSON.stringify(data);
+    var data = fetchFn();
+    var jsonData = JSON.stringify(data);
 
-    if (jsonData.length < 100000) {
-      scriptCache.put(key, jsonData, scriptTTL);
-    }
+    this.putChunked(key, jsonData, scriptTTL);
 
     if (typeof RequestCache !== 'undefined') {
       RequestCache[key] = data;

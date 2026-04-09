@@ -19,7 +19,9 @@
         .withFailureHandler(function(error) {
           if (!done) { done = true; clearTimeout(timer); reject(error); }
         });
-      if (args !== undefined) {
+      if (Array.isArray(args)) {
+        runner[method].apply(runner, args);
+      } else if (args !== undefined) {
         runner[method](args);
       } else {
         runner[method]();
@@ -238,24 +240,13 @@
     });
   }
 
-  var _libsLoaded = { chart: false, gantt: false };
+  var _libsLoaded = { chart: false };
 
   function ensureChartJs() {
     if (_libsLoaded.chart) return Promise.resolve();
     if (typeof Chart !== 'undefined') { _libsLoaded.chart = true; return Promise.resolve(); }
     return loadScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js').then(function() {
       _libsLoaded.chart = true;
-    });
-  }
-
-  function ensureGantt() {
-    if (_libsLoaded.gantt) return Promise.resolve();
-    if (typeof Gantt !== 'undefined') { _libsLoaded.gantt = true; return Promise.resolve(); }
-    return Promise.all([
-      loadScript('https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js'),
-      loadStylesheet('https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css')
-    ]).then(function() {
-      _libsLoaded.gantt = true;
     });
   }
 
@@ -266,7 +257,6 @@
   function runDiagnostics() {
     const results = {
       chartJs: typeof Chart !== 'undefined',
-      gantt: typeof Gantt !== 'undefined',
       tailwind: typeof tailwind !== 'undefined',
       state: typeof State !== 'undefined',
       taskDetailPanel: typeof TaskDetailPanel !== 'undefined',

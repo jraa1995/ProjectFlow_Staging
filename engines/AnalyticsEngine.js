@@ -47,25 +47,34 @@ class AnalyticsEngine {
   }
 
   static calculateVelocityTrend(tasks, startDate, endDate) {
-    const completedTasks = tasks.filter(task => task.status === 'Done' && task.updatedAt);
-    const trend = [];
-    const weekMs = 7 * 24 * 60 * 60 * 1000;
-    let currentDate = new Date(startDate);
-    while (currentDate < endDate) {
-      const weekEnd = new Date(currentDate.getTime() + weekMs);
-      const weekTasks = completedTasks.filter(task => {
-        const taskDate = new Date(task.updatedAt);
-        return taskDate >= currentDate && taskDate < weekEnd;
-      });
+    var weekMs = 7 * 24 * 60 * 60 * 1000;
+    var startTime = new Date(startDate).getTime();
+    var endTime = new Date(endDate).getTime();
+    var numWeeks = Math.ceil((endTime - startTime) / weekMs);
+    if (numWeeks <= 0) return [];
+    var completedBuckets = new Array(numWeeks).fill(0);
+    var totalBuckets = new Array(numWeeks).fill(0);
+    tasks.forEach(function(task) {
+      var createdTime = new Date(task.createdAt || task.updatedAt).getTime();
+      var createdIdx = Math.floor((createdTime - startTime) / weekMs);
+      if (createdIdx >= 0 && createdIdx < numWeeks) {
+        totalBuckets[createdIdx]++;
+      }
+      if (task.status === 'Done' && task.updatedAt) {
+        var completedTime = new Date(task.updatedAt).getTime();
+        var completedIdx = Math.floor((completedTime - startTime) / weekMs);
+        if (completedIdx >= 0 && completedIdx < numWeeks) {
+          completedBuckets[completedIdx]++;
+        }
+      }
+    });
+    var trend = [];
+    for (var w = 0; w < numWeeks; w++) {
       trend.push({
-        date: currentDate.toISOString().split('T')[0],
-        completed: weekTasks.length,
-        total: tasks.filter(task => {
-          const taskDate = new Date(task.createdAt || task.updatedAt);
-          return taskDate >= currentDate && taskDate < weekEnd;
-        }).length
+        date: new Date(startTime + w * weekMs).toISOString().split('T')[0],
+        completed: completedBuckets[w],
+        total: totalBuckets[w]
       });
-      currentDate = weekEnd;
     }
     return trend;
   }
@@ -89,8 +98,10 @@ class AnalyticsEngine {
     return utilization.sort((a, b) => b.productivity - a.productivity);
   }
 
-  static generatePredictions(projectId, confidenceLevel = 0.8) {
-    const tasks = projectId ? getAllTasks({ projectId }) : getAllTasks();
+  static generatePredictions(projectId, confidenceLevel, opts) {
+    confidenceLevel = confidenceLevel || 0.8;
+    var allTasks = (opts && opts.tasks) ? opts.tasks : getAllTasks();
+    var tasks = projectId ? allTasks.filter(function(t) { return t.projectId === projectId; }) : allTasks;
     const completedTasks = tasks.filter(task => task.status === 'Done');
     const remainingTasks = tasks.filter(task => task.status !== 'Done');
     if (completedTasks.length === 0) {
@@ -192,8 +203,8 @@ class AnalyticsEngine {
     };
   }
 
-  static calculateBurndownData(sprintId, projectId) {
-    let tasks = getAllTasks();
+  static calculateBurndownData(sprintId, projectId, opts) {
+    var tasks = (opts && opts.tasks) ? opts.tasks.slice() : getAllTasks();
     if (projectId) {
       tasks = tasks.filter(task => task.projectId === projectId);
     }
@@ -226,9 +237,9 @@ class AnalyticsEngine {
     };
   }
 
-  static generateExecutiveDashboard(portfolioFilter) {
-    const allTasks = getAllTasks();
-    const allProjects = getAllProjects();
+  static generateExecutiveDashboard(portfolioFilter, opts) {
+    var allTasks = (opts && opts.tasks) ? opts.tasks : getAllTasks();
+    var allProjects = (opts && opts.projects) ? opts.projects : getAllProjects();
     let tasks = allTasks;
     let projects = allProjects;
     if (portfolioFilter) {
@@ -240,8 +251,14 @@ class AnalyticsEngine {
     const activeProjects = projects.filter(project => project.status !== 'Completed').length;
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(task => task.status === 'Done').length;
+    var tasksByProject = new Map();
+    tasks.forEach(function(t) {
+      var list = tasksByProject.get(t.projectId) || [];
+      list.push(t);
+      tasksByProject.set(t.projectId, list);
+    });
     const projectHealth = projects.map(project => {
-      const projectTasks = tasks.filter(task => task.projectId === project.id);
+      const projectTasks = tasksByProject.get(project.id) || [];
       const projectCompleted = projectTasks.filter(task => task.status === 'Done').length;
       const progress = projectTasks.length > 0 ? (projectCompleted / projectTasks.length) * 100 : 0;
       let health = 'good';

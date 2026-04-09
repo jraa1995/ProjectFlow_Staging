@@ -97,16 +97,17 @@ const AuthService = {
 
       for (let i = 1; i < data.length; i++) {
         if (data[i][idIndex] === sessionId) {
-          const now = new Date().toISOString();
-          sheet.getRange(i + 1, lastActivityIndex + 1).setValue(now);
+          const row = data[i].slice();
+          row[lastActivityIndex] = new Date().toISOString();
 
-          const expiresAt = new Date(data[i][columns.indexOf('expiresAt')]);
+          const expiresAtIndex = columns.indexOf('expiresAt');
+          const expiresAt = new Date(row[expiresAtIndex]);
           const remaining = expiresAt.getTime() - Date.now();
 
           if (remaining < this.SESSION_REFRESH_THRESHOLD_MS) {
-            const newExpiry = new Date(Date.now() + this.SESSION_DURATION_MS);
-            sheet.getRange(i + 1, columns.indexOf('expiresAt') + 1).setValue(newExpiry.toISOString());
+            row[expiresAtIndex] = new Date(Date.now() + this.SESSION_DURATION_MS).toISOString();
           }
+          sheet.getRange(i + 1, 1, 1, row.length).setValues([row]);
           break;
         }
       }
@@ -148,10 +149,14 @@ const AuthService = {
       const userIdIndex = columns.indexOf('userId');
       const isValidIndex = columns.indexOf('isValid');
 
+      const a1Addresses = [];
       for (let i = 1; i < data.length; i++) {
         if (data[i][userIdIndex] === userId && data[i][isValidIndex] !== false) {
-          sheet.getRange(i + 1, isValidIndex + 1).setValue(false);
+          a1Addresses.push(sheet.getRange(i + 1, isValidIndex + 1).getA1Notation());
         }
+      }
+      if (a1Addresses.length > 0) {
+        sheet.getRangeList(a1Addresses).setValue(false);
       }
 
       const userCache = CacheService.getUserCache();
@@ -539,9 +544,11 @@ const AuthService = {
 
     for (let i = 1; i < data.length; i++) {
       if (data[i][emailIndex]?.toLowerCase() === email.toLowerCase()) {
-        if (hashIndex !== -1) sheet.getRange(i + 1, hashIndex + 1).setValue(hash);
-        if (saltIndex !== -1) sheet.getRange(i + 1, saltIndex + 1).setValue(salt);
-        if (lastChangeIndex !== -1) sheet.getRange(i + 1, lastChangeIndex + 1).setValue(new Date().toISOString());
+        const row = data[i].slice();
+        if (hashIndex !== -1) row[hashIndex] = hash;
+        if (saltIndex !== -1) row[saltIndex] = salt;
+        if (lastChangeIndex !== -1) row[lastChangeIndex] = new Date().toISOString();
+        sheet.getRange(i + 1, 1, 1, row.length).setValues([row]);
         return;
       }
     }
@@ -557,8 +564,10 @@ const AuthService = {
 
     for (let i = 1; i < data.length; i++) {
       if (data[i][emailIndex]?.toLowerCase() === email.toLowerCase()) {
-        if (failedIndex !== -1) sheet.getRange(i + 1, failedIndex + 1).setValue(failedAttempts);
-        if (lockoutIndex !== -1) sheet.getRange(i + 1, lockoutIndex + 1).setValue(lockoutUntil.toISOString());
+        const row = data[i].slice();
+        if (failedIndex !== -1) row[failedIndex] = failedAttempts;
+        if (lockoutIndex !== -1) row[lockoutIndex] = lockoutUntil.toISOString();
+        sheet.getRange(i + 1, 1, 1, row.length).setValues([row]);
         return;
       }
     }
@@ -574,8 +583,10 @@ const AuthService = {
 
     for (let i = 1; i < data.length; i++) {
       if (data[i][emailIndex]?.toLowerCase() === email.toLowerCase()) {
-        if (failedIndex !== -1) sheet.getRange(i + 1, failedIndex + 1).setValue(0);
-        if (lockoutIndex !== -1) sheet.getRange(i + 1, lockoutIndex + 1).setValue('');
+        const row = data[i].slice();
+        if (failedIndex !== -1) row[failedIndex] = 0;
+        if (lockoutIndex !== -1) row[lockoutIndex] = '';
+        sheet.getRange(i + 1, 1, 1, row.length).setValues([row]);
         return;
       }
     }

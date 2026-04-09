@@ -1,357 +1,247 @@
 <script>
-  async function loadTimelineData() {
-    showLoading(true);
-    try { await ensureGantt(); } catch (e) { console.error('Gantt library failed to load:', e); }
-    const projectId = State.projectFilter || null;
-    try {
-      if (State.cache && State.cache.tasks && State.cache.tasks.data && State.cache.tasks.data.length > 0) {
-        const tasks = State.cache.tasks.data;
-        const timelineTasks = tasks.filter(t => t.dueDate || t.startDate)
-          .filter(t => !projectId || t.projectId === projectId)
-          .map(t => ({
-            id: t.id,
-            name: t.title,
-            start: t.startDate || t.dueDate,
-            end: t.dueDate || t.startDate,
-            progress: t.status === 'Done' ? 100 : (t.status === 'In Progress' ? 50 : 0),
-            dependencies: '',
-            custom_class: t.isMilestone ? 'milestone' : (t.priority === 'Critical' ? 'critical' : 'normal')
-          }));
-        if (timelineTasks.length > 0) {
-          const data = {
-            tasks: timelineTasks,
-            milestones: tasks.filter(t => t.isMilestone && (!projectId || t.projectId === projectId)),
-            dateRange: {
-              start: new Date(Math.min(...timelineTasks.map(t => new Date(t.start)))),
-              end: new Date(Math.max(...timelineTasks.map(t => new Date(t.end))))
-            }
-          };
-          handleTimelineData(data);
-          google.script.run
-            .withSuccessHandler((freshData) => {
-              if (freshData && freshData.tasks && freshData.tasks.length > 0) {
-                State.timelineData = freshData;
-                renderTimeline(freshData);
-              }
-            })
-            .withFailureHandler((error) => console.error("Timeline background refresh failed:", error))
-            .getTimelineData(projectId);
-          return;
-        }
-      }
-      google.script.run
-        .withSuccessHandler(handleTimelineData)
-        .withFailureHandler(handleTimelineError)
-        .getTimelineData(projectId);
-    } catch (error) {
-      console.error("Timeline loading error:", error);
-      google.script.run
-        .withSuccessHandler(handleTimelineData)
-        .withFailureHandler(handleTimelineError)
-        .getTimelineData(projectId);
-    }
-  }
+var TimelineModule = {
+  currentMonth: new Date().getMonth(),
+  currentYear: new Date().getFullYear(),
+  tasks: [],
+  allTasks: [],
+  MAX_CHIPS_PER_DAY: 3,
 
-  function handleTimelineData(data) {
-    if (data) {}
-    showLoading(false);
-    if (data && data.logs) {}
-    if (data && data.error) {
-      console.error("Backend Error:", data.error);
+  loadTimelineData: function() {
+    var self = this;
+    var container = document.getElementById('calendarContainer');
+    if (container) {
+      container.innerHTML = '<div class="flex items-center justify-center h-64 text-gray-500"><i class="fas fa-spinner fa-spin text-2xl mr-2"></i> Loading calendar...</div>';
     }
-    if (!data || !data.tasks || data.tasks.length === 0) {
-      console.error("Timeline data is null or has no tasks");
-      if (data && data.logs) {
-        const logsText = data.logs.join('\n');
-        if (logsText.includes('TimelineEngine is not defined')) {
-          toast("Timeline engine not loaded. Please redeploy the application.", "error");
-        } else if (logsText.includes('Retrieved 0 total tasks')) {
-          toast("No tasks found in the system. Create some tasks first.", "warning");
-        } else if (logsText.includes('Converted 0 tasks')) {
-          toast("No tasks have valid dates. Add start/due dates to tasks to see timeline.", "warning");
-        } else if (logsText.includes('serialization')) {
-          toast("Data serialization error. Check backend logs in Apps Script.", "error");
-        } else if (data.error) {
-          toast("Timeline error: " + data.error, "error");
-        } else {
-          toast("Timeline has no displayable tasks. Check console for details.", "warning");
-        }
-      } else {
-        toast("Timeline data is unavailable. Check console for details.", "error");
-      }
-      renderEmptyTimeline();
-      return;
-    }
-    State.timelineData = data;
-    renderTimeline(data);
-  }
-
-  function handleTimelineError(error) {
-    console.error("Timeline error:", error);
-    showLoading(false);
-    toast("Failed to load timeline data", "error");
-    renderEmptyTimeline();
-  }
-
-  function renderTimeline(data) {
-    const ganttContainer = $("ganttContainer");
-    const timelineList = $("timelineList");
-    if (!data.tasks || data.tasks.length === 0) {
-      renderEmptyTimeline();
-      return;
-    }
-    if (ganttContainer && typeof Gantt !== "undefined") {
-      try {
-        ganttContainer.innerHTML = "";
-        const criticalPath = data.criticalPath || [];
-        const dependencies = data.dependencies || [];
-        const dependencyMap = new Map();
-        dependencies.forEach(dep => {
-          if (!dependencyMap.has(dep.to)) {
-            dependencyMap.set(dep.to, []);
-          }
-          dependencyMap.get(dep.to).push(dep.from);
-        });
-        const ganttTasks = data.tasks.map((task) => {
-          const isCritical = criticalPath.includes(task.id);
-          const taskDeps = dependencyMap.get(task.id) || [];
-          const dependencyString = taskDeps.join(',');
-          var startDate = typeof task.start === 'string' ? new Date(task.start) : task.start;
-          var endDate = typeof task.end === 'string' ? new Date(task.end) : task.end;
-          if (endDate && startDate && endDate < startDate) {
-            endDate = new Date(startDate.getTime() + 86400000);
-          }
-          return {
-            id: task.id,
-            name: task.name || task.title,
-            start: formatDateForGantt(startDate),
-            end: formatDateForGantt(endDate),
-            progress: task.progress || 0,
-            dependencies: dependencyString,
-            custom_class: getTaskClass(task, isCritical),
-          };
-        }).filter(function(t) { return t.start && t.end; });
-        if (ganttTasks.length === 0) {
-          renderEmptyTimeline();
-          return;
-        }
-        State.ganttInstance = new Gantt(ganttContainer, ganttTasks, {
-          view_mode: "Week",
-          date_format: "YYYY-MM-DD",
-          arrow_curve: 5,
-          padding: 18,
-          view_modes: ['Day', 'Week', 'Month'],
-          bar_height: 30,
-          bar_corner_radius: 3,
-          popup_trigger: 'click',
-          on_click: (task) => openTaskDetailPanel(task.id),
-          on_date_change: (task, start, end) =>
-            updateTaskDates(task.id, start, end),
-        });
-        setTimeout(() => {
-          styleGanttDependencyArrows(criticalPath, dependencies);
-        }, 100);
-      } catch (e) {
-        console.error("Gantt render error:", e);
-        ganttContainer.innerHTML =
-          '<div class="p-4 text-center text-gray-500">Unable to render Gantt chart</div>';
-      }
-    }
-    if (timelineList) {
-      renderTimelineList(data.tasks);
-    }
-  }
-
-  function styleGanttDependencyArrows(criticalPath, dependencies) {
-    if (!criticalPath || criticalPath.length === 0) return;
-    try {
-      const arrowElements = document.querySelectorAll('.arrow');
-      arrowElements.forEach(arrow => {
-        const arrowPath = arrow.querySelector('path');
-        if (arrowPath) {
-          const nearCriticalTask = criticalPath.some(taskId => {
-            const taskBar = document.querySelector(`.bar-wrapper[data-id="${taskId}"]`);
-            if (taskBar) {
-              const barRect = taskBar.getBoundingClientRect();
-              const arrowRect = arrow.getBoundingClientRect();
-              const overlaps = !(barRect.right < arrowRect.left ||
-                barRect.left > arrowRect.right ||
-                barRect.bottom < arrowRect.top ||
-                barRect.top > arrowRect.bottom);
-              return overlaps;
-            }
-            return false;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        var tasks = [];
+        if (result && result.tasks) {
+          tasks = result.tasks.map(function(t) {
+            return {
+              id: t.id,
+              title: t.name || t.title || '',
+              startDate: t.start || t.startDate || '',
+              dueDate: t.end || t.dueDate || '',
+              status: t.status || 'To Do',
+              priority: t.priority || 'Medium',
+              assignee: t.assignee || ''
+            };
           });
-          if (nearCriticalTask) {
-            arrowPath.setAttribute('stroke', '#dc2626');
-            arrowPath.setAttribute('stroke-width', '2');
-            arrowPath.setAttribute('marker-end', 'url(#arrowhead-critical)');
-          } else {
-            arrowPath.setAttribute('stroke', '#94a3b8');
-            arrowPath.setAttribute('stroke-width', '1.5');
-          }
         }
-      });
-      const svg = document.querySelector('.gantt-container svg');
-      if (svg) {
-        const defs = svg.querySelector('defs') || document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-        if (!svg.querySelector('defs')) {
-          svg.insertBefore(defs, svg.firstChild);
+        self.allTasks = tasks;
+        self.tasks = tasks.slice();
+        self.renderCalendar();
+        self.renderTimelineList();
+        showLoading(false);
+        initializeTimelineFilters();
+      })
+      .withFailureHandler(function(err) {
+        console.error('Failed to load timeline data:', err);
+        showLoading(false);
+        if (container) {
+          container.innerHTML = '<div class="flex items-center justify-center h-64 text-gray-500"><i class="fas fa-exclamation-circle text-2xl mr-2"></i> Failed to load calendar data</div>';
         }
-        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-        marker.setAttribute('id', 'arrowhead-critical');
-        marker.setAttribute('markerWidth', '10');
-        marker.setAttribute('markerHeight', '10');
-        marker.setAttribute('refX', '9');
-        marker.setAttribute('refY', '3');
-        marker.setAttribute('orient', 'auto');
-        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        polygon.setAttribute('points', '0 0, 10 3, 0 6');
-        polygon.setAttribute('fill', '#dc2626');
-        marker.appendChild(polygon);
-        defs.appendChild(marker);
-      }
-    } catch (error) {
-      console.error('Error styling Gantt arrows:', error);
-    }
-  }
+      })
+      .getFilteredTimelineData();
+  },
 
-  function renderEmptyTimeline() {
-    const ganttContainer = $("ganttContainer");
-    const timelineList = $("timelineList");
-    const emptyMessage = `
-    <div class="p-8 text-center text-gray-500">
-    <i class="fas fa-calendar-alt text-4xl mb-4"></i>
-    <p>No tasks with dates found for timeline view</p>
-    <p class="text-sm mt-2">Add start and due dates to your tasks to see them here</p>
-    </div>
-    `;
-    if (ganttContainer) ganttContainer.innerHTML = emptyMessage;
-    if (timelineList) timelineList.innerHTML = emptyMessage;
-  }
-
-  function renderTimelineList(tasks) {
-    const container = $("timelineList");
+  renderCalendar: function() {
+    var container = document.getElementById('calendarContainer');
     if (!container) return;
-    if (!tasks || tasks.length === 0) {
-      container.innerHTML =
-        '<div class="p-4 text-center text-gray-500">No tasks to display</div>';
+
+    var year = this.currentYear;
+    var month = this.currentMonth;
+    var label = document.getElementById('calendarMonthLabel');
+    var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    if (label) label.textContent = monthNames[month] + ' ' + year;
+
+    var firstDay = new Date(year, month, 1).getDay();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var daysInPrevMonth = new Date(year, month, 0).getDate();
+    var today = new Date();
+    var todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+
+    var taskMap = this.buildTaskMap(year, month, daysInMonth);
+
+    var html = '<div class="calendar-grid">';
+    var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    for (var d = 0; d < 7; d++) {
+      html += '<div class="calendar-header-cell">' + dayNames[d] + '</div>';
+    }
+
+    var totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+    for (var i = 0; i < totalCells; i++) {
+      var dayNum;
+      var isOtherMonth = false;
+      var cellDate;
+
+      if (i < firstDay) {
+        dayNum = daysInPrevMonth - firstDay + i + 1;
+        isOtherMonth = true;
+        cellDate = new Date(year, month - 1, dayNum);
+      } else if (i >= firstDay + daysInMonth) {
+        dayNum = i - firstDay - daysInMonth + 1;
+        isOtherMonth = true;
+        cellDate = new Date(year, month + 1, dayNum);
+      } else {
+        dayNum = i - firstDay + 1;
+        cellDate = new Date(year, month, dayNum);
+      }
+
+      var dateStr = cellDate.getFullYear() + '-' + String(cellDate.getMonth() + 1).padStart(2, '0') + '-' + String(cellDate.getDate()).padStart(2, '0');
+      var isToday = dateStr === todayStr;
+      var classes = 'calendar-day';
+      if (isOtherMonth) classes += ' other-month';
+      if (isToday) classes += ' today';
+
+      html += '<div class="' + classes + '">';
+      html += '<div class="calendar-day-number">' + dayNum + '</div>';
+
+      if (!isOtherMonth && taskMap[dayNum]) {
+        var dayTasks = taskMap[dayNum];
+        var shown = Math.min(dayTasks.length, this.MAX_CHIPS_PER_DAY);
+        for (var t = 0; t < shown; t++) {
+          var task = dayTasks[t];
+          var priorityClass = 'priority-' + (task.priority || 'default').toLowerCase();
+          var statusClass = task.status === 'Done' ? ' status-done' : '';
+          html += '<div class="calendar-task-chip ' + priorityClass + statusClass + '" onclick="openTaskDetailPanel(\'' + task.id + '\')" title="' + this.escapeHtml(task.title) + '">';
+          html += this.escapeHtml(task.title);
+          html += '</div>';
+        }
+        if (dayTasks.length > this.MAX_CHIPS_PER_DAY) {
+          html += '<div class="calendar-more-tasks">+' + (dayTasks.length - this.MAX_CHIPS_PER_DAY) + ' more</div>';
+        }
+      }
+
+      html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+  },
+
+  buildTaskMap: function(year, month, daysInMonth) {
+    var map = {};
+    var monthStart = new Date(year, month, 1).getTime();
+    var monthEnd = new Date(year, month, daysInMonth, 23, 59, 59).getTime();
+
+    this.tasks.forEach(function(task) {
+      var start = task.startDate ? new Date(task.startDate).getTime() : null;
+      var end = task.dueDate ? new Date(task.dueDate).getTime() : null;
+      if (!start && !end) return;
+      if (isNaN(start)) start = null;
+      if (isNaN(end)) end = null;
+      if (!start && !end) return;
+      if (!start) start = end;
+      if (!end) end = start;
+      if (start > monthEnd || end < monthStart) return;
+
+      var fromDay = 1;
+      var toDay = daysInMonth;
+      if (start > monthStart) fromDay = new Date(start).getDate();
+      if (end < monthEnd) toDay = new Date(end).getDate();
+
+      for (var d = fromDay; d <= toDay; d++) {
+        if (!map[d]) map[d] = [];
+        map[d].push(task);
+      }
+    });
+    return map;
+  },
+
+  renderTimelineList: function() {
+    var list = document.getElementById('timelineList');
+    if (!list) return;
+    if (this.tasks.length === 0) {
+      list.innerHTML = '<div class="p-8 text-center text-gray-500"><i class="fas fa-calendar-alt text-4xl mb-4 block"></i>No tasks with dates found</div>';
       return;
     }
-    container.innerHTML = tasks
-      .map(
-        (task) => `
-  <div class="p-4 hover:bg-gray-50 cursor-pointer" onclick="openTaskModal('${
-    task.id
-  }')">
-  <div class="flex items-center justify-between">
-  <div class="flex items-center gap-3">
-  <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getStatusBadgeClass(
-    task.status
-    )}">
-  ${escapeHtml(task.status)}
-  </span>
-  <span class="font-medium text-gray-900">${escapeHtml(
-    task.name || task.title
-    )}</span>
-  </div>
-  <div class="text-sm text-gray-500">
-  ${task.start ? formatDate(task.start) : "No start"} - ${
-    task.end ? formatDate(task.end) : "No end"
-  }
-  </div>
-  </div>
-  ${
-    task.assignee
-    ? `<div class="text-sm text-gray-500 mt-1">Assigned to: ${escapeHtml(
-      task.assignee
-      )}</div>`
-    : ""
-  }
-  </div>
-  `
-      )
-      .join("");
-  }
+    var sorted = this.tasks.slice().sort(function(a, b) {
+      return (a.dueDate || a.startDate || '').localeCompare(b.dueDate || b.startDate || '');
+    });
+    var html = '';
+    sorted.forEach(function(task) {
+      html += '<div class="timeline-list-item p-3 flex items-center justify-between cursor-pointer" onclick="openTaskDetailPanel(\'' + task.id + '\')">';
+      html += '<div class="flex-1 min-w-0">';
+      html += '<div class="font-medium text-gray-900 truncate">' + (task.title || 'Untitled') + '</div>';
+      html += '<div class="text-xs text-gray-500">';
+      if (task.startDate) html += 'Start: ' + String(task.startDate).split('T')[0];
+      if (task.startDate && task.dueDate) html += ' &middot; ';
+      if (task.dueDate) html += 'Due: ' + String(task.dueDate).split('T')[0];
+      html += '</div></div>';
+      var badge = task.status === 'Done' ? 'bg-green-100 text-green-800' : (task.status === 'In Progress' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800');
+      html += '<span class="ml-2 px-2 py-1 text-xs rounded-full whitespace-nowrap ' + badge + '">' + (task.status || 'To Do') + '</span>';
+      html += '</div>';
+    });
+    list.innerHTML = html;
+  },
 
-  function formatDateForGantt(date) {
-    if (!date) return null;
-    const d = new Date(date);
-    return d.toISOString().split("T")[0];
-  }
+  navigateMonth: function(offset) {
+    this.currentMonth += offset;
+    if (this.currentMonth > 11) { this.currentMonth = 0; this.currentYear++; }
+    if (this.currentMonth < 0) { this.currentMonth = 11; this.currentYear--; }
+    this.renderCalendar();
+  },
 
-  function getTaskClass(task, isCritical = false) {
-    const classes = ["task-" + (task.priority || "medium").toLowerCase()];
-    if (task.status === "Done") classes.push("task-completed");
-    if (task.isOverdue) classes.push("task-overdue");
-    if (isCritical) classes.push("task-critical");
-    return classes.join(" ");
-  }
+  goToToday: function() {
+    var now = new Date();
+    this.currentMonth = now.getMonth();
+    this.currentYear = now.getFullYear();
+    this.renderCalendar();
+  },
 
-  function updateTaskDates(taskId, start, end) {
-    showLoading(true);
-    google.script.run
-      .withSuccessHandler(() => {
-        showLoading(false);
-        toast("Task dates updated", "success");
-      })
-      .withFailureHandler((error) => {
-        showLoading(false);
-        handleError(error);
-      })
-      .saveTaskUpdate(taskId, {
-        startDate: start.toISOString(),
-        dueDate: end.toISOString(),
-      });
-  }
+  applyTimelineFilters: function() {
+    var status = document.getElementById('timelineStatusFilter') ? document.getElementById('timelineStatusFilter').value : '';
+    var priority = document.getElementById('timelinePriorityFilter') ? document.getElementById('timelinePriorityFilter').value : '';
+    var search = (document.getElementById('timelineSearch') ? document.getElementById('timelineSearch').value : '').toLowerCase();
+    this.tasks = this.allTasks.filter(function(task) {
+      if (status && task.status !== status) return false;
+      if (priority && task.priority !== priority) return false;
+      if (search && (task.title || '').toLowerCase().indexOf(search) === -1) return false;
+      return true;
+    });
+    this.renderCalendar();
+    this.renderTimelineList();
+  },
 
-  function initializeTimelineFilters() {
-    const statusFilter = $("timelineStatusFilter");
-    const priorityFilter = $("timelinePriorityFilter");
-    if (statusFilter && State.board?.config?.statuses) {
-      statusFilter.innerHTML =
-        '<option value="">All Statuses</option>' +
-        State.board.config.statuses
-        .map((s) => `<option value="${s}">${s}</option>`)
-        .join("");
-    }
-    if (priorityFilter && State.board?.config?.priorities) {
-      priorityFilter.innerHTML =
-        '<option value="">All Priorities</option>' +
-        State.board.config.priorities
-        .map((p) => `<option value="${p}">${p}</option>`)
-        .join("");
-    }
-  }
+  clearTimelineFilters: function() {
+    var el;
+    el = document.getElementById('timelineStatusFilter'); if (el) el.value = '';
+    el = document.getElementById('timelinePriorityFilter'); if (el) el.value = '';
+    el = document.getElementById('timelineSearch'); if (el) el.value = '';
+    this.tasks = this.allTasks.slice();
+    this.renderCalendar();
+    this.renderTimelineList();
+  },
 
-  function applyTimelineFilters() {
-    const filters = {
-      status: $("timelineStatusFilter")?.value ?
-        [$("timelineStatusFilter").value] :
-        [],
-      priority: $("timelinePriorityFilter")?.value ?
-        [$("timelinePriorityFilter").value] :
-        [],
-      search: $("timelineSearch")?.value || "",
-    };
-    showLoading(true);
-    google.script.run
-      .withSuccessHandler(handleTimelineData)
-      .withFailureHandler(handleTimelineError)
-      .getFilteredTimeline(State.projectFilter, filters);
+  escapeHtml: function(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+};
 
-  function clearTimelineFilters() {
-    if ($("timelineStatusFilter")) $("timelineStatusFilter").value = "";
-    if ($("timelinePriorityFilter")) $("timelinePriorityFilter").value = "";
-    if ($("timelineSearch")) $("timelineSearch").value = "";
-    loadTimelineData();
-  }
+function loadTimelineData() {
+  TimelineModule.loadTimelineData();
+}
 
-  function setTimelineViewMode(mode) {
-    if (State.ganttInstance) {
-      try { State.ganttInstance.change_view_mode(mode); }
-      catch (e) { console.error('Error changing timeline view mode:', e); }
-    }
+function applyTimelineFilters() {
+  TimelineModule.applyTimelineFilters();
+}
+
+function clearTimelineFilters() {
+  TimelineModule.clearTimelineFilters();
+}
+
+function initializeTimelineFilters() {
+  var statusFilter = document.getElementById('timelineStatusFilter');
+  var priorityFilter = document.getElementById('timelinePriorityFilter');
+  if (statusFilter && State.board && State.board.config && State.board.config.statuses) {
+    statusFilter.innerHTML = '<option value="">All Statuses</option>' +
+      State.board.config.statuses.map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('');
   }
+  if (priorityFilter && State.board && State.board.config && State.board.config.priorities) {
+    priorityFilter.innerHTML = '<option value="">All Priorities</option>' +
+      State.board.config.priorities.map(function(p) { return '<option value="' + p + '">' + p + '</option>'; }).join('');
+  }
+}
 </script>
