@@ -755,7 +755,7 @@
     // Show/hide "New Project" link (admin/manager only)
     var newProjectLink = document.querySelector('[onclick="openProjectModal()"]');
     if (newProjectLink) {
-      newProjectLink.style.display = (userLevel >= 2) ? '' : 'none';
+      newProjectLink.style.display = (userLevel >= 1) ? '' : 'none';
     }
 
     // Show role badge next to user name

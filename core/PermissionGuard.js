@@ -57,7 +57,7 @@ const PermissionGuard = {
       description: 'Standard team member',
       permissions: [
         'task:create', 'task:read:own', 'task:read:all', 'task:update:own', 'task:delete:own',
-        'project:read',
+        'project:create', 'project:read',
         'user:read',
         'analytics:view:own'
       ],
@@ -210,7 +210,7 @@ const PermissionGuard = {
       case 'member':
         return [
           'task:create', 'task:read:own', 'task:read:all', 'task:update:own', 'task:delete:own',
-          'project:read',
+          'project:create', 'project:read',
           'user:read',
           'analytics:view:own'
         ];
