@@ -323,11 +323,7 @@ function invalidateTaskCache(taskId, changeType) {
       RequestCache._tasks = null;
     }
 
-    try {
-      rebuildBatchCache();
-    } catch (e) {
-      cache.remove('BATCH_DATA_CACHE');
-    }
+    cache.remove('BATCH_DATA_CACHE');
   } catch (error) {
     console.error('invalidateTaskCache failed:', error);
   }
