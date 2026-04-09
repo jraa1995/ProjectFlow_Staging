@@ -193,13 +193,30 @@ function getTriageQueueSheet() {
 const RowIndexCache = {
   CACHE_TTL: 600,
 
+  _getGenKey(sheetName) {
+    return 'rowgen_' + sheetName;
+  },
+
+  _getGeneration(sheetName) {
+    try {
+      var cache = CacheService.getScriptCache();
+      return cache.get(this._getGenKey(sheetName)) || '0';
+    } catch (e) {
+      return '0';
+    }
+  },
+
   get(sheetName, id) {
     try {
-      const cache = CacheService.getScriptCache();
-      const key = `row_${sheetName}_${id}`;
-      const cached = cache.get(key);
+      var cache = CacheService.getScriptCache();
+      var key = 'row_' + sheetName + '_' + id;
+      var cached = cache.get(key);
       if (cached) {
-        return parseInt(cached, 10);
+        var parsed = JSON.parse(cached);
+        if (parsed.gen === this._getGeneration(sheetName)) {
+          return parsed.row;
+        }
+        cache.remove(key);
       }
       return null;
     } catch (e) {
@@ -209,23 +226,30 @@ const RowIndexCache = {
 
   set(sheetName, id, rowIndex) {
     try {
-      const cache = CacheService.getScriptCache();
-      const key = `row_${sheetName}_${id}`;
-      cache.put(key, rowIndex.toString(), this.CACHE_TTL);
+      var cache = CacheService.getScriptCache();
+      var key = 'row_' + sheetName + '_' + id;
+      var gen = this._getGeneration(sheetName);
+      cache.put(key, JSON.stringify({ row: rowIndex, gen: gen }), this.CACHE_TTL);
     } catch (e) {
     }
   },
 
   invalidate(sheetName, id) {
     try {
-      const cache = CacheService.getScriptCache();
-      const key = `row_${sheetName}_${id}`;
+      var cache = CacheService.getScriptCache();
+      var key = 'row_' + sheetName + '_' + id;
       cache.remove(key);
     } catch (e) {
     }
   },
 
   invalidateSheet(sheetName) {
+    try {
+      var cache = CacheService.getScriptCache();
+      var newGen = Date.now().toString(36);
+      cache.put(this._getGenKey(sheetName), newGen, this.CACHE_TTL);
+    } catch (e) {
+    }
   }
 };
 
@@ -353,9 +377,7 @@ function getOrganizationById(orgId) {
 }
 
 function createOrganization(orgData) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('admin:settings');
-  }
+  PermissionGuard.requirePermission('admin:settings');
   const sheet = getOrganizationsSheet();
   const currentUser = getCurrentUserEmail();
   const org = {
@@ -375,9 +397,7 @@ function createOrganization(orgData) {
 }
 
 function updateOrganization(orgId, updates) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('admin:settings');
-  }
+  PermissionGuard.requirePermission('admin:settings');
   const sheet = getOrganizationsSheet();
   const data = sheet.getDataRange().getValues();
   const columns = CONFIG.ORGANIZATION_COLUMNS;
@@ -665,6 +685,9 @@ function getAllTasks(filters = {}, options = {}) {
   if (filters.status) {
     tasks = tasks.filter(t => t.status === filters.status);
   }
+  if (filters.sprint) {
+    tasks = tasks.filter(t => t.sprint === filters.sprint);
+  }
   if (filters.search) {
     const q = filters.search.toLowerCase();
     tasks = tasks.filter(t =>
@@ -673,7 +696,7 @@ function getAllTasks(filters = {}, options = {}) {
       t.id?.toLowerCase().includes(q)
     );
   }
-  if (!options.skipPermissionCheck && typeof PermissionGuard !== 'undefined') {
+  if (!options.skipPermissionCheck) {
     tasks = PermissionGuard.filterTasksByPermission(tasks);
   }
   return tasks;
@@ -714,16 +737,12 @@ function calculateStoryPoints(startDate, dueDate) {
 }
 
 function createTask(taskData) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('task:create', { projectId: taskData.projectId });
-  }
+  PermissionGuard.requirePermission('task:create', { projectId: taskData.projectId });
   const sheet = getTasksSheet();
-  const existingTasks = getAllTasks({}, { skipPermissionCheck: true });
   const currentUser = getCurrentUserEmail();
   const timestamp = now();
-  const taskId = generateTaskId(taskData.projectId, existingTasks);
-  const sameStatusTasks = existingTasks.filter(t => t.status === (taskData.status || 'To Do'));
-  const maxPosition = sameStatusTasks.reduce((max, t) => Math.max(max, t.position || 0), 0);
+  const taskId = generateTaskId(taskData.projectId);
+  const maxPosition = Date.now();
   const isMilestone = taskData.isMilestone === true || taskData.isMilestone === 'true';
   if (isMilestone && !taskData.milestoneDate) {
     throw new Error('Milestone date is required for milestone tasks');
@@ -737,6 +756,7 @@ function createTask(taskData) {
     priority: taskData.priority || 'Medium',
     type: taskData.type || 'Task',
     assignee: taskData.assignee !== undefined ? (taskData.assignee || '') : currentUser,
+    watchers: Array.isArray(taskData.watchers) ? taskData.watchers.join(',') : (taskData.watchers || ''),
     reporter: taskData.reporter || currentUser,
     dueDate: taskData.dueDate || '',
     startDate: taskData.startDate || '',
@@ -766,7 +786,6 @@ function createTask(taskData) {
     task.estimatedHrs = calc.estimatedHrs;
   }
   sheet.appendRow(objectToRow(task, CONFIG.TASK_COLUMNS));
-  SpreadsheetApp.flush();
   const newRowIndex = sheet.getLastRow();
   RowIndexCache.set('Tasks', task.id, newRowIndex);
   logActivity(currentUser, 'created', 'task', task.id, { title: task.title });
@@ -789,70 +808,73 @@ function createTask(taskData) {
 }
 
 function updateTask(taskId, updates) {
-  const sheet = getTasksSheet();
-  const columns = CONFIG.TASK_COLUMNS;
-  const idIndex = 0;
-  const rowIndex = findRowWithCache(sheet, 'Tasks', taskId, idIndex);
-  if (!rowIndex) {
-    throw new Error('Task not found: ' + taskId);
-  }
-  const rowData = sheet.getRange(rowIndex, 1, 1, columns.length).getValues()[0];
-  const task = rowToObject(rowData, columns);
-  if (typeof PermissionGuard !== 'undefined') {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = getTasksSheet();
+    const columns = CONFIG.TASK_COLUMNS;
+    const idIndex = 0;
+    const rowIndex = findRowWithCache(sheet, 'Tasks', taskId, idIndex);
+    if (!rowIndex) {
+      throw new Error('Task not found: ' + taskId);
+    }
+    const rowData = sheet.getRange(rowIndex, 1, 1, columns.length).getValues()[0];
+    const task = rowToObject(rowData, columns);
     if (!PermissionGuard.canUpdateTask(task)) {
       throw new Error('Permission denied: You cannot update this task');
     }
-  }
-  const isMilestone = updates.hasOwnProperty('isMilestone') ?
-    (updates.isMilestone === true || updates.isMilestone === 'true') :
-    (task.isMilestone === true || task.isMilestone === 'true');
-  if (isMilestone) {
-    const milestoneDate = updates.milestoneDate || task.milestoneDate;
-    if (!milestoneDate) {
-      throw new Error('Milestone date is required for milestone tasks');
+    const isMilestone = updates.hasOwnProperty('isMilestone') ?
+      (updates.isMilestone === true || updates.isMilestone === 'true') :
+      (task.isMilestone === true || task.isMilestone === 'true');
+    if (isMilestone) {
+      const milestoneDate = updates.milestoneDate || task.milestoneDate;
+      if (!milestoneDate) {
+        throw new Error('Milestone date is required for milestone tasks');
+      }
     }
-  }
-  const changes = {};
-  Object.keys(updates).forEach(key => {
-    if (task[key] !== updates[key]) {
-      changes[key] = { from: task[key], to: updates[key] };
+    const changes = {};
+    Object.keys(updates).forEach(key => {
+      if (task[key] !== updates[key]) {
+        changes[key] = { from: task[key], to: updates[key] };
+      }
+    });
+    Object.assign(task, updates);
+    if (updates.startDate !== undefined || updates.dueDate !== undefined) {
+      if (task.startDate && task.dueDate) {
+        var calc = calculateStoryPoints(task.startDate, task.dueDate);
+        task.storyPoints = calc.storyPoints;
+        task.estimatedHrs = calc.estimatedHrs;
+      }
     }
-  });
-  Object.assign(task, updates);
-  if (updates.startDate !== undefined || updates.dueDate !== undefined) {
-    if (task.startDate && task.dueDate) {
-      var calc = calculateStoryPoints(task.startDate, task.dueDate);
-      task.storyPoints = calc.storyPoints;
-      task.estimatedHrs = calc.estimatedHrs;
+    task.updatedAt = now();
+    if (updates.status === 'Done' && !task.completedAt) {
+      task.completedAt = now();
     }
-  }
-  task.updatedAt = now();
-  if (updates.status === 'Done' && !task.completedAt) {
-    task.completedAt = now();
-  }
-  const newRow = objectToRow(task, columns);
-  sheet.getRange(rowIndex, 1, 1, columns.length).setValues([newRow]);
-  SpreadsheetApp.flush();
-  const currentUser = getCurrentUserEmail();
-  if (Object.keys(changes).length > 0) {
-    logActivity(currentUser, 'updated', 'task', taskId, changes);
-  }
-  if (changes.assignee && updates.assignee && updates.assignee !== currentUser && typeof NotificationEngine !== 'undefined') {
-    try {
-      NotificationEngine.createNotification({
-        userId: updates.assignee,
-        type: 'task_assigned',
-        title: 'Task Assigned',
-        message: 'You have been assigned to ' + taskId + ': ' + task.title,
-        entityType: 'task',
-        entityId: taskId,
-        channels: ['in_app', 'email']
-      });
-    } catch (e) {
-      console.error('Failed to send assignment notification:', e);
+    const newRow = objectToRow(task, columns);
+    sheet.getRange(rowIndex, 1, 1, columns.length).setValues([newRow]);
+    const currentUser = getCurrentUserEmail();
+    if (Object.keys(changes).length > 0) {
+      logActivity(currentUser, 'updated', 'task', taskId, changes);
     }
+    if (changes.assignee && updates.assignee && updates.assignee !== currentUser && typeof NotificationEngine !== 'undefined') {
+      try {
+        NotificationEngine.createNotification({
+          userId: updates.assignee,
+          type: 'task_assigned',
+          title: 'Task Assigned',
+          message: 'You have been assigned to ' + taskId + ': ' + task.title,
+          entityType: 'task',
+          entityId: taskId,
+          channels: ['in_app', 'email']
+        });
+      } catch (e) {
+        console.error('Failed to send assignment notification:', e);
+      }
+    }
+    return task;
+  } finally {
+    lock.releaseLock();
   }
-  return task;
 }
 
 function moveTask(taskId, newStatus, newPosition) {
@@ -864,25 +886,30 @@ function moveTask(taskId, newStatus, newPosition) {
 }
 
 function deleteTask(taskId) {
-  const sheet = getTasksSheet();
-  const columns = CONFIG.TASK_COLUMNS;
-  const idIndex = 0;
-  const rowIndex = findRowWithCache(sheet, 'Tasks', taskId, idIndex);
-  if (!rowIndex) {
-    return false;
-  }
-  const rowData = sheet.getRange(rowIndex, 1, 1, columns.length).getValues()[0];
-  if (typeof PermissionGuard !== 'undefined') {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = getTasksSheet();
+    const columns = CONFIG.TASK_COLUMNS;
+    const idIndex = 0;
+    const rowIndex = findRowWithCache(sheet, 'Tasks', taskId, idIndex);
+    if (!rowIndex) {
+      return false;
+    }
+    const rowData = sheet.getRange(rowIndex, 1, 1, columns.length).getValues()[0];
     const task = rowToObject(rowData, columns);
     if (!PermissionGuard.canDeleteTask(task)) {
       throw new Error('Permission denied: You cannot delete this task');
     }
+    sheet.deleteRow(rowIndex);
+    SpreadsheetApp.flush();
+    RowIndexCache.invalidate('Tasks', taskId);
+    RowIndexCache.invalidateSheet('Tasks');
+    logActivity(getCurrentUserEmail(), 'deleted', 'task', taskId, {});
+    return true;
+  } finally {
+    lock.releaseLock();
   }
-  sheet.deleteRow(rowIndex);
-  SpreadsheetApp.flush();
-  RowIndexCache.invalidate('Tasks', taskId);
-  logActivity(getCurrentUserEmail(), 'deleted', 'task', taskId, {});
-  return true;
 }
 
 function getMilestones(projectId) {
@@ -1054,24 +1081,32 @@ function createUser(userData) {
     createdAt: now()
   };
   sheet.appendRow(objectToRow(user, CONFIG.USER_COLUMNS));
+  UserCache.invalidate();
   return user;
 }
 
 function updateUser(email, updates) {
-  const sheet = getUsersSheet();
-  const data = sheet.getDataRange().getValues();
-  const columns = CONFIG.USER_COLUMNS;
-  const emailIndex = 0;
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][emailIndex]?.toLowerCase() === email?.toLowerCase()) {
-      const user = rowToObject(data[i], columns);
-      Object.assign(user, updates);
-      const newRow = objectToRow(user, columns);
-      sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
-      return user;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = getUsersSheet();
+    const data = sheet.getDataRange().getValues();
+    const columns = CONFIG.USER_COLUMNS;
+    const emailIndex = 0;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][emailIndex]?.toLowerCase() === email?.toLowerCase()) {
+        const user = rowToObject(data[i], columns);
+        Object.assign(user, updates);
+        const newRow = objectToRow(user, columns);
+        sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
+        UserCache.invalidate();
+        return user;
+      }
     }
+    throw new Error('User not found: ' + email);
+  } finally {
+    lock.releaseLock();
   }
-  throw new Error('User not found: ' + email);
 }
 
 function getActiveUsers() {
@@ -1098,9 +1133,7 @@ function getProjectById(projectId) {
 }
 
 function createProject(projectData) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:create');
-  }
+  PermissionGuard.requirePermission('project:create');
   const sheet = getProjectsSheet();
   const existingProjects = getAllProjects();
   const currentUser = getCurrentUserEmail();
@@ -1130,50 +1163,56 @@ function createProject(projectData) {
 }
 
 function updateProject(projectId, updates) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:update', { projectId: projectId });
-  }
-  const sheet = getProjectsSheet();
-  const data = sheet.getDataRange().getValues();
-  const columns = CONFIG.PROJECT_COLUMNS;
-  const idIndex = 0;
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][idIndex] === projectId) {
-      const project = rowToObject(data[i], columns);
-      Object.assign(project, updates);
-      project.updatedAt = now();
-      project.lastUpdatedBy = getCurrentUserEmail();
-      const newRow = objectToRow(project, columns);
-      sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
-      SpreadsheetApp.flush();
-      return project;
+  PermissionGuard.requirePermission('project:update', { projectId: projectId });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = getProjectsSheet();
+    const data = sheet.getDataRange().getValues();
+    const columns = CONFIG.PROJECT_COLUMNS;
+    const idIndex = 0;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idIndex] === projectId) {
+        const project = rowToObject(data[i], columns);
+        Object.assign(project, updates);
+        project.updatedAt = now();
+        project.lastUpdatedBy = getCurrentUserEmail();
+        const newRow = objectToRow(project, columns);
+        sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
+        SpreadsheetApp.flush();
+        return project;
+      }
     }
+    throw new Error('Project not found: ' + projectId);
+  } finally {
+    lock.releaseLock();
   }
-  throw new Error('Project not found: ' + projectId);
 }
 
 function deleteProject(projectId) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:delete');
-  }
-  const sheet = getProjectsSheet();
-  const data = sheet.getDataRange().getValues();
-  const idIndex = 0;
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][idIndex] === projectId) {
-      sheet.deleteRow(i + 1);
-      SpreadsheetApp.flush();
-      logActivity(getCurrentUserEmail(), 'deleted', 'project', projectId, {});
-      return { success: true };
+  PermissionGuard.requirePermission('project:delete');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = getProjectsSheet();
+    const data = sheet.getDataRange().getValues();
+    const idIndex = 0;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idIndex] === projectId) {
+        sheet.deleteRow(i + 1);
+        SpreadsheetApp.flush();
+        logActivity(getCurrentUserEmail(), 'deleted', 'project', projectId, {});
+        return { success: true };
+      }
     }
+    throw new Error('Project not found: ' + projectId);
+  } finally {
+    lock.releaseLock();
   }
-  throw new Error('Project not found: ' + projectId);
 }
 
 function addReleaseNote(projectId, releaseData) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:update', { projectId: projectId });
-  }
+  PermissionGuard.requirePermission('project:update', { projectId: projectId });
   const project = getProjectById(projectId);
   if (!project) throw new Error('Project not found: ' + projectId);
   var notes = [];
@@ -1201,9 +1240,7 @@ function addReleaseNote(projectId, releaseData) {
 }
 
 function addChangelogEntry(projectId, entry) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:update', { projectId: projectId });
-  }
+  PermissionGuard.requirePermission('project:update', { projectId: projectId });
   const project = getProjectById(projectId);
   if (!project) throw new Error('Project not found: ' + projectId);
   var log = [];
@@ -1229,9 +1266,7 @@ function getOpenSurgeTasks() {
 }
 
 function pickUpTask(taskId) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('task:update:own', { ownerId: getCurrentUserEmail() });
-  }
+  PermissionGuard.requirePermission('task:update:own', { ownerId: getCurrentUserEmail() });
   const task = getTaskById(taskId);
   if (!task) throw new Error('Task not found: ' + taskId);
   const labels = Array.isArray(task.labels) ? task.labels : (task.labels ? String(task.labels).split(',').map(l => l.trim()) : []);
@@ -1643,9 +1678,23 @@ function batchUpdatePositions(updates) {
     }
   }
   if (rangesToWrite.length === 0) return;
-  rangesToWrite.forEach(({ rowIndex, rowData }) => {
-    sheet.getRange(rowIndex, 1, 1, columns.length).setValues([rowData]);
-  });
+  rangesToWrite.sort(function(a, b) { return a.rowIndex - b.rowIndex; });
+  var batchStart = 0;
+  while (batchStart < rangesToWrite.length) {
+    var batchEnd = batchStart;
+    while (batchEnd + 1 < rangesToWrite.length &&
+           rangesToWrite[batchEnd + 1].rowIndex === rangesToWrite[batchEnd].rowIndex + 1) {
+      batchEnd++;
+    }
+    var startRow = rangesToWrite[batchStart].rowIndex;
+    var numRows = batchEnd - batchStart + 1;
+    var batchData = [];
+    for (var b = batchStart; b <= batchEnd; b++) {
+      batchData.push(rangesToWrite[b].rowData);
+    }
+    sheet.getRange(startRow, 1, numRows, columns.length).setValues(batchData);
+    batchStart = batchEnd + 1;
+  }
   SpreadsheetApp.flush();
 }
 
@@ -1730,9 +1779,7 @@ function getSprintById(sprintId) {
 }
 
 function createSprint(sprintData) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:update', { projectId: sprintData.projectId });
-  }
+  PermissionGuard.requirePermission('project:update', { projectId: sprintData.projectId });
   const sheet = getSprintsSheet();
   const currentUser = getCurrentUserEmail();
   const projectId = sprintData.projectId || '';
@@ -1778,9 +1825,7 @@ function updateSprint(sprintId, updates) {
 function startSprint(sprintId) {
   const sprint = getSprintById(sprintId);
   if (!sprint) throw new Error('Sprint not found: ' + sprintId);
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:update', { projectId: sprint.projectId });
-  }
+  PermissionGuard.requirePermission('project:update', { projectId: sprint.projectId });
   if (sprint.status !== 'planning') {
     throw new Error('Only sprints in planning status can be started');
   }
@@ -1794,9 +1839,7 @@ function startSprint(sprintId) {
 function completeSprint(sprintId) {
   const sprint = getSprintById(sprintId);
   if (!sprint) throw new Error('Sprint not found: ' + sprintId);
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:update', { projectId: sprint.projectId });
-  }
+  PermissionGuard.requirePermission('project:update', { projectId: sprint.projectId });
   if (sprint.status !== 'active') {
     throw new Error('Only active sprints can be completed');
   }

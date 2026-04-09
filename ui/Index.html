@@ -5,10 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>COLONY</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css" />
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" />
 <script>
 tailwind.config = {
   theme: {
@@ -35,10 +32,21 @@ tailwind.config = {
 <?!= include('ui/Styles'); ?>
 </head>
 <body class="bg-gray-100 h-screen overflow-hidden">
+<script>
+function _pc(pageName, method) {
+  var page = window[pageName];
+  if (!page || typeof page[method] !== 'function') {
+    if (typeof toast === 'function') toast(pageName + ' is loading, please try again.', 'info');
+    return;
+  }
+  var args = Array.prototype.slice.call(arguments, 2);
+  return page[method].apply(page, args);
+}
+</script>
 <div id="app" class="flex h-full">
 <aside id="sidebar" class="w-60 bg-gray-900 text-white flex flex-col">
 <div class="flex items-center gap-2 p-4 border-b border-gray-700">
-<i class="fas fa-circle-nodes text-primary-400 text-xl"></i>
+<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-sm" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-sm)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-sm)" fill="none" opacity="0.4"/></svg>
 <div>
 <span class="font-bold text-lg">COLONY</span>
 <div id="sidebarDate" class="text-xs text-gray-400"></div>
@@ -175,7 +183,7 @@ title="Refresh"
 <i class="fas fa-sync-alt"></i>
 </button>
 <button
-onclick="openTaskModal()"
+onclick="TaskEditModal.openNew({ projectId: State.projectFilter || '' })"
 class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"
 >
 <i class="fas fa-plus"></i> New Task
@@ -429,18 +437,27 @@ Priority Distribution
 </main>
 </div>
 <!-- Loading Overlay -->
-<div id="loadingOverlay" class="fixed inset-0 z-50 hidden" style="background:#111827;">
-<canvas id="loaderCanvas" class="absolute inset-0"></canvas>
-<div id="loaderUI" class="absolute inset-0 flex flex-col items-center justify-center">
-<div class="flex items-center gap-3 mb-8">
-<i class="fas fa-circle-nodes text-gray-400 text-4xl"></i>
-<span class="font-bold text-3xl text-white tracking-wide">COLONY</span>
-</div>
-<div class="w-64 h-1.5 bg-gray-700 rounded-full overflow-hidden mb-3">
-<div id="loaderProgress" class="h-full bg-gray-400 rounded-full transition-all duration-300" style="width:0%"></div>
-</div>
-<div id="loaderStatus" class="text-gray-500 text-sm">Initializing...</div>
-</div>
+<div id="loadingOverlay" class="fixed inset-0 z-[70]" style="background:linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);">
+  <div id="loaderUI" class="absolute inset-0 flex flex-col items-center justify-center">
+    <div style="filter:drop-shadow(0 0 20px rgba(245,158,11,0.4));">
+    <div class="preloader loading" style="font-size:28px;">
+      <span class="slice"></span>
+      <span class="slice"></span>
+      <span class="slice"></span>
+      <span class="slice"></span>
+      <span class="slice"></span>
+      <span class="slice"></span>
+    </div>
+    </div>
+    <div class="mt-12 text-center">
+      <span class="font-bold text-5xl text-white tracking-widest" id="colonyText"><span class="colony-letter" style="opacity:0">C</span><span class="colony-letter" style="opacity:0">O</span><span class="colony-letter" style="opacity:0">L</span><span class="colony-letter" style="opacity:0">O</span><span class="colony-letter" style="opacity:0">N</span><span class="colony-letter" style="opacity:0">Y</span></span>
+      <p class="text-gray-400 text-base mt-4 tracking-wide" id="colonySubtext" style="opacity:0">BI Project Management Tool</p>
+    </div>
+    <div class="w-64 h-1.5 bg-gray-700 rounded-full overflow-hidden mt-6 mb-3 hidden" id="loaderBarWrap">
+      <div id="loaderProgress" class="h-full bg-gray-400 rounded-full transition-all duration-300" style="width:0%"></div>
+    </div>
+    <div id="loaderStatus" class="text-gray-500 text-sm hidden"></div>
+  </div>
 </div>
 <!-- Task Modal -->
 <div id="taskModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
@@ -606,58 +623,52 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 </div>
 </div>
 <!-- Project Modal -->
-<div id="projectModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-<div class="bg-white rounded-xl shadow-xl w-full max-w-md">
-<div class="flex items-center justify-between px-6 py-4 border-b">
+<div id="projectModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden" onclick="closeProjectModal()">
+<div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col mx-4" onclick="event.stopPropagation()">
+<div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
 <h2 class="text-lg font-semibold text-gray-900">New Project</h2>
-<button
-onclick="closeProjectModal()"
-class="text-gray-400 hover:text-gray-600"
->
-<i class="fas fa-times text-xl"></i>
-</button>
+<button onclick="closeProjectModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
 </div>
-<form onsubmit="saveProject(event)" class="p-6 space-y-4">
-<div>
-<label class="block text-sm font-medium text-gray-700 mb-1"
->Project Name *</label>
-<input
-type="text"
-id="projectName"
-required
-class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-600"
-/>
+<div id="newProjTabBar" class="bg-white border-b border-gray-200 px-6 flex items-center gap-1 flex-shrink-0 overflow-x-auto">
+<button onclick="switchNewProjTab('overview')" data-nptab="overview" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap border-gray-900 font-semibold text-gray-900">Overview</button>
+<button onclick="switchNewProjTab('portfolio')" data-nptab="portfolio" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Portfolio</button>
+<button onclick="switchNewProjTab('ownership')" data-nptab="ownership" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Ownership</button>
+<button onclick="switchNewProjTab('infrastructure')" data-nptab="infrastructure" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Infrastructure</button>
 </div>
-<div>
-<label class="block text-sm font-medium text-gray-700 mb-1"
->Description</label>
-<textarea
-id="projectDescription"
-rows="3"
-class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-600"
-></textarea>
+<div class="flex-1 overflow-y-auto p-6">
+<div id="newProjTab_overview" class="max-w-2xl space-y-4">
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Name *</label>
+<input type="text" id="newProjName" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Primary Owner</label>
+<select id="newProjOwner" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="">Current User (default)</option></select></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Description</label>
+<textarea id="newProjDesc" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"></textarea></div>
+<div class="grid grid-cols-2 gap-4">
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Start Date</label>
+<input type="date" id="newProjStartDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">End Date</label>
+<input type="date" id="newProjEndDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
 </div>
-<div class="flex items-center justify-end gap-3 pt-4">
-<button
-type="button"
-onclick="closeProjectModal()"
-class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm"
->
-Cancel
-</button>
-<button
-type="submit"
-class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm"
->
-<i class="fas fa-save mr-1"></i> Create Project
-</button>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Version</label>
+<input type="text" id="newProjVersion" placeholder="0.1.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Repository URL</label>
+<input type="url" id="newProjRepoUrl" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Tags (comma separated)</label>
+<input type="text" id="newProjTags" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
 </div>
-</form>
+<div id="newProjTab_portfolio" class="max-w-2xl space-y-4 hidden"></div>
+<div id="newProjTab_ownership" class="max-w-2xl space-y-4 hidden"></div>
+<div id="newProjTab_infrastructure" class="max-w-2xl space-y-4 hidden"></div>
+</div>
+<div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 flex-shrink-0">
+<button type="button" onclick="closeProjectModal()" class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm">Cancel</button>
+<button type="button" onclick="saveProject()" class="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm"><i class="fas fa-save mr-1"></i> Create Project</button>
+</div>
 </div>
 </div>
 <!-- Toast Container -->
 <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
-<div id="confirmModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] hidden">
+<div id="confirmModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[10050] hidden">
   <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
     <p id="confirmModalMessage" class="text-gray-900 font-medium mb-4"></p>
     <div class="flex gap-3 justify-end">
@@ -666,7 +677,7 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
     </div>
   </div>
 </div>
-<div id="promptModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] hidden">
+<div id="promptModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[10050] hidden">
   <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
     <p id="promptModalMessage" class="text-gray-900 font-medium mb-3"></p>
     <input id="promptModalInput" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-1 focus:ring-gray-400" />
@@ -682,7 +693,7 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 <div id="loginCard" class="w-full max-w-md p-8 rounded-2xl border shadow-2xl" style="background:rgba(255,255,255,0.05);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-color:rgba(255,255,255,0.1);">
 <div class="text-center mb-8">
 <div class="flex items-center justify-center gap-3 mb-3">
-<i class="fas fa-circle-nodes text-gray-400 text-3xl"></i>
+<svg class="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-lg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-lg)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-lg)" fill="none" opacity="0.4"/></svg>
 <span class="font-bold text-2xl text-white tracking-wide">COLONY</span>
 </div>
 <p id="loginSubtitle" class="text-gray-400 text-sm">Sign in to continue to your workspace</p>
@@ -772,8 +783,34 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 </button>
 </div>
 </div>
+<div id="registerState" class="hidden">
+  <h2 class="text-xl font-bold text-white mb-6 text-center">Create Account</h2>
+  <div id="registerError" class="hidden mb-4 p-3 rounded-lg text-sm" style="background:rgba(239,68,68,0.2);color:#fca5a5;"></div>
+  <div class="space-y-4">
+    <div>
+      <label class="block text-sm font-medium text-gray-400 mb-1">Full Name</label>
+      <input id="registerName" type="text" class="w-full px-4 py-3 rounded-lg text-white placeholder-gray-500 outline-none text-sm" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);" placeholder="Enter your full name">
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-400 mb-1">Email</label>
+      <input id="registerEmail" type="email" class="w-full px-4 py-3 rounded-lg text-white placeholder-gray-500 outline-none text-sm" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);" placeholder="Enter your email">
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-400 mb-1">Password</label>
+      <input id="registerPassword" type="password" class="w-full px-4 py-3 rounded-lg text-white placeholder-gray-500 outline-none text-sm" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);" placeholder="Min 8 chars, upper + lower + digit">
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-400 mb-1">Confirm Password</label>
+      <input id="registerConfirm" type="password" class="w-full px-4 py-3 rounded-lg text-white placeholder-gray-500 outline-none text-sm" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);" placeholder="Confirm your password">
+    </div>
+    <button onclick="LoginModal.handleRegister()" id="registerSubmitBtn" class="w-full py-3 rounded-lg font-semibold text-sm transition-colors" style="background:#d1d5db;color:#111827;">Create Account</button>
+  </div>
+  <div class="mt-4 text-center">
+    <button onclick="LoginModal.showLoginState()" class="text-gray-400 hover:text-white text-sm bg-transparent border-none cursor-pointer">Already have an account? Sign In</button>
+  </div>
+</div>
 <div class="mt-6 text-center text-xs text-gray-600">
-<p>Need access? Contact your administrator.</p>
+  <p>Don't have an account? <button onclick="LoginModal.showRegister()" class="text-gray-300 hover:text-white underline bg-transparent border-none cursor-pointer text-xs">Create one</button></p>
 </div>
 </div>
 </div>
@@ -839,6 +876,7 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 <?!= include('ui/TimelineModule'); ?>
 <?!= include('ui/AnalyticsModule'); ?>
 <?!= include('ui/Scripts'); ?>
+<?!= include('ui/ProjectViewScript'); ?>
 <?!= include('ui/Shortcuts'); ?>
 <?!= include('ui/MentionAutocomplete'); ?>
 <?!= include('ui/TaskDetailPanel'); ?>

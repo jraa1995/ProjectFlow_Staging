@@ -146,13 +146,23 @@ function buildWorklogSettings(row) {
   var hasDataMgmt = String(row[C.activeDataMgmt] || '').trim();
   s.activeDataMgmt = hasDataMgmt === 'TRUE' || hasDataMgmt === 'true';
   if (row[C.dataMgmtOwner]) s.dataMgmtOwner = String(row[C.dataMgmtOwner]).trim();
+  if (row[C.docCompleteness]) s.docCompleteness = String(row[C.docCompleteness]).trim();
+  if (row[C.govRequestDate]) s.govRequestDate = convertWorklogDate(row[C.govRequestDate]);
+  if (row[C.firstDeployDate]) s.firstDeployDate = convertWorklogDate(row[C.firstDeployDate]);
+  var inPF = String(row[C.inProjectFlow] || '').trim();
+  s.inProjectFlow = inPF === 'TRUE' || inPF === 'true' || inPF === 'Public' || inPF === 'Private';
+  if (row[C.legacyWbs]) s.legacyWbs = String(row[C.legacyWbs]).trim();
+  if (row[C.transitionMeetingDate]) s.transitionMeetingDate = convertWorklogDate(row[C.transitionMeetingDate]);
+  var transComplete = String(row[C.transitionComplete] || '').trim();
+  s.transitionComplete = transComplete === 'TRUE' || transComplete === 'true';
+  if (row[C.dataTaskOwnership]) s.dataTaskOwnership = String(row[C.dataTaskOwnership]).trim();
+  if (row[C.additionalFiles]) s.additionalFiles = String(row[C.additionalFiles]).trim();
+  if (row[C.githubLinks]) s.githubLinks = String(row[C.githubLinks]).trim();
   return s;
 }
 
 function importProjectsFromWorkLog(workbookId) {
-  if (typeof PermissionGuard !== 'undefined') {
-    PermissionGuard.requirePermission('project:create');
-  }
+  PermissionGuard.requirePermission('project:create');
   var sourceSpreadsheet = SpreadsheetApp.openById(workbookId);
   var sourceSheet = sourceSpreadsheet.getSheets()[0];
   var sourceData = sourceSheet.getDataRange().getValues();
@@ -229,4 +239,59 @@ function importProjectsFromWorkLog(workbookId) {
     importedNames: imported,
     skippedNames: skipped
   };
+}
+
+function syncWorklogSettings(workbookId) {
+  PermissionGuard.requirePermission('project:update');
+  var sourceSpreadsheet = SpreadsheetApp.openById(workbookId);
+  var sourceSheet = sourceSpreadsheet.getSheets()[0];
+  var sourceData = sourceSheet.getDataRange().getValues();
+
+  var C = WORKLOG_COL;
+  var existingProjects = getAllProjects();
+  var nameMap = {};
+  existingProjects.forEach(function(p) { nameMap[p.name.toLowerCase().trim()] = p; });
+
+  var updated = [];
+  var skipped = [];
+
+  for (var i = 1; i < sourceData.length; i++) {
+    var row = sourceData[i];
+    var name = String(row[C.name] || '').trim();
+    if (!name) continue;
+
+    var existing = nameMap[name.toLowerCase()];
+    if (!existing) { skipped.push(name); continue; }
+
+    var newSettings = buildWorklogSettings(row);
+    var currentSettings = {};
+    try { currentSettings = typeof existing.settings === 'string' ? JSON.parse(existing.settings) : (existing.settings || {}); } catch (e) { currentSettings = {}; }
+
+    Object.keys(newSettings).forEach(function(key) {
+      if (newSettings[key] !== undefined && newSettings[key] !== '' && newSettings[key] !== false) {
+        currentSettings[key] = newSettings[key];
+      }
+    });
+
+    var newTags = buildWorklogTags(row);
+    var statusStr = String(row[C.projectStatus] || '').trim();
+    var updates = {
+      settings: JSON.stringify(currentSettings),
+      tags: JSON.stringify(newTags),
+      description: sanitize(String(row[C.description] || existing.description || '')),
+      ownerId: String(row[C.projectOwner] || existing.ownerId || '').trim(),
+      repoUrl: String(row[C.githubLinks] || existing.repoUrl || '').trim(),
+      startDate: convertWorklogDate(row[C.startDate]) || existing.startDate,
+      endDate: convertWorklogDate(row[C.retiredDate]) || existing.endDate
+    };
+    if (statusStr && WORKLOG_STATUS_MAP[statusStr]) updates.status = WORKLOG_STATUS_MAP[statusStr];
+
+    updateProject(existing.id, updates);
+    updated.push(name);
+  }
+
+  invalidateProjectCache();
+  try { CacheService.getScriptCache().remove('BATCH_DATA_CACHE'); } catch (e) {}
+
+  return { success: true, updated: updated.length, skipped: skipped.length, updatedNames: updated, skippedNames: skipped };
 }

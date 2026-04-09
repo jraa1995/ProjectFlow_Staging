@@ -1,0 +1,803 @@
+<script>
+(function() {
+try {
+var ProjectPage = {
+  projects: [],
+  selectedProject: null,
+  activeTab: 'overview',
+  isEditing: false,
+  editingTab: null,
+  showAddRelease: false,
+  showAddUpdate: false,
+  _editSecondaryUsers: [],
+
+  _settingsSchema: {
+    portfolio: [
+      { key: 'workstream', label: 'Workstream', type: 'text' },
+      { key: 'projectCategory', label: 'Project Category', type: 'text' },
+      { key: 'projectType', label: 'Project Type', type: 'text' },
+      { key: 'developmentPriority', label: 'Development Priority', type: 'text' },
+      { key: 'developmentPhase', label: 'Development Phase', type: 'text' },
+      { key: 'externalProjectId', label: 'External Project ID', type: 'text' },
+      { key: 'linkedProjectId', label: 'Linked Project ID', type: 'text' },
+      { key: 'sdmSupported', label: 'SDMs Supported', type: 'text' },
+      { key: 'govRequestDate', label: 'Gov Request Date', type: 'date' },
+      { key: 'firstDeployDate', label: 'First Deploy Date', type: 'date' },
+      { key: 'isAiInvolved', label: 'AI Involved', type: 'boolean' },
+      { key: 'isInternalHive', label: 'Internal Hive', type: 'boolean' },
+      { key: 'inProjectFlow', label: 'In ProjectFlow', type: 'boolean' },
+      { key: 'legacyWbs', label: 'Legacy WBS', type: 'text' },
+      { key: 'notes', label: 'Notes', type: 'textarea' }
+    ],
+    ownership: [
+      { key: 'secondaryUsers', label: 'Backup Owners', type: 'userlist' },
+      { key: 'projectPoc', label: 'Project POC', type: 'text' },
+      { key: 'clientOwner', label: 'Client Owner', type: 'text' },
+      { key: 'clientStakeholders', label: 'Client Stakeholders', type: 'text' },
+      { key: 'futureOwner', label: 'Future Owner', type: 'text' },
+      { key: 'futureContractHome', label: 'Future Contract Home', type: 'text' },
+      { key: 'transitionPriority', label: 'Transition Priority', type: 'text' },
+      { key: 'transitionMeetingDate', label: 'Transition Meeting Date', type: 'date' },
+      { key: 'transitionComplete', label: 'Transition Complete', type: 'boolean' },
+      { key: 'gasOwner', label: 'GAS Owner', type: 'text' },
+      { key: 'dataMgmtOwner', label: 'Data Mgmt Owner', type: 'text' },
+      { key: 'dataTaskOwnership', label: 'Data Task Ownership', type: 'text' },
+      { key: 'contractInitial', label: 'Contract (Initial)', type: 'text' },
+      { key: 'contractCurrent', label: 'Contract (Current)', type: 'text' },
+      { key: 'contractTask', label: 'Contract Task', type: 'text' }
+    ],
+    infrastructure: [
+      { key: 'techStack', label: 'Tech Stack', type: 'text' },
+      { key: 'deploymentLocation', label: 'Deployment Location', type: 'text' },
+      { key: 'deployedPublicly', label: 'Deployed Publicly', type: 'boolean' },
+      { key: 'activeGas', label: 'Active GAS Project', type: 'boolean' },
+      { key: 'gasProjectUid', label: 'GAS Project UID', type: 'url' },
+      { key: 'activeDataMgmt', label: 'Active Data Mgmt', type: 'boolean' },
+      { key: 'dataCadence', label: 'Data Cadence', type: 'text' },
+      { key: 'dataSourceFiles', label: 'Data Source Files', type: 'text' },
+      { key: 'dataSourceExplain', label: 'Data Source', type: 'textarea' }
+    ],
+    documentation: [
+      { key: 'docCompleteness', label: 'Documentation Completeness', type: 'text' },
+      { key: 'standaloneAppLink', label: 'Standalone App', type: 'url' },
+      { key: 'd2dLink', label: 'D2D Link', type: 'url' },
+      { key: 'aasIntranetLink', label: 'AAS Intranet', type: 'url' },
+      { key: 'gsaLink', label: 'GSA Link', type: 'url' },
+      { key: 'tableauLink', label: 'Tableau', type: 'url' },
+      { key: 'googleDriveFolder', label: 'Google Drive', type: 'url' },
+      { key: 'githubLinks', label: 'GitHub Links', type: 'url' },
+      { key: 'devDocs', label: 'Dev Documentation', type: 'url' },
+      { key: 'sops', label: 'SOPs', type: 'url' },
+      { key: 'userGuides', label: 'User Guides', type: 'url' },
+      { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'url' },
+      { key: 'additionalFiles', label: 'Additional Files', type: 'url' }
+    ]
+  },
+
+  init() {
+    if (typeof SplitPane !== 'undefined') SplitPane.init('projectSplitPane', 'projects', 288);
+    this.loadProjects();
+  },
+
+  loadProjects() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to load projects', 'error');
+          return;
+        }
+        this.projects = result.projects || [];
+        if (typeof State !== 'undefined' && State.setProjects) {
+          State.setProjects(this.projects);
+        }
+        this.renderProjectList();
+        if (this.projects.length > 0 && !this.selectedProject) {
+          this.selectProject(this.projects[0].id);
+        }
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Load projects failed:', error);
+        toast('Failed to load projects', 'error');
+      })
+      .getProjectDetailsList();
+  },
+
+  selectProject(projectId) {
+    this.selectedProject = this.projects.find(p => p.id === projectId) || null;
+    this.activeTab = 'overview';
+    this.isEditing = false;
+    this.editingTab = null;
+    this.showAddRelease = false;
+    this.showAddUpdate = false;
+    this.renderProjectList();
+    this.renderProjectDetail();
+  },
+
+  switchTab(tab) {
+    this.activeTab = tab;
+    this.isEditing = false;
+    this.editingTab = null;
+    this.showAddRelease = false;
+    this.showAddUpdate = false;
+    this.renderProjectDetail();
+  },
+
+  renderProjectList() {
+    var container = document.getElementById('projectListContainer');
+    if (!container) return;
+    if (!this.projects.length) {
+      container.innerHTML = '<div class="flex flex-col items-center justify-center h-32 text-gray-400"><i class="fas fa-folder text-2xl mb-2 text-gray-300"></i><p class="text-sm">No projects yet</p></div>';
+      return;
+    }
+    container.innerHTML = this.projects.map(p => {
+      var isActive = this.selectedProject && this.selectedProject.id === p.id;
+      var statusDot = this._statusDotColor(p.status);
+      var taskCount = parseInt(p.taskCount) || 0;
+      return `<div onclick="_pc('ProjectPage','selectProject','${escapeHtml(p.id)}')" class="p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 transition-colors ${isActive ? 'bg-gray-50 border-l-4 border-l-gray-900' : ''}">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2 h-2 rounded-full flex-shrink-0 mt-1 ${statusDot}"></span>
+            <span class="text-sm font-medium text-gray-900 truncate">${escapeHtml(p.name)}</span>
+          </div>
+          ${p.version ? `<span class="text-xs bg-gray-900 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">${escapeHtml(p.version)}</span>` : ''}
+        </div>
+        <div class="mt-1 pl-4 flex items-center justify-between">
+          <span class="text-xs text-gray-400">${taskCount} task${taskCount !== 1 ? 's' : ''}</span>
+          ${p.status ? `<span class="text-xs text-gray-400 capitalize">${escapeHtml(p.status)}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  },
+
+  _statusDotColor(status) {
+    var map = { active: 'bg-gray-700', completed: 'bg-gray-400', archived: 'bg-gray-300', paused: 'bg-gray-400' };
+    return map[(status || '').toLowerCase()] || 'bg-gray-400';
+  },
+
+  _getSettings() {
+    try {
+      if (!this.selectedProject || !this.selectedProject.settings) return {};
+      return typeof this.selectedProject.settings === 'string'
+        ? JSON.parse(this.selectedProject.settings)
+        : (this.selectedProject.settings || {});
+    } catch (e) { return {}; }
+  },
+
+  renderProjectDetail() {
+    var container = document.getElementById('projectDetailContainer');
+    if (!container) return;
+    if (!this.selectedProject) {
+      container.innerHTML = '<div class="flex-1 flex flex-col items-center justify-center text-gray-400">' +
+        '<i class="fas fa-folder-open text-4xl mb-3 text-gray-300"></i>' +
+        '<p class="text-sm font-medium text-gray-500">Select a project to view details</p>' +
+        '<p class="text-xs text-gray-400 mt-1">Choose from the list on the left</p></div>';
+      return;
+    }
+    var tabs = [
+      { id: 'overview', label: 'Overview' },
+      { id: 'portfolio', label: 'Portfolio' },
+      { id: 'ownership', label: 'Ownership' },
+      { id: 'infrastructure', label: 'Infrastructure' },
+      { id: 'documentation', label: 'Documentation & Links' },
+      { id: 'releases', label: 'Releases' },
+      { id: 'updates', label: 'Updates' }
+    ];
+    var self = this;
+    var tabBar = '<div class="bg-white border-b border-gray-200 px-6 flex items-center gap-1 flex-shrink-0 overflow-x-auto">' +
+      tabs.map(function(t) {
+        return '<button onclick="_pc(\'ProjectPage\',\'switchTab\',\'' + t.id + '\')" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap ' +
+          (self.activeTab === t.id ? 'border-gray-900 font-semibold text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') +
+          '">' + t.label + '</button>';
+      }).join('') + '</div>';
+    var tabContent = '';
+    if (this.activeTab === 'overview') tabContent = this._buildOverview();
+    else if (this.activeTab === 'portfolio') tabContent = this._buildSettingsTab('portfolio');
+    else if (this.activeTab === 'ownership') tabContent = this._buildSettingsTab('ownership');
+    else if (this.activeTab === 'infrastructure') tabContent = this._buildSettingsTab('infrastructure');
+    else if (this.activeTab === 'documentation') tabContent = this._buildSettingsTab('documentation');
+    else if (this.activeTab === 'releases') tabContent = this._buildReleases();
+    else if (this.activeTab === 'updates') tabContent = this._buildUpdates();
+    container.innerHTML = tabBar + '<div class="flex-1 overflow-y-auto p-6">' + tabContent + '</div>';
+  },
+
+  _buildSettingsTab(groupKey) {
+    var schema = this._settingsSchema[groupKey] || [];
+    var settings = this._getSettings();
+    var isEditingThis = this.isEditing && this.editingTab === groupKey;
+    var groupLabels = { portfolio: 'Portfolio', ownership: 'Ownership', infrastructure: 'Infrastructure', documentation: 'Documentation & Links' };
+
+    if (isEditingThis) {
+      var fields = schema.map(function(field) {
+        var val = settings[field.key];
+        var inputHtml = '';
+        if (field.type === 'boolean') {
+          inputHtml = '<select id="editSetting_' + field.key + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+            '<option value="false"' + (!val ? ' selected' : '') + '>No</option>' +
+            '<option value="true"' + (val ? ' selected' : '') + '>Yes</option></select>';
+        } else if (field.type === 'textarea') {
+          inputHtml = '<textarea id="editSetting_' + field.key + '" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none">' + escapeHtml(String(val || '')) + '</textarea>';
+        } else if (field.type === 'date') {
+          var dateVal = val ? String(val).substring(0, 10) : '';
+          inputHtml = '<input id="editSetting_' + field.key + '" type="date" value="' + escapeHtml(dateVal) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
+        } else if (field.type === 'userlist') {
+          return '';
+        } else {
+          inputHtml = '<input id="editSetting_' + field.key + '" type="' + (field.type === 'url' ? 'url' : 'text') + '" value="' + escapeHtml(String(val || '')) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
+        }
+        return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + '</div>';
+      }).filter(Boolean).join('');
+
+      return '<div class="bg-white border border-gray-200 rounded-lg p-6 max-w-2xl">' +
+        '<h2 class="text-base font-semibold text-gray-900 mb-5">Edit ' + groupLabels[groupKey] + '</h2>' +
+        '<div class="space-y-4">' + fields + '</div>' +
+        '<div class="flex items-center gap-3 mt-6">' +
+        '<button onclick="_pc(\'ProjectPage\',\'saveSettings\',\'' + groupKey + '\')" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Changes</button>' +
+        '<button onclick="_pc(\'ProjectPage\',\'cancelEditing\')" class="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
+        '</div></div>';
+    }
+
+    var rows = schema.map(function(field) {
+      var val = settings[field.key];
+      var display = '';
+      if (field.type === 'boolean') {
+        if (val === true || val === 'true' || val === 'TRUE') {
+          display = '<span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-700 text-white"><i class="fas fa-check text-xs"></i> Yes</span>';
+        } else {
+          display = '<span class="text-gray-400 text-sm">No</span>';
+        }
+      } else if (field.type === 'url') {
+        if (val) {
+          var urlStr = String(val);
+          var displayUrl = urlStr.length > 60 ? urlStr.substring(0, 57) + '...' : urlStr;
+          display = '<a href="' + escapeHtml(urlStr) + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 flex items-center gap-1 text-sm">' +
+            escapeHtml(displayUrl) + '<i class="fas fa-external-link-alt text-xs text-gray-400"></i></a>';
+        } else {
+          display = '<span class="text-gray-400 text-sm">-</span>';
+        }
+      } else if (field.type === 'userlist') {
+        var users = Array.isArray(val) ? val : [];
+        if (users.length) {
+          display = users.map(function(email) {
+            return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(email) + '</span>';
+          }).join('');
+        } else {
+          display = '<span class="text-gray-400 text-sm">None</span>';
+        }
+      } else if (field.type === 'textarea') {
+        display = val ? '<p class="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">' + escapeHtml(String(val)) + '</p>' : '<span class="text-gray-400 text-sm">-</span>';
+      } else if (field.type === 'date') {
+        if (val) {
+          try {
+            var d = new Date(val);
+            display = '<span class="text-sm text-gray-900">' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + '</span>';
+          } catch (e) { display = '<span class="text-sm text-gray-900">' + escapeHtml(String(val)) + '</span>'; }
+        } else {
+          display = '<span class="text-gray-400 text-sm">-</span>';
+        }
+      } else {
+        display = val ? '<span class="text-sm text-gray-900">' + escapeHtml(String(val)) + '</span>' : '<span class="text-gray-400 text-sm">-</span>';
+      }
+      return '<div class="px-4 py-3 flex items-start gap-4">' +
+        '<span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-40 flex-shrink-0 mt-0.5">' + escapeHtml(field.label) + '</span>' +
+        '<div class="flex-1 min-w-0">' + display + '</div></div>';
+    }).join('');
+
+    return '<div class="max-w-2xl">' +
+      '<div class="flex items-center justify-between mb-4">' +
+      '<h2 class="text-base font-semibold text-gray-900">' + groupLabels[groupKey] + '</h2>' +
+      '<button onclick="_pc(\'ProjectPage\',\'startEditingTab\',\'' + groupKey + '\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">' +
+      '<i class="fas fa-pencil-alt text-xs"></i> Edit</button></div>' +
+      '<div class="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' + rows + '</div></div>';
+  },
+
+  startEditingTab(groupKey) {
+    this.isEditing = true;
+    this.editingTab = groupKey;
+    this.renderProjectDetail();
+  },
+
+  saveSettings(groupKey) {
+    var schema = this._settingsSchema[groupKey] || [];
+    var settings = this._getSettings();
+    schema.forEach(function(field) {
+      if (field.type === 'userlist') return;
+      var el = document.getElementById('editSetting_' + field.key);
+      if (!el) return;
+      if (field.type === 'boolean') {
+        settings[field.key] = el.value === 'true';
+      } else {
+        settings[field.key] = el.value || '';
+      }
+    });
+    var settingsStr = JSON.stringify(settings);
+    var payload = { id: this.selectedProject.id, settings: settingsStr };
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) { toast(result.error || 'Failed to save', 'error'); return; }
+        this.selectedProject.settings = settingsStr;
+        var idx = this.projects.findIndex(p => p.id === this.selectedProject.id);
+        if (idx !== -1) this.projects[idx].settings = settingsStr;
+        this.isEditing = false;
+        this.editingTab = null;
+        this.renderProjectDetail();
+        toast('Settings updated', 'success');
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Save settings failed:', error);
+        toast('Failed to save settings', 'error');
+      })
+      .updateProjectDetails(payload);
+  },
+
+  getSecondaryUsers(project) {
+    try {
+      if (!project || !project.settings) return [];
+      var s = typeof project.settings === 'string' ? JSON.parse(project.settings) : project.settings;
+      return Array.isArray(s.secondaryUsers) ? s.secondaryUsers : [];
+    } catch (e) { return []; }
+  },
+
+  renderSecondaryUserTags(users) {
+    if (!users || !users.length) return '<span class="text-gray-400 text-sm">None assigned</span>';
+    return users.map(function(email) { return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(email) + '</span>'; }).join('');
+  },
+
+  _renderEditSecondaryUserTags() {
+    var users = this._editSecondaryUsers;
+    if (!users.length) return '<p class="text-xs text-gray-400">No secondary users added</p>';
+    return users.map(function(email, idx) {
+      return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+        escapeHtml(email) +
+        '<button type="button" onclick="_pc(\'ProjectPage\',\'removeEditSecondaryUser\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button>' +
+        '</span>';
+    }).join('');
+  },
+
+  addEditSecondaryUser() {
+    var sel = document.getElementById('editSecondaryUserSelect');
+    if (!sel || !sel.value) return;
+    var email = sel.value;
+    if (!this._editSecondaryUsers.includes(email)) {
+      this._editSecondaryUsers.push(email);
+    }
+    var tagsContainer = document.getElementById('editSecondaryUserTags');
+    var dropdownContainer = document.getElementById('editSecondaryUserDropdownWrap');
+    if (tagsContainer) tagsContainer.innerHTML = this._renderEditSecondaryUserTags();
+    if (dropdownContainer) dropdownContainer.innerHTML = this._buildSecondaryUserDropdown();
+    sel.value = '';
+  },
+
+  removeEditSecondaryUser(idx) {
+    this._editSecondaryUsers.splice(idx, 1);
+    var tagsContainer = document.getElementById('editSecondaryUserTags');
+    var dropdownContainer = document.getElementById('editSecondaryUserDropdownWrap');
+    if (tagsContainer) tagsContainer.innerHTML = this._renderEditSecondaryUserTags();
+    if (dropdownContainer) dropdownContainer.innerHTML = this._buildSecondaryUserDropdown();
+  },
+
+  _buildSecondaryUserDropdown() {
+    var allUsers = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var self = this;
+    var filtered = allUsers.filter(function(u) { return !self._editSecondaryUsers.includes(u.email || u.id); });
+    if (!filtered.length) return '<p class="text-xs text-gray-400 py-1">All users assigned</p>';
+    return '<select id="editSecondaryUserSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+      '<option value="">Select a user to add...</option>' +
+      filtered.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '">' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('') +
+      '</select>' +
+      '<button type="button" onclick="_pc(\'ProjectPage\',\'addEditSecondaryUser\')" class="mt-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Add User</button>';
+  },
+
+  _buildOverview() {
+    var p = this.selectedProject;
+    if (this.isEditing && this.editingTab === 'overview') {
+      var tags = this.parseJsonField(p.tags);
+      this._editSecondaryUsers = this.getSecondaryUsers(p);
+      var allUsers = (typeof State !== 'undefined' && State.users) ? State.users : [];
+      var ownerOptions = allUsers.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '"' + ((u.email || u.id) === p.ownerId ? ' selected' : '') + '>' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('');
+      return '<div class="bg-white border border-gray-200 rounded-lg p-6 max-w-2xl">' +
+        '<h2 class="text-base font-semibold text-gray-900 mb-5">Edit Project</h2>' +
+        '<div class="space-y-4">' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Name</label>' +
+        '<input id="editProjectName" type="text" value="' + escapeHtml(p.name || '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Primary Owner</label>' +
+        '<select id="editProjectOwner" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="">Unassigned</option>' + ownerOptions + '</select></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Secondary / Surge Users</label>' +
+        '<div id="editSecondaryUserTags" class="flex flex-wrap mb-2">' + this._renderEditSecondaryUserTags() + '</div>' +
+        '<div id="editSecondaryUserDropdownWrap">' + this._buildSecondaryUserDropdown() + '</div></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Description</label>' +
+        '<textarea id="editProjectDesc" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none">' + escapeHtml(p.description || '') + '</textarea></div>' +
+        '<div class="grid grid-cols-2 gap-4">' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Start Date</label>' +
+        '<input id="editProjectStart" type="date" value="' + (p.startDate ? p.startDate.substring(0, 10) : '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">End Date</label>' +
+        '<input id="editProjectEnd" type="date" value="' + (p.endDate ? p.endDate.substring(0, 10) : '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Version</label>' +
+        '<input id="editProjectVersion" type="text" value="' + escapeHtml(p.version || '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Repository URL</label>' +
+        '<input id="editProjectRepo" type="url" value="' + escapeHtml(p.repoUrl || '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Tags (comma separated)</label>' +
+        '<input id="editProjectTags" type="text" value="' + escapeHtml(tags.join(', ')) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
+        '</div>' +
+        '<div class="flex items-center gap-3 mt-6">' +
+        '<button onclick="_pc(\'ProjectPage\',\'saveProject\')" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Changes</button>' +
+        '<button onclick="_pc(\'ProjectPage\',\'cancelEditing\')" class="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
+        '</div></div>';
+    }
+    var p2 = this.selectedProject;
+    var tags = this.parseJsonField(p2.tags);
+    var tagBadges = tags.length ? tags.map(function(t) { return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200">' + escapeHtml(t.trim()) + '</span>'; }).join(' ') : '<span class="text-gray-400 text-sm">-</span>';
+    var secondaryUsers = this.getSecondaryUsers(p2);
+    var isArchived = (p2.status || '').toLowerCase() === 'archived';
+    return '<div class="max-w-2xl">' +
+      '<div class="flex items-start justify-between mb-6"><div>' +
+      '<div class="flex items-center gap-3">' +
+      '<h2 class="text-xl font-bold text-gray-900">' + escapeHtml(p2.name || 'Untitled Project') + '</h2>' +
+      (p2.version ? '<span class="bg-gray-900 text-white text-xs px-2 py-0.5 rounded-full">' + escapeHtml(p2.version) + '</span>' : '') +
+      '</div>' +
+      (p2.description ? '<p class="text-sm text-gray-600 mt-2 leading-relaxed">' + escapeHtml(p2.description) + '</p>' : '') +
+      '</div>' +
+      '<div class="flex items-center gap-2 flex-shrink-0 ml-4">' +
+      '<button onclick="_pc(\'ProjectPage\',\'startEditingTab\',\'overview\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-pencil-alt text-xs"></i> Edit</button>' +
+      (!isArchived ? '<button onclick="_pc(\'ProjectPage\',\'archiveProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-amber-300 text-amber-700 text-sm rounded-lg hover:bg-amber-50 transition-colors"><i class="fas fa-archive text-xs"></i> Archive</button>'
+        : '<button onclick="_pc(\'ProjectPage\',\'unarchiveProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-box-open text-xs"></i> Unarchive</button>') +
+      '<button onclick="_pc(\'ProjectPage\',\'deleteProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-red-300 text-red-600 text-sm rounded-lg hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i> Delete</button>' +
+      '</div></div>' +
+      '<div class="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' +
+      '<div class="px-4 py-3 flex items-center gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32">Primary Owner</span><span class="text-sm text-gray-900">' + escapeHtml(p2.ownerId || '-') + '</span></div>' +
+      '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32 mt-0.5">Created At</span><span class="text-sm text-gray-900">' + this.formatDate(p2.createdAt) + '</span></div>' +
+      '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32 mt-0.5">Surge Users</span><div class="flex flex-wrap">' + this.renderSecondaryUserTags(secondaryUsers) + '</div></div>' +
+      '<div class="px-4 py-3 flex items-center gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32">Start Date</span><span class="text-sm text-gray-900">' + this.formatDate(p2.startDate) + '</span></div>' +
+      '<div class="px-4 py-3 flex items-center gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32">End Date</span><span class="text-sm text-gray-900">' + this.formatDate(p2.endDate) + '</span></div>' +
+      '<div class="px-4 py-3 flex items-center gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32">Repository</span><span class="text-sm">' +
+        (p2.repoUrl ? '<a href="' + escapeHtml(p2.repoUrl) + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 flex items-center gap-1">' + escapeHtml(p2.repoUrl) + '<i class="fas fa-external-link-alt text-xs text-gray-400"></i></a>' : '<span class="text-gray-400">-</span>') +
+      '</span></div>' +
+      '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32 mt-0.5">Tags</span><div class="flex flex-wrap gap-1.5">' + tagBadges + '</div></div>' +
+      '</div></div>';
+  },
+
+  _buildReleases() {
+    var p = this.selectedProject;
+    var releases = this.parseJsonField(p.releaseNotes).slice().reverse();
+    var suggestedVersion = this._suggestNextVersion(p.version, 'patch');
+    var sectionFields = ['added', 'changed', 'fixed', 'removed', 'security'];
+    var addForm = this.showAddRelease ? '<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">' +
+      '<h3 class="text-sm font-semibold text-gray-900 mb-3">Add Release</h3><div class="space-y-3">' +
+      '<div class="grid grid-cols-2 gap-3"><div>' +
+      '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Release Type</label>' +
+      '<select id="newReleaseType" onchange="_pc(\'ProjectPage\',\'_onReleaseTypeChange\')" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="patch">Patch</option><option value="minor">Minor</option><option value="major">Major</option></select></div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Version</label>' +
+      '<input id="newReleaseVersion" type="text" value="' + escapeHtml(suggestedVersion) + '" placeholder="e.g. 1.3.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div></div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Summary</label>' +
+      '<input id="newReleaseSummary" type="text" placeholder="One-line summary of this release" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
+      sectionFields.map(function(s) {
+        return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + s.charAt(0).toUpperCase() + s.slice(1) + ' <span class="normal-case text-gray-400 font-normal">(optional, one item per line)</span></label>' +
+          '<textarea id="newRelease_' + s + '" rows="2" placeholder="Each line becomes one bullet point" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"></textarea></div>';
+      }).join('') +
+      '<div class="flex items-center gap-3 pt-1">' +
+      '<button onclick="_pc(\'ProjectPage\',\'addRelease\')" class="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Release</button>' +
+      '<button onclick="_pc(\'ProjectPage\',\'toggleAddRelease\',false)" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button></div>' +
+      '</div></div>' : '';
+    var typeBadgeClass = { major: 'bg-red-100 text-red-700', minor: 'bg-blue-100 text-blue-700', patch: 'bg-gray-100 text-gray-600' };
+    var self = this;
+    var list = releases.length ? releases.map(function(r) {
+      var tClass = typeBadgeClass[r.type] || 'bg-gray-100 text-gray-600';
+      var tLabel = r.type ? (r.type.charAt(0).toUpperCase() + r.type.slice(1)) : '';
+      var bodyHtml = '';
+      if (r.sections) {
+        var sectionLabels = { added: 'Added', changed: 'Changed', fixed: 'Fixed', removed: 'Removed', security: 'Security' };
+        bodyHtml = Object.keys(sectionLabels).filter(function(k) { return r.sections[k] && r.sections[k].length; }).map(function(k) {
+          return '<div class="mt-2"><p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">' + sectionLabels[k] + '</p>' +
+            '<ul class="space-y-0.5 pl-1">' + r.sections[k].map(function(item) {
+              return '<li class="flex items-start gap-1.5 text-sm text-gray-700"><span class="mt-1.5 w-1 h-1 rounded-full bg-gray-400 flex-shrink-0"></span><span>' + escapeHtml(item) + '</span></li>';
+            }).join('') + '</ul></div>';
+        }).join('');
+      } else if (r.notes) {
+        bodyHtml = '<p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap mt-2">' + escapeHtml(r.notes) + '</p>';
+      }
+      return '<div class="bg-white border border-gray-200 rounded-lg p-4 mb-3">' +
+        '<div class="flex items-center gap-2 flex-wrap">' +
+        '<span class="bg-gray-900 text-white text-xs px-2 py-0.5 rounded-full font-mono">' + escapeHtml(r.version || '') + '</span>' +
+        (tLabel ? '<span class="text-xs px-2 py-0.5 rounded-full ' + tClass + '">' + tLabel + '</span>' : '') +
+        '<span class="text-xs text-gray-400 ml-auto">' + self.formatDate(r.date) + '</span></div>' +
+        (r.summary ? '<p class="text-sm font-medium text-gray-800 mt-2">' + escapeHtml(r.summary) + '</p>' : '') +
+        bodyHtml + '</div>';
+    }).join('') : '<div class="text-center py-10 text-gray-400"><i class="fas fa-tag text-2xl mb-2 text-gray-300 block"></i><p class="text-sm">No releases yet</p></div>';
+    return '<div class="max-w-2xl"><div class="flex items-center justify-between mb-4">' +
+      '<h2 class="text-base font-semibold text-gray-900">Release Notes</h2><div class="flex items-center gap-2">' +
+      (releases.length ? '<button onclick="_pc(\'ProjectPage\',\'_downloadReleases\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-download text-xs"></i> Download</button>' : '') +
+      (!this.showAddRelease ? '<button onclick="_pc(\'ProjectPage\',\'toggleAddRelease\',true)" class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"><i class="fas fa-plus text-xs"></i> Add Release</button>' : '') +
+      '</div></div>' + addForm + list + '</div>';
+  },
+
+  _buildUpdates() {
+    var p = this.selectedProject;
+    var entries = this.parseJsonField(p.changelog).slice().reverse();
+    var releases = this.parseJsonField(p.releaseNotes);
+    var versionOptions = releases.filter(function(r) { return r.version; }).map(function(r) { return '<option value="' + escapeHtml(r.version) + '">' + escapeHtml(r.version) + '</option>'; }).join('');
+    var addForm = this.showAddUpdate ? '<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">' +
+      '<h3 class="text-sm font-semibold text-gray-900 mb-3">Add Update</h3><div class="space-y-3">' +
+      '<div class="grid grid-cols-2 gap-3"><div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Type</label>' +
+      '<select id="newUpdateType" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+      '<option value="update">Update</option><option value="decision">Decision</option><option value="incident">Incident</option><option value="milestone">Milestone</option></select></div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Related Version <span class="normal-case text-gray-400 font-normal">(optional)</span></label>' +
+      '<select id="newUpdateRelatedVersion" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="">None</option>' + versionOptions + '</select></div></div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Message</label>' +
+      '<textarea id="newUpdateMessage" rows="3" placeholder="Describe what changed or happened..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"></textarea></div>' +
+      '<div class="flex items-center gap-3 pt-1">' +
+      '<button onclick="_pc(\'ProjectPage\',\'addUpdate\')" class="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Update</button>' +
+      '<button onclick="_pc(\'ProjectPage\',\'toggleAddUpdate\',false)" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button></div></div></div>' : '';
+    var typeConfig = {
+      update: { icon: 'fa-arrow-up', label: 'Update', dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-600' },
+      decision: { icon: 'fa-gavel', label: 'Decision', dot: 'bg-gray-600', badge: 'bg-gray-200 text-gray-700' },
+      incident: { icon: 'fa-exclamation-triangle', label: 'Incident', dot: 'bg-red-300', badge: 'bg-red-100 text-red-700' },
+      milestone: { icon: 'fa-flag', label: 'Milestone', dot: 'bg-gray-800', badge: 'bg-gray-800 text-white' }
+    };
+    var self = this;
+    var timeline = entries.length ? '<div class="relative"><div class="absolute left-4 top-0 bottom-0 w-px bg-gray-200"></div>' +
+      entries.map(function(e) {
+        var type = e.type || 'update';
+        var cfg = typeConfig[type] || typeConfig.update;
+        var initials = (e.author || 'U').split('@')[0].substring(0, 2).toUpperCase();
+        return '<div class="relative pl-10 pb-5">' +
+          '<div class="absolute left-2.5 top-1 w-3 h-3 rounded-full ' + cfg.dot + ' border-2 border-white ring-1 ring-gray-300"></div>' +
+          '<div class="bg-white border border-gray-200 rounded-lg p-3">' +
+          '<div class="flex items-center gap-2 mb-2 flex-wrap">' +
+          '<span class="w-6 h-6 rounded-full bg-gray-700 text-white text-xs flex items-center justify-center font-medium flex-shrink-0">' + escapeHtml(initials) + '</span>' +
+          '<span class="text-xs font-medium text-gray-700">' + escapeHtml(e.author || 'Unknown') + '</span>' +
+          '<span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ' + cfg.badge + '"><i class="fas ' + cfg.icon + ' text-xs"></i>' + cfg.label + '</span>' +
+          (e.relatedVersion ? '<span class="text-xs bg-gray-900 text-white px-1.5 py-0.5 rounded-full font-mono">' + escapeHtml(e.relatedVersion) + '</span>' : '') +
+          '<span class="text-xs text-gray-400 ml-auto">' + self.formatDate(e.date) + '</span></div>' +
+          '<p class="text-sm text-gray-700 leading-relaxed">' + escapeHtml(e.message || '') + '</p></div></div>';
+      }).join('') + '</div>' : '<div class="text-center py-10 text-gray-400"><i class="fas fa-stream text-2xl mb-2 text-gray-300 block"></i><p class="text-sm">No updates yet</p></div>';
+    return '<div class="max-w-2xl"><div class="flex items-center justify-between mb-4">' +
+      '<h2 class="text-base font-semibold text-gray-900">Changelog</h2>' +
+      (!this.showAddUpdate ? '<button onclick="_pc(\'ProjectPage\',\'toggleAddUpdate\',true)" class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"><i class="fas fa-plus text-xs"></i> Add Update</button>' : '') +
+      '</div>' + addForm + timeline + '</div>';
+  },
+
+  toggleAddRelease(show) { this.showAddRelease = show; this.renderProjectDetail(); },
+  toggleAddUpdate(show) { this.showAddUpdate = show; this.renderProjectDetail(); },
+
+  startEditing() {
+    this.isEditing = true;
+    this.editingTab = 'overview';
+    this.renderProjectDetail();
+  },
+
+  cancelEditing() {
+    this.isEditing = false;
+    this.editingTab = null;
+    this.renderProjectDetail();
+  },
+
+  saveProject() {
+    var name = (document.getElementById('editProjectName') || {}).value || '';
+    var description = (document.getElementById('editProjectDesc') || {}).value || '';
+    var startDate = (document.getElementById('editProjectStart') || {}).value || '';
+    var endDate = (document.getElementById('editProjectEnd') || {}).value || '';
+    var version = (document.getElementById('editProjectVersion') || {}).value || '';
+    var repoUrl = (document.getElementById('editProjectRepo') || {}).value || '';
+    var tagsRaw = (document.getElementById('editProjectTags') || {}).value || '';
+    var tags = tagsRaw.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+    var ownerId = (document.getElementById('editProjectOwner') || {}).value || '';
+    if (!name.trim()) { toast('Project name is required', 'error'); return; }
+    var existingSettings = this._getSettings();
+    existingSettings.secondaryUsers = this._editSecondaryUsers.slice();
+    var settings = JSON.stringify(existingSettings);
+    var payload = { id: this.selectedProject.id, name: name, description: description, startDate: startDate, endDate: endDate, version: version, repoUrl: repoUrl, tags: JSON.stringify(tags), ownerId: ownerId, settings: settings };
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) { toast(result.error || 'Failed to save', 'error'); return; }
+        Object.assign(this.selectedProject, payload);
+        var idx = this.projects.findIndex(function(p) { return p.id === payload.id; });
+        if (idx !== -1) Object.assign(this.projects[idx], payload);
+        this.isEditing = false;
+        this.editingTab = null;
+        this.renderProjectList();
+        this.renderProjectDetail();
+        toast('Project updated', 'success');
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Save project failed:', error);
+        toast('Failed to save project', 'error');
+      })
+      .updateProjectDetails(payload);
+  },
+
+  async archiveProject() {
+    var confirmed = await ConfirmModal('Are you sure you want to archive this project?');
+    if (!confirmed) return;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) { toast(result.error || 'Failed to archive', 'error'); return; }
+        this.selectedProject.status = 'archived';
+        var idx = this.projects.findIndex(p => p.id === this.selectedProject.id);
+        if (idx !== -1) this.projects[idx].status = 'archived';
+        this.renderProjectList();
+        this.selectProject(this.selectedProject.id);
+        toast('Project archived', 'success');
+      })
+      .withFailureHandler((error) => { showLoading(false); console.error('Archive project failed:', error); toast('Archive failed', 'error'); })
+      .archiveProject(this.selectedProject.id);
+  },
+
+  async unarchiveProject() {
+    var confirmed = await ConfirmModal('Are you sure you want to unarchive this project?');
+    if (!confirmed) return;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) { toast(result.error || 'Failed to unarchive', 'error'); return; }
+        this.selectedProject.status = 'active';
+        var idx = this.projects.findIndex(p => p.id === this.selectedProject.id);
+        if (idx !== -1) this.projects[idx].status = 'active';
+        this.renderProjectList();
+        this.selectProject(this.selectedProject.id);
+        toast('Project unarchived', 'success');
+      })
+      .withFailureHandler((error) => { showLoading(false); console.error('Unarchive project failed:', error); toast('Unarchive failed', 'error'); })
+      .unarchiveProject(this.selectedProject.id);
+  },
+
+  async deleteProject() {
+    var confirmed = await ConfirmModal('Are you sure you want to permanently delete this project? This cannot be undone.', true);
+    if (!confirmed) return;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) { toast(result.error || 'Failed to delete', 'error'); return; }
+        this.projects = this.projects.filter(p => p.id !== this.selectedProject.id);
+        this.selectedProject = null;
+        this.renderProjectList();
+        if (this.projects.length > 0) this.selectProject(this.projects[0].id);
+        else this.renderProjectDetail();
+        toast('Project deleted', 'success');
+      })
+      .withFailureHandler((error) => { showLoading(false); console.error('Delete project failed:', error); toast('Delete failed', 'error'); })
+      .deleteExistingProject(this.selectedProject.id);
+  },
+
+  addRelease() {
+    var version = (document.getElementById('newReleaseVersion') || {}).value || '';
+    var type = (document.getElementById('newReleaseType') || {}).value || 'patch';
+    var summary = (document.getElementById('newReleaseSummary') || {}).value || '';
+    if (!version.trim()) { toast('Version is required', 'error'); return; }
+    if (!/^\d+\.\d+\.\d+$/.test(version.trim())) { toast('Version must be semver (e.g. 1.2.3)', 'error'); return; }
+    var sections = {};
+    ['added', 'changed', 'fixed', 'removed', 'security'].forEach(function(s) {
+      var el = document.getElementById('newRelease_' + s);
+      if (el && el.value.trim()) { sections[s] = el.value.trim().split('\n').filter(Boolean); }
+    });
+    var entry = { version: version.trim(), date: new Date().toISOString(), type: type, summary: summary.trim(), sections: sections };
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) { toast(result.error || 'Failed', 'error'); return; }
+        var existing = this.parseJsonField(this.selectedProject.releaseNotes);
+        existing.unshift(entry);
+        this.selectedProject.releaseNotes = JSON.stringify(existing);
+        this.selectedProject.version = entry.version;
+        var idx = this.projects.findIndex(p => p.id === this.selectedProject.id);
+        if (idx !== -1) { this.projects[idx].releaseNotes = this.selectedProject.releaseNotes; this.projects[idx].version = entry.version; }
+        this.showAddRelease = false;
+        this.renderProjectDetail();
+        toast('Release ' + entry.version + ' added', 'success');
+      })
+      .withFailureHandler((error) => { showLoading(false); console.error('Add release failed:', error); toast('Failed to add release', 'error'); })
+      .addProjectReleaseNote(this.selectedProject.id, entry);
+  },
+
+  addUpdate() {
+    var message = (document.getElementById('newUpdateMessage') || {}).value || '';
+    var type = (document.getElementById('newUpdateType') || {}).value || 'update';
+    var relatedVersion = (document.getElementById('newUpdateRelatedVersion') || {}).value || '';
+    if (!message.trim()) { toast('Message is required', 'error'); return; }
+    var entry = { date: new Date().toISOString(), author: (typeof State !== 'undefined' && State.user && State.user.email) ? State.user.email : 'unknown', type: type, message: message.trim(), relatedVersion: relatedVersion };
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) { toast(result.error || 'Failed to add update', 'error'); return; }
+        var existing = this.parseJsonField(this.selectedProject.changelog);
+        existing.push(entry);
+        this.selectedProject.changelog = JSON.stringify(existing);
+        var idx = this.projects.findIndex(p => p.id === this.selectedProject.id);
+        if (idx !== -1) this.projects[idx].changelog = this.selectedProject.changelog;
+        this.showAddUpdate = false;
+        this.renderProjectDetail();
+        toast('Update added', 'success');
+      })
+      .withFailureHandler((error) => { showLoading(false); console.error('Add update failed:', error); toast('Failed to add update', 'error'); })
+      .addProjectChangelogEntry(this.selectedProject.id, entry);
+  },
+
+  _suggestNextVersion(currentVersion, type) {
+    var match = (currentVersion || '0.0.0').match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!match) return '0.1.0';
+    var major = parseInt(match[1]), minor = parseInt(match[2]), patch = parseInt(match[3]);
+    if (type === 'major') return (major + 1) + '.0.0';
+    if (type === 'minor') return major + '.' + (minor + 1) + '.0';
+    return major + '.' + minor + '.' + (patch + 1);
+  },
+
+  _onReleaseTypeChange() {
+    var typeEl = document.getElementById('newReleaseType');
+    var versionEl = document.getElementById('newReleaseVersion');
+    if (typeEl && versionEl) { versionEl.value = this._suggestNextVersion(this.selectedProject.version, typeEl.value); }
+  },
+
+  _downloadReleases() {
+    var p = this.selectedProject;
+    var releases = this.parseJsonField(p.releaseNotes);
+    var md = '# Changelog - ' + (p.name || 'Project') + '\n\n';
+    md += 'All notable changes to this project will be documented in this file.\n\n';
+    md += 'The format is based on [Keep a Changelog](https://keepachangelog.com/).\n\n';
+    releases.forEach(function(r) {
+      md += '## [' + (r.version || '?') + '] - ' + (r.date ? r.date.substring(0, 10) : 'Unknown') + '\n\n';
+      if (r.summary) md += r.summary + '\n\n';
+      if (r.sections) {
+        var labels = { added: 'Added', changed: 'Changed', fixed: 'Fixed', removed: 'Removed', security: 'Security' };
+        Object.keys(labels).forEach(function(key) {
+          if (r.sections[key] && r.sections[key].length) {
+            md += '### ' + labels[key] + '\n';
+            r.sections[key].forEach(function(item) { md += '- ' + item + '\n'; });
+            md += '\n';
+          }
+        });
+      } else if (r.notes) { md += r.notes + '\n\n'; }
+    });
+    var blob = new Blob([md], { type: 'text/markdown' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = (p.name || 'project').replace(/\s+/g, '-').toLowerCase() + '-changelog.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  openNewProjectForm() {
+    if (typeof openProjectModal === 'function') { openProjectModal(); }
+  },
+
+  parseJsonField(value) {
+    try {
+      if (!value) return [];
+      if (typeof value === 'string') {
+        try { return JSON.parse(value); } catch (e) {
+          return value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        }
+      }
+      return value;
+    } catch (e) { return []; }
+  },
+
+  formatDate(dateStr) {
+    if (!dateStr) return '-';
+    try {
+      var d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (e) { return dateStr; }
+  }
+};
+window.ProjectPage = ProjectPage;
+} catch(e) {
+  console.error('ProjectPage definition failed:', e);
+}
+})();
+</script>

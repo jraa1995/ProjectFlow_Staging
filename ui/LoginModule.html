@@ -94,12 +94,76 @@
     showLoginState() {
       this.state = 'login';
       this.clearAllErrors();
-      var s = $('loginState'), fe = $('forgotEmailState'), fv = $('forgotVerifyState');
+      var s = $('loginState'), fe = $('forgotEmailState'), fv = $('forgotVerifyState'), r = $('registerState');
       if (s) s.classList.remove('hidden');
       if (fe) fe.classList.add('hidden');
       if (fv) fv.classList.add('hidden');
+      if (r) r.classList.add('hidden');
       var sub = $('loginSubtitle');
       if (sub) sub.textContent = 'Sign in to continue to your workspace';
+    },
+
+    showRegister() {
+      this.state = 'register';
+      this.clearAllErrors();
+      var s = $('loginState'), fe = $('forgotEmailState'), fv = $('forgotVerifyState'), r = $('registerState');
+      if (s) s.classList.add('hidden');
+      if (fe) fe.classList.add('hidden');
+      if (fv) fv.classList.add('hidden');
+      if (r) r.classList.remove('hidden');
+      var sub = $('loginSubtitle');
+      if (sub) sub.textContent = 'Create your account';
+      var nameInput = $('registerName');
+      var emailInput = $('registerEmail');
+      var passInput = $('registerPassword');
+      var confInput = $('registerConfirm');
+      if (nameInput) nameInput.value = '';
+      if (emailInput) emailInput.value = '';
+      if (passInput) passInput.value = '';
+      if (confInput) confInput.value = '';
+      if (nameInput) setTimeout(function() { nameInput.focus(); }, 100);
+    },
+
+    handleRegister() {
+      var name = (($('registerName') || {}).value || '').trim();
+      var email = (($('registerEmail') || {}).value || '').trim();
+      var password = ($('registerPassword') || {}).value || '';
+      var confirm = ($('registerConfirm') || {}).value || '';
+      var errEl = $('registerError');
+      function showErr(msg) {
+        if (errEl) { errEl.textContent = msg; errEl.classList.remove('hidden'); }
+      }
+      if (errEl) errEl.classList.add('hidden');
+      if (!name) { showErr('Full name is required'); return; }
+      if (!LoginModal.validateEmail(email)) { showErr('Please enter a valid email address'); return; }
+      if (password.length < 8) { showErr('Password must be at least 8 characters'); return; }
+      if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+        showErr('Password must contain uppercase, lowercase, and a number');
+        return;
+      }
+      if (password !== confirm) { showErr('Passwords do not match'); return; }
+      var btn = $('registerSubmitBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
+          if (!result.success) {
+            showErr(result.error || 'Registration failed');
+            return;
+          }
+          toast('Account created! Please sign in.', 'success');
+          self.showLoginState();
+          var emailInput = $('loginEmail');
+          if (emailInput) emailInput.value = email;
+          var pwInput = $('loginPassword');
+          if (pwInput) setTimeout(function() { pwInput.focus(); }, 100);
+        })
+        .withFailureHandler(function(error) {
+          if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
+          showErr(error.message || 'Registration failed');
+        })
+        .registerNewUser({ name: name, email: email, password: password });
     },
 
     showForgotPassword() {
@@ -261,7 +325,7 @@
 
     clearAllErrors() {
       this.clearError();
-      var ids = ['resetEmailError', 'resetVerifyError'];
+      var ids = ['resetEmailError', 'resetVerifyError', 'registerError'];
       ids.forEach(function(id) { var el = $(id); if (el) el.classList.add('hidden'); });
     },
 

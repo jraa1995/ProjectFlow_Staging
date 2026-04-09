@@ -78,6 +78,7 @@ autocomplete="off"
 </select>
 </div>
 </div>
+<div class="grid grid-cols-2 gap-4">
 <div class="form-field">
 <label for="taskEditAssignee" class="form-label">
 <i class="fas fa-user text-gray-400 mr-1"></i> Assignee
@@ -85,6 +86,19 @@ autocomplete="off"
 <select id="taskEditAssignee" class="form-select">
 <option value="">Unassigned</option>
 </select>
+</div>
+<div class="form-field">
+<label class="form-label">
+<i class="fas fa-eye text-gray-400 mr-1"></i> Tag for Awareness
+</label>
+<div id="taskEditWatchersContainer" class="relative">
+<div id="taskEditWatchersTags" class="flex flex-wrap gap-1 min-h-[38px] p-1.5 border border-gray-300 rounded-lg bg-white cursor-pointer" onclick="TaskEditModal.toggleWatcherDropdown()">
+<span id="taskEditWatchersPlaceholder" class="text-sm text-gray-400 px-1 py-0.5">Select watchers...</span>
+</div>
+<div id="taskEditWatcherDropdown" class="hidden absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+</div>
+</div>
+</div>
 </div>
 <div class="grid grid-cols-2 gap-4">
 <div class="form-field">
@@ -578,6 +592,8 @@ var TaskEditModal = {
   originalTask: null,
   isOpen: false,
   hasUnsavedChanges: false,
+  mode: 'edit',
+  selectedWatchers: [],
 
   autoCalcStoryPoints() {
     var startDate = document.getElementById('taskEditStartDate')?.value;
@@ -599,12 +615,59 @@ var TaskEditModal = {
     if (ehEl) ehEl.value = workingDays * 8;
   },
 
+  openNew(defaults) {
+    defaults = defaults || {};
+    var modal = document.getElementById('taskEditModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      this.isOpen = true;
+    }
+    this.mode = 'create';
+    this.task = {};
+    this.originalTask = null;
+    this.hasUnsavedChanges = false;
+    this.selectedWatchers = [];
+    this.updateUnsavedIndicator();
+    var headerTitle = document.querySelector('#taskEditModal .modal-header h2');
+    if (headerTitle) headerTitle.textContent = 'New Task';
+    this.setElementText('taskEditModalId', '');
+    var form = document.getElementById('taskEditForm');
+    if (form) form.reset();
+    this.populateSelectOptions();
+    this.renderWatcherTags();
+    if (defaults.status) this.setInputValue('taskEditStatus', defaults.status);
+    if (defaults.projectId) this.setInputValue('taskEditProject', defaults.projectId);
+    if (defaults.assignee) {
+      this.setInputValue('taskEditAssignee', defaults.assignee);
+    } else if (State.user && State.user.email) {
+      this.setInputValue('taskEditAssignee', State.user.email);
+    }
+    var deleteBtn = document.querySelector('#taskEditModal .modal-footer button[onclick*="deleteTask"]');
+    if (deleteBtn) deleteBtn.style.display = 'none';
+    var actualHrsField = document.getElementById('taskEditActualHrs');
+    if (actualHrsField) actualHrsField.closest('.form-field').style.display = 'none';
+    var commentsPanel = document.querySelector('#taskEditModal .w-\\[400px\\]');
+    if (commentsPanel) commentsPanel.style.display = 'none';
+    var depsSection = document.querySelector('#taskEditDependenciesContainer')?.closest('.form-field');
+    if (depsSection) depsSection.style.display = 'none';
+    var saveBtn = document.getElementById('taskEditSaveBtn');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<i class="fas fa-plus"></i> Create Task';
+    }
+    this.toggleMilestoneFields(false);
+    this.toggleRecurrenceFields(false);
+    this.attachChangeListeners();
+    document.addEventListener('keydown', this.handleKeydown);
+  },
+
   open(taskId) {
     if (!taskId) {
       console.error('TaskEditModal.open: taskId is required');
       return;
     }
-    const modal = document.getElementById('taskEditModal');
+    this.mode = 'edit';
+    var modal = document.getElementById('taskEditModal');
     if (modal) {
       modal.classList.remove('hidden');
       this.isOpen = true;
@@ -612,7 +675,23 @@ var TaskEditModal = {
     this.task = null;
     this.originalTask = null;
     this.hasUnsavedChanges = false;
+    this.selectedWatchers = [];
     this.updateUnsavedIndicator();
+    var headerTitle = document.querySelector('#taskEditModal .modal-header h2');
+    if (headerTitle) headerTitle.textContent = 'Edit Task';
+    var deleteBtn = document.querySelector('#taskEditModal .modal-footer button[onclick*="deleteTask"]');
+    if (deleteBtn) deleteBtn.style.display = '';
+    var actualHrsField = document.getElementById('taskEditActualHrs');
+    if (actualHrsField) actualHrsField.closest('.form-field').style.display = '';
+    var commentsPanel = document.querySelector('#taskEditModal .w-\\[400px\\]');
+    if (commentsPanel) commentsPanel.style.display = '';
+    var depsSection = document.querySelector('#taskEditDependenciesContainer')?.closest('.form-field');
+    if (depsSection) depsSection.style.display = '';
+    var saveBtn = document.getElementById('taskEditSaveBtn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
+    }
     this.setElementText('taskEditModalId', 'Loading...');
     this.loadTask(taskId);
     document.addEventListener('keydown', this.handleKeydown);
@@ -730,6 +809,8 @@ var TaskEditModal = {
     this.setInputValue('taskEditType', task.type || 'Task');
     this.setInputValue('taskEditProject', task.projectId || '');
     this.setInputValue('taskEditAssignee', task.assignee || '');
+    this.selectedWatchers = task.watchers ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean) : [];
+    this.renderWatcherTags();
     this.setInputValue('taskEditStartDate', task.startDate || '');
     this.setInputValue('taskEditDueDate', task.dueDate || '');
     this.setInputValue('taskEditStoryPoints', task.storyPoints || '');
@@ -799,6 +880,69 @@ var TaskEditModal = {
     }
   },
 
+  toggleWatcherDropdown() {
+    var dropdown = document.getElementById('taskEditWatcherDropdown');
+    if (!dropdown) return;
+    if (dropdown.classList.contains('hidden')) {
+      var users = State.users || [];
+      var self = this;
+      dropdown.innerHTML = users.map(function(u) {
+        var isSelected = self.selectedWatchers.indexOf(u.email) >= 0;
+        return '<div class="px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 flex items-center gap-2 ' +
+          (isSelected ? 'bg-gray-50' : '') + '" onclick="TaskEditModal.toggleWatcher(\'' + u.email + '\')">' +
+          '<i class="fas ' + (isSelected ? 'fa-check-square text-gray-600' : 'fa-square text-gray-300') + '"></i>' +
+          '<span>' + escapeHtml(u.name || u.email) + '</span></div>';
+      }).join('');
+      dropdown.classList.remove('hidden');
+      var closeHandler = function(e) {
+        if (!e.target.closest('#taskEditWatchersContainer')) {
+          dropdown.classList.add('hidden');
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+      setTimeout(function() { document.addEventListener('click', closeHandler); }, 0);
+    } else {
+      dropdown.classList.add('hidden');
+    }
+  },
+
+  toggleWatcher(email) {
+    var idx = this.selectedWatchers.indexOf(email);
+    if (idx >= 0) {
+      this.selectedWatchers.splice(idx, 1);
+    } else {
+      this.selectedWatchers.push(email);
+    }
+    this.renderWatcherTags();
+    this.toggleWatcherDropdown();
+    this.toggleWatcherDropdown();
+    this.checkForChanges();
+    this.updateSaveButtonState();
+  },
+
+  renderWatcherTags() {
+    var container = document.getElementById('taskEditWatchersTags');
+    var placeholder = document.getElementById('taskEditWatchersPlaceholder');
+    if (!container) return;
+    var existing = container.querySelectorAll('.watcher-tag');
+    existing.forEach(function(el) { el.remove(); });
+    if (this.selectedWatchers.length === 0) {
+      if (placeholder) placeholder.style.display = '';
+      return;
+    }
+    if (placeholder) placeholder.style.display = 'none';
+    var users = State.users || [];
+    var self = this;
+    this.selectedWatchers.forEach(function(email) {
+      var user = users.find(function(u) { return u.email === email; });
+      var name = user ? (user.name || email) : email;
+      var tag = document.createElement('span');
+      tag.className = 'watcher-tag inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full';
+      tag.innerHTML = escapeHtml(name) + ' <i class="fas fa-times text-gray-400 hover:text-gray-600 cursor-pointer" onclick="event.stopPropagation(); TaskEditModal.toggleWatcher(\'' + email + '\')"></i>';
+      container.appendChild(tag);
+    });
+  },
+
   attachChangeListeners() {
     const form = document.getElementById('taskEditForm');
     if (!form) return;
@@ -839,6 +983,11 @@ var TaskEditModal = {
   },
 
   checkForChanges() {
+    if (this.mode === 'create') {
+      this.hasUnsavedChanges = true;
+      this.updateUnsavedIndicator();
+      return;
+    }
     if (!this.task || !this.originalTask) {
       this.hasUnsavedChanges = false;
       this.updateUnsavedIndicator();
@@ -861,7 +1010,8 @@ var TaskEditModal = {
       description: this.originalTask.description || '',
       isMilestone: originalIsMilestone,
       milestoneDate: this.originalTask.milestoneDate || '',
-      milestoneType: this.originalTask.milestoneType || ''
+      milestoneType: this.originalTask.milestoneType || '',
+      watchers: this.originalTask.watchers || ''
     });
     this.updateUnsavedIndicator();
   },
@@ -874,11 +1024,15 @@ var TaskEditModal = {
   },
 
   updateSaveButtonState() {
-    const saveBtn = document.getElementById('taskEditSaveBtn');
+    var saveBtn = document.getElementById('taskEditSaveBtn');
     if (!saveBtn) return;
-    const title = this.getInputValue('taskEditTitle').trim();
-    const isValid = title.length > 0;
-    saveBtn.disabled = !isValid || !this.hasUnsavedChanges;
+    var title = this.getInputValue('taskEditTitle').trim();
+    var isValid = title.length > 0;
+    if (this.mode === 'create') {
+      saveBtn.disabled = !isValid;
+    } else {
+      saveBtn.disabled = !isValid || !this.hasUnsavedChanges;
+    }
   },
 
   updateDescriptionCharCount() {
@@ -1060,6 +1214,7 @@ var TaskEditModal = {
       type: this.getInputValue('taskEditType'),
       projectId: this.getInputValue('taskEditProject'),
       assignee: this.getInputValue('taskEditAssignee'),
+      watchers: this.selectedWatchers.join(','),
       startDate: this.getInputValue('taskEditStartDate'),
       dueDate: this.getInputValue('taskEditDueDate'),
       storyPoints: parseInt(this.getInputValue('taskEditStoryPoints')) || 0,
@@ -1110,15 +1265,10 @@ var TaskEditModal = {
   },
 
   save() {
-    if (!this.task || !this.task.id) {
-      toast('No task to save', 'error');
-      return;
-    }
-
-    const title = this.getInputValue('taskEditTitle').trim();
+    var title = this.getInputValue('taskEditTitle').trim();
     if (!title) {
       toast('Title is required', 'error');
-      const titleInput = document.getElementById('taskEditTitle');
+      var titleInput = document.getElementById('taskEditTitle');
       if (titleInput) {
         titleInput.classList.add('error');
         titleInput.focus();
@@ -1126,12 +1276,12 @@ var TaskEditModal = {
       return;
     }
 
-    const milestoneCheckbox = document.getElementById('taskEditIsMilestone');
+    var milestoneCheckbox = document.getElementById('taskEditIsMilestone');
     if (milestoneCheckbox && milestoneCheckbox.checked) {
-      const milestoneDate = this.getInputValue('taskEditMilestoneDate');
+      var milestoneDate = this.getInputValue('taskEditMilestoneDate');
       if (!milestoneDate) {
         toast('Milestone date is required for milestone tasks', 'error');
-        const milestoneDateInput = document.getElementById('taskEditMilestoneDate');
+        var milestoneDateInput = document.getElementById('taskEditMilestoneDate');
         if (milestoneDateInput) {
           milestoneDateInput.classList.add('error');
           milestoneDateInput.focus();
@@ -1140,22 +1290,75 @@ var TaskEditModal = {
       }
     }
 
-    const formData = this.getFormData();
-    const saveBtn = document.getElementById('taskEditSaveBtn');
+    var formData = this.getFormData();
+    var saveBtn = document.getElementById('taskEditSaveBtn');
+
+    if (this.mode === 'create') {
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+      }
+      this.close();
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && result.id && State.tasks) {
+            State.tasks.push(result);
+            LocalCache.set('tasks', State.tasks);
+            if (typeof CacheService !== 'undefined') {
+              CacheService.set('tasks', State.tasks).catch(function() {});
+            }
+          }
+          if (typeof buildBoardFromTasks === 'function' && typeof renderBoard === 'function') {
+            var projectId = State.projectFilter || null;
+            State.board = buildBoardFromTasks(State.tasks, projectId);
+            renderBoard();
+            updateStats();
+          } else if (typeof loadBoard === 'function') {
+            loadBoard();
+          }
+          showLoading(false);
+          toast('Task created', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          console.error('Failed to create task:', error);
+          toast('Failed to create task: ' + (error.message || 'Unknown error'), 'error');
+        })
+        .saveNewTask(formData);
+      return;
+    }
+
+    if (!this.task || !this.task.id) {
+      toast('No task to save', 'error');
+      return;
+    }
     if (saveBtn) {
       saveBtn.disabled = true;
       saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
     }
-
     toast('Saving changes...', 'info');
     showLoading(true);
     google.script.run
-      .withSuccessHandler(() => {
+      .withSuccessHandler((result) => {
         showLoading(false);
-        toast('Task updated successfully', 'success');
-        if (typeof loadBoard === 'function') {
+        if (result && State.tasks) {
+          var idx = State.tasks.findIndex(function(t) { return t.id === result.id; });
+          if (idx >= 0) State.tasks[idx] = result;
+          LocalCache.set('tasks', State.tasks);
+          if (typeof CacheService !== 'undefined') {
+            CacheService.set('tasks', State.tasks).catch(function() {});
+          }
+        }
+        if (typeof buildBoardFromTasks === 'function' && typeof renderBoard === 'function') {
+          var projectId = State.projectFilter || null;
+          State.board = buildBoardFromTasks(State.tasks, projectId);
+          renderBoard();
+          updateStats();
+        } else if (typeof loadBoard === 'function') {
           loadBoard();
         }
+        toast('Task updated successfully', 'success');
         this.close();
         if (TaskDetailPanel.isOpen && TaskDetailPanel.task?.id === this.task.id) {
           TaskDetailPanel.loadTask(this.task.id);
@@ -1206,7 +1409,7 @@ var TaskEditModal = {
         console.error('Failed to delete task:', error);
         toast('Failed to delete task. Please try again.', 'error');
       })
-      .deleteTask(this.task.id);
+      .removeTask(this.task.id);
   },
 
   setElementText(id, text) {

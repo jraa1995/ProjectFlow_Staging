@@ -1,30 +1,22 @@
-function loginWithEmail(email) {
+function buildLoginPayload_(user, email) {
   try {
-    if (!email || !email.includes('@')) {
-      throw new Error('Please enter a valid email address');
-    }
-
-    email = email.toLowerCase().trim();
-    const user = getUserByEmailOptimized(email);
-
-    if (!user) {
-      throw new Error('User not found. Please contact your administrator for access.');
-    }
-
-    // If AuthService is available and user has a password set, require password login
-    if (typeof AuthService !== 'undefined') {
-      const userWithPw = AuthService.getUserWithPassword(email);
-      if (userWithPw && userWithPw.passwordHash && userWithPw.passwordSalt) {
-        throw new Error('Password required. Please use the password login.');
-      }
-    }
-
-    setCurrentUserEmailOptimized(email);
-    const boardData = getMyBoardOptimized(null, email);
-
+    var fastData = getInitialDataFast();
     return {
       user: sanitizeUserForClient(user),
-      board: boardData,
+      board: fastData.board,
+      config: fastData.config
+    };
+  } catch (e) {
+    console.error('buildLoginPayload_ fast path failed:', e);
+    return {
+      user: sanitizeUserForClient(user),
+      board: {
+        columns: [],
+        projects: [],
+        users: [],
+        stats: { total: 0, completed: 0, progress: 0, dueSoon: 0, overdue: 0 },
+        taskCount: 0
+      },
       config: {
         statuses: CONFIG.STATUSES,
         priorities: CONFIG.PRIORITIES,
@@ -32,6 +24,31 @@ function loginWithEmail(email) {
         colors: CONFIG.COLORS
       }
     };
+  }
+}
+
+function loginWithEmail(email) {
+  try {
+    if (!email || !email.includes('@')) {
+      throw new Error('Please enter a valid email address');
+    }
+
+    email = email.toLowerCase().trim();
+    var user = getUserByEmailOptimized(email);
+
+    if (!user) {
+      throw new Error('User not found. Please contact your administrator for access.');
+    }
+
+    if (typeof AuthService !== 'undefined') {
+      var userWithPw = AuthService.getUserWithPassword(email);
+      if (userWithPw && userWithPw.passwordHash && userWithPw.passwordSalt) {
+        throw new Error('Password required. Please use the password login.');
+      }
+    }
+
+    setCurrentUserEmailOptimized(email);
+    return buildLoginPayload_(user, email);
   } catch (error) {
     console.error('loginWithEmail failed:', error);
     throw error;
@@ -68,27 +85,17 @@ function loginWithPassword(email, password, options) {
       throw new Error('AuthService not available');
     }
 
-    const result = AuthService.authenticate(email, password, options || {});
+    var result = AuthService.authenticate(email, password, options || {});
 
     if (!result.success) {
       return result;
     }
 
     setCurrentUserEmailOptimized(email);
-    const boardData = getMyBoardOptimized(null, email);
-
-    return {
-      success: true,
-      user: sanitizeUserForClient(result.user),
-      session: result.session,
-      board: boardData,
-      config: {
-        statuses: CONFIG.STATUSES,
-        priorities: CONFIG.PRIORITIES,
-        types: CONFIG.TYPES,
-        colors: CONFIG.COLORS
-      }
-    };
+    var payload = buildLoginPayload_(result.user, email);
+    payload.success = true;
+    payload.session = result.session;
+    return payload;
   } catch (error) {
     console.error('loginWithPassword failed:', error);
     return {

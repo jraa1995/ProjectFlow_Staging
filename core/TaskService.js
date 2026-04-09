@@ -9,19 +9,17 @@ function loadMasterBoard(projectId) {
       throw new Error('Permission denied: Master Board requires admin or manager access.');
     }
 
-    const allTasks = getAllTasksOptimized();
-    const filteredTasks = projectId
-      ? allTasks.filter(task => task.projectId === projectId)
-      : allTasks;
+    var batchData = getBatchDataFast();
+    var filteredTasks = projectId
+      ? batchData.tasks.filter(function(task) { return task.projectId === projectId; })
+      : batchData.tasks;
 
-    const projects = getAllProjectsOptimized();
-    const users = getActiveUsersOptimized();
-    const board = buildBoardData(filteredTasks, projectId, { view: 'master' });
+    var board = buildBoardData(filteredTasks, projectId, { view: 'master' });
 
     return {
       ...board,
-      projects: projects,
-      users: users,
+      projects: batchData.projects,
+      users: batchData.users,
       taskCount: filteredTasks.length
     };
   } catch (error) {
@@ -32,33 +30,30 @@ function loadMasterBoard(projectId) {
 
 function getMyBoardOptimized(projectId, userEmail) {
   try {
-    const currentUser = userEmail || getCurrentUserEmailOptimized();
+    var currentUser = userEmail || getCurrentUserEmailOptimized();
 
     if (!currentUser) {
       throw new Error('User not authenticated');
     }
 
-    const allTasks = getAllTasksOptimized();
-    const userTasks = allTasks.filter(task =>
-      task.assignee && task.assignee.toLowerCase() === currentUser.toLowerCase()
-    );
+    var batchData = getBatchDataFast();
+    var userTasks = batchData.tasks.filter(function(task) {
+      return task.assignee && task.assignee.toLowerCase() === currentUser.toLowerCase();
+    });
 
-    const filteredTasks = projectId
-      ? userTasks.filter(task => task.projectId === projectId)
+    var filteredTasks = projectId
+      ? userTasks.filter(function(task) { return task.projectId === projectId; })
       : userTasks;
 
-    const projects = getAllProjectsOptimized();
-    const users = getActiveUsersOptimized();
-
-    const board = buildBoardData(filteredTasks, projectId, {
+    var board = buildBoardData(filteredTasks, projectId, {
       view: 'my',
       userEmail: currentUser
     });
 
     return {
       ...board,
-      projects: projects,
-      users: users,
+      projects: batchData.projects,
+      users: batchData.users,
       taskCount: filteredTasks.length
     };
   } catch (error) {
@@ -70,7 +65,7 @@ function getMyBoardOptimized(projectId, userEmail) {
 function saveNewTask(taskData) {
   try {
     const result = createTask(taskData);
-    patchTaskCache(result.id, result, 'create');
+    invalidateTaskCache(result.id, 'create');
     return result;
   } catch (error) {
     console.error('saveNewTask failed:', error);
@@ -80,7 +75,7 @@ function saveNewTask(taskData) {
 
 function saveTaskUpdate(taskId, updates) {
   const result = updateTask(taskId, updates);
-  patchTaskCache(taskId, result, 'update');
+  invalidateTaskCache(taskId, 'update');
   try {
     if (result.dueDate) {
       const currentUser = getCurrentUserEmail();
@@ -97,13 +92,13 @@ function saveTaskUpdate(taskId, updates) {
 function moveTaskToStatus(taskId, newStatus, newPosition) {
   const status = denormalizeStatusId(newStatus);
   const result = moveTask(taskId, status, newPosition);
-  patchTaskCache(taskId, result, 'update');
+  invalidateTaskCache(taskId, 'update');
   return result;
 }
 
 function removeTask(taskId) {
   const result = deleteTask(taskId);
-  patchTaskCache(taskId, null, 'delete');
+  invalidateTaskCache(taskId, 'delete');
   return result;
 }
 

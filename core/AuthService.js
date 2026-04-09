@@ -443,9 +443,10 @@ const AuthService = {
   },
 
   generateMfaCode() {
-    let code = '';
-    for (let i = 0; i < this.MFA_CODE_LENGTH; i++) {
-      code += Math.floor(Math.random() * 10);
+    var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid());
+    var code = '';
+    for (var i = 0; i < this.MFA_CODE_LENGTH; i++) {
+      code += Math.abs(bytes[i]) % 10;
     }
     return code;
   },

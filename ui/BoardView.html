@@ -160,15 +160,15 @@
   }
 
   function updateColumnCounts() {
-    document.querySelectorAll('.board-column').forEach(col => {
-      const status = col.dataset.status;
-      const taskList = col.querySelector('.task-list');
-      const count = taskList ? taskList.querySelectorAll('.task-card').length : 0;
-      const countEl = col.querySelector('.task-count, .column-count');
-      if (countEl) {
-        countEl.textContent = count;
-      }
+    var columns = document.querySelectorAll('.board-column');
+    var updates = [];
+    columns.forEach(function(col) {
+      var taskList = col.querySelector('.task-list');
+      var count = taskList ? taskList.querySelectorAll('.task-card').length : 0;
+      var countEl = col.querySelector('.task-count, .column-count');
+      if (countEl) updates.push({ el: countEl, count: count });
     });
+    updates.forEach(function(u) { u.el.textContent = u.count; });
   }
 
 
@@ -449,11 +449,9 @@
         .loadTask(taskId);
     }
     const handleEsc = (e) => {
-      if (e.key === 'Escape') {
-        closeSimpleTaskModal();
-        document.removeEventListener('keydown', handleEsc);
-      }
+      if (e.key === 'Escape') closeSimpleTaskModal();
     };
+    window._simpleModalEscHandler = handleEsc;
     document.addEventListener('keydown', handleEsc);
   }
 
@@ -723,6 +721,10 @@
   function closeSimpleTaskModal() {
     const modal = document.getElementById('simpleTaskModal');
     if (modal) modal.remove();
+    if (window._simpleModalEscHandler) {
+      document.removeEventListener('keydown', window._simpleModalEscHandler);
+      window._simpleModalEscHandler = null;
+    }
   }
 
   function openEditFromSimpleModal(taskId) {

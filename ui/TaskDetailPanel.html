@@ -16,6 +16,14 @@
         >
           <i class="fas fa-edit"></i> Edit
         </button>
+        <button
+          id="taskDetailDeleteBtn"
+          onclick="TaskDetailPanel.deleteTask()"
+          class="px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
+          title="Delete Task"
+        >
+          <i class="fas fa-trash-alt"></i>
+        </button>
         <div id="taskDetailEditActions" class="hidden flex items-center gap-2">
           <button
             onclick="TaskDetailPanel.cancelChanges()"
@@ -1001,6 +1009,28 @@ var TaskDetailPanel = {
       toast('Failed to open edit modal. Please try again.', 'error');
       this.open(taskId);
     }
+  },
+
+  async deleteTask() {
+    if (!this.task || !this.task.id) return;
+    var taskTitle = this.task.title || 'this task';
+    if (!await ConfirmModal('Are you sure you want to delete "' + taskTitle + '"? This action cannot be undone.', { destructive: true })) return;
+    toast('Deleting task...', 'info');
+    showLoading(true);
+    var taskId = this.task.id;
+    google.script.run
+      .withSuccessHandler(function() {
+        showLoading(false);
+        toast('Task deleted successfully', 'success');
+        TaskDetailPanel.close();
+        if (typeof loadBoard === 'function') loadBoard();
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        console.error('Failed to delete task:', error);
+        toast('Failed to delete task. Please try again.', 'error');
+      })
+      .removeTask(taskId);
   },
 
   async handleOverlayClick(event) {

@@ -1,7 +1,8 @@
 <script>
   let lastAnalyticsDateRange = null;
 
-  function loadAnalyticsData() {
+  async function loadAnalyticsData() {
+    try { await ensureChartJs(); } catch (e) { console.error('Chart.js failed to load:', e); }
     const dateRange = $("analyticsDateRange")?.value || "30";
     const isSameContext = (lastAnalyticsDateRange === dateRange);
     if (State.analyticsData && isSameContext) {

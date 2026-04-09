@@ -1,6 +1,7 @@
 <script>
   async function loadTimelineData() {
     showLoading(true);
+    try { await ensureGantt(); } catch (e) { console.error('Gantt library failed to load:', e); }
     const projectId = State.projectFilter || null;
     try {
       if (State.cache && State.cache.tasks && State.cache.tasks.data && State.cache.tasks.data.length > 0) {

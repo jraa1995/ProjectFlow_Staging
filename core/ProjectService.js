@@ -202,6 +202,16 @@ function importWorkLogProjects(workbookId) {
   }
 }
 
+function syncWorkLogProjects(workbookId) {
+  try {
+    var result = syncWorklogSettings(workbookId);
+    return result;
+  } catch (error) {
+    console.error('syncWorkLogProjects failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function autoPopulateSprintTasks(sprintId, projectId) {
   try {
     var count = assignProjectTasksToSprint(sprintId, projectId);

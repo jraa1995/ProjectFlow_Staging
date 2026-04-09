@@ -25,7 +25,7 @@ function include(filename) {
     } catch (e) {
       if (i === attempts.length - 1) {
         console.error('include failed for: ' + filename + ' (tried: ' + attempts.join(', ') + ')');
-        return '';
+        return '<script>window._includeFailed = window._includeFailed || []; window._includeFailed.push("' + filename + '");</script>';
       }
     }
   }
@@ -96,6 +96,12 @@ function initializeSystem() {
       throw new Error('CONFIG object is undefined. Check Config.gs for syntax errors.');
     }
 
+    var cache = CacheService.getScriptCache();
+    if (cache.get('SYSTEM_INITIALIZED')) {
+      getCurrentUser();
+      return;
+    }
+
     const sheetCreators = [
       { fn: getTasksSheet, name: 'Tasks' },
       { fn: getUsersSheet, name: 'Users' },
@@ -118,6 +124,7 @@ function initializeSystem() {
       }
     });
 
+    cache.put('SYSTEM_INITIALIZED', '1', 3600);
     getCurrentUser();
   } catch (error) {
     console.error('initializeSystem failed:', error);
@@ -264,24 +271,33 @@ function saveComment(taskId, content) {
   }
 }
 
+function escapeHtml_(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 function formatCommentContent(content, mentionedUserEmails) {
   if (!content) return '';
 
   let formatted = content;
 
   formatted = formatted.replace(/@\[([^\]]+)\]\([^)]+\)/g, function(match, name) {
-    return '<span class="mention">@' + name + '</span>';
+    return '<span class="mention">@' + escapeHtml_(name) + '</span>';
   });
 
   mentionedUserEmails.forEach(email => {
     const user = getUserByEmail(email);
     const displayName = user ? user.name : email;
     const regex = new RegExp('@' + email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    formatted = formatted.replace(regex, '<span class="mention">@' + displayName + '</span>');
+    formatted = formatted.replace(regex, '<span class="mention">@' + escapeHtml_(displayName) + '</span>');
   });
 
   formatted = formatted.replace(/@([A-Za-z][A-Za-z0-9 ]*[A-Za-z0-9])(?![^<]*<\/span>)(?=\s|$|[.,!?])/g, function(match, name) {
-    return '<span class="mention">@' + name + '</span>';
+    return '<span class="mention">@' + escapeHtml_(name) + '</span>';
   });
 
   return formatted;
@@ -454,4 +470,23 @@ function getBasicUserSuggestions(query, excludeUsers) {
     .slice(0, 10);
 
   return suggestions;
+}
+
+function registerNewUser(data) {
+  try {
+    if (!data || !data.name || !data.email || !data.password) {
+      return { success: false, error: 'Name, email, and password are required' };
+    }
+    const existing = getUserByEmail(data.email);
+    if (existing) {
+      return { success: false, error: 'An account with this email already exists' };
+    }
+    createUser({ email: data.email, name: data.name, role: 'member' });
+    const hash = PasswordService.createPasswordHash(data.password);
+    updateUser(data.email, { passwordHash: hash.hash, passwordSalt: hash.salt });
+    return { success: true };
+  } catch (error) {
+    console.error('registerNewUser failed:', error);
+    return { success: false, error: error.message || 'Registration failed' };
+  }
 }

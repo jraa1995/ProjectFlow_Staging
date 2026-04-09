@@ -1632,7 +1632,7 @@ var ListViewPage = {
           this.toast('Failed to delete task: ' + error.message, 'error');
           this.showLoading(false);
         })
-        .deleteTask(taskId);
+        .removeTask(taskId);
     } else {
       const index = this.allTasks.findIndex(t => t.requestId === taskId);
       if (index >= 0) {

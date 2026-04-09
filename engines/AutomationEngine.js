@@ -374,15 +374,16 @@ const AutomationEngine = {
   },
 
   processScheduledRules() {
-    const rules = this.getRules().filter(r => r.enabled && r.trigger === this.TRIGGERS.SCHEDULED);
-    for (const rule of rules) {
+    var rules = this.getRules().filter(r => r.enabled && r.trigger === this.TRIGGERS.SCHEDULED);
+    var allTasks = getAllTasks();
+    for (var i = 0; i < rules.length; i++) {
+      var rule = rules[i];
       try {
-        const tasks = getAllTasks();
-        const matchingTasks = tasks.filter(task =>
-          this.evaluateConditions(rule.conditions, { task })
-        );
-        for (const task of matchingTasks) {
-          this.executeActions(rule.actions, { task });
+        var matchingTasks = allTasks.filter(function(task) {
+          return AutomationEngine.evaluateConditions(rule.conditions, { task: task });
+        });
+        for (var j = 0; j < matchingTasks.length; j++) {
+          this.executeActions(rule.actions, { task: matchingTasks[j] });
         }
         this.updateRule(rule.id, { lastTriggeredAt: now() });
       } catch (error) {
@@ -392,7 +393,7 @@ const AutomationEngine = {
   },
 
   checkDueApproaching() {
-    const tasks = getAllTasks();
+    var tasks = RequestCache.getTasks();
     const now = new Date();
     const dayFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     tasks.forEach(task => {

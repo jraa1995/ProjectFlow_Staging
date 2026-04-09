@@ -13,7 +13,7 @@ function getBatchDataFast() {
     if (jsonCached) {
       try {
         var jsonStr = JSON.stringify(jsonCached);
-        if (jsonStr.length < 100000) cache.put('BATCH_DATA_CACHE', jsonStr, 300);
+        if (jsonStr.length < 100000) cache.put('BATCH_DATA_CACHE', jsonStr, 1800);
       } catch (e) {}
       return jsonCached;
     }
@@ -112,11 +112,13 @@ function rebuildBatchCache() {
       }
     };
 
-    const jsonStr = JSON.stringify(result);
+    var jsonStr = JSON.stringify(result);
     if (jsonStr.length < 100000) {
-      cache.put('BATCH_DATA_CACHE', jsonStr, 300);
+      cache.put('BATCH_DATA_CACHE', jsonStr, 1800);
     }
-    writeJsonCache('BATCH_DATA', result);
+    if (jsonStr.length < 45000) {
+      writeJsonCache('BATCH_DATA', result);
+    }
     return result;
   } finally {
     cache.remove(lockKey);
@@ -153,7 +155,7 @@ function getAllTasksOptimized() {
     const tasks = getAllTasks();
     const jsonStr = JSON.stringify(tasks);
     if (jsonStr.length < 100000) {
-      cache.put(cacheKey, jsonStr, 300);
+      cache.put(cacheKey, jsonStr, 900);
     }
     return tasks;
   } catch (error) {
@@ -176,7 +178,7 @@ function getAllProjectsOptimized() {
     }
 
     const projects = getAllProjects();
-    cache.put(cacheKey, JSON.stringify(projects), 600);
+    cache.put(cacheKey, JSON.stringify(projects), 1800);
     return projects;
   } catch (error) {
     console.error('getAllProjectsOptimized failed:', error);
@@ -200,7 +202,7 @@ function getActiveUsersOptimized(forceRefresh) {
     }
 
     const users = getActiveUsers();
-    cache.put(cacheKey, JSON.stringify(users), 300);
+    cache.put(cacheKey, JSON.stringify(users), 1800);
     return users;
   } catch (error) {
     console.error('getActiveUsersOptimized failed:', error);
@@ -378,7 +380,7 @@ function getGlobalVersion() {
 
     if (!version) {
       version = PropertiesService.getScriptProperties().getProperty('GLOBAL_DATA_VERSION') || '0';
-      cache.put('GLOBAL_DATA_VERSION', version, 300);
+      cache.put('GLOBAL_DATA_VERSION', version, 600);
     }
 
     return parseInt(version, 10);
@@ -394,7 +396,7 @@ function incrementGlobalVersion() {
     const current = parseInt(props.getProperty('GLOBAL_DATA_VERSION') || '0', 10);
     const next = current + 1;
     props.setProperty('GLOBAL_DATA_VERSION', next.toString());
-    CacheService.getScriptCache().put('GLOBAL_DATA_VERSION', next.toString(), 300);
+    CacheService.getScriptCache().put('GLOBAL_DATA_VERSION', next.toString(), 600);
     return next;
   } catch (error) {
     console.error('incrementGlobalVersion failed:', error);

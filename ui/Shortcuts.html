@@ -31,7 +31,7 @@
 
     if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
       e.preventDefault();
-      openTaskModal();
+      TaskEditModal.openNew({ projectId: State.projectFilter || '' });
       return;
     }
 

@@ -397,6 +397,9 @@ function getNotificationPreferences(userEmail) {
 
 function addDependency(successorId, predecessorId, dependencyType, lag) {
   try {
+    if (typeof DependencyEngine === 'undefined') {
+      return { success: false, error: 'DependencyEngine not available' };
+    }
     const result = DependencyEngine.addDependency(successorId, predecessorId, dependencyType || 'finish_to_start', lag || 0);
     invalidateDependencyCache();
     return {
@@ -414,6 +417,9 @@ function addDependency(successorId, predecessorId, dependencyType, lag) {
 
 function removeDependency(dependencyId) {
   try {
+    if (typeof DependencyEngine === 'undefined') {
+      return { success: false, error: 'DependencyEngine not available' };
+    }
     DependencyEngine.removeDependency(dependencyId);
     invalidateDependencyCache();
     return {
@@ -430,6 +436,9 @@ function removeDependency(dependencyId) {
 
 function getTaskDependenciesWithDetails(taskId) {
   try {
+    if (typeof DependencyEngine === 'undefined') {
+      return { predecessors: [], successors: [] };
+    }
     const dependencies = DependencyEngine.getTaskDependencies(taskId);
 
     const result = {
@@ -501,6 +510,9 @@ function getTasksForDependencyPicker(currentTaskId) {
 
 function calculateCriticalPathForProject(projectId) {
   try {
+    if (typeof DependencyEngine === 'undefined') {
+      return { success: false, error: 'DependencyEngine not available', criticalPath: [], totalDuration: 0 };
+    }
     const result = DependencyEngine.calculateCriticalPath(projectId);
     return {
       success: true,
@@ -522,6 +534,9 @@ function calculateCriticalPathForProject(projectId) {
 
 function canTaskStart(taskId) {
   try {
+    if (typeof DependencyEngine === 'undefined') {
+      return { success: false, error: 'DependencyEngine not available', canStart: true, blockingTasks: [] };
+    }
     const result = DependencyEngine.canStartTask(taskId);
     return {
       success: true,
@@ -541,6 +556,9 @@ function canTaskStart(taskId) {
 
 function getBlockedTasksForProject(projectId) {
   try {
+    if (typeof DependencyEngine === 'undefined') {
+      return [];
+    }
     return DependencyEngine.getBlockedTasks(projectId);
   } catch (error) {
     console.error('getBlockedTasksForProject failed:', error);

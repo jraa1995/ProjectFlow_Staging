@@ -378,7 +378,7 @@ function diagnose() {
   return { issues, issueCount: issues.length };
 }
 
-function addTeamMember(email, name, role) {
+function createTeamMemberByEmail(email, name, role) {
   if (!email || !email.includes('@')) {
     throw new Error('Valid email required');
   }

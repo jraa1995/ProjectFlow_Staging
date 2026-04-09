@@ -24,6 +24,33 @@
         };
         localStorage.setItem(this.prefix + key, JSON.stringify(item));
       } catch (e) {
+        this._evictOldest();
+        try {
+          localStorage.setItem(this.prefix + key, JSON.stringify({
+            data, expires: Date.now() + (ttlMinutes * 60 * 1000), timestamp: Date.now()
+          }));
+        } catch (e2) {
+          console.error('LocalCache quota exceeded, write failed for: ' + key);
+        }
+      }
+    },
+    _evictOldest() {
+      var entries = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.startsWith(this.prefix)) {
+          try {
+            var parsed = JSON.parse(localStorage.getItem(k));
+            entries.push({ key: k, ts: parsed.timestamp || 0 });
+          } catch (e) {
+            localStorage.removeItem(k);
+          }
+        }
+      }
+      entries.sort(function(a, b) { return a.ts - b.ts; });
+      var toRemove = Math.max(1, Math.floor(entries.length / 3));
+      for (var j = 0; j < toRemove; j++) {
+        localStorage.removeItem(entries[j].key);
       }
     },
     remove(key) {
@@ -459,18 +486,34 @@
       if (!taskIds || taskIds.length === 0) return;
       google.script.run
         .withSuccessHandler((tasks) => {
+          var needsRerender = false;
           tasks.forEach(task => {
-            updateTaskInDOM(task.id, task);
+            if (State.editingTask && State.editingTask === task.id) return;
             if (State.tasks) {
-              const index = State.tasks.findIndex(t => t.id === task.id);
+              var index = State.tasks.findIndex(t => t.id === task.id);
               if (index >= 0) {
                 State.tasks[index] = task;
               } else {
                 State.tasks.push(task);
+                needsRerender = true;
               }
             }
+            if (!needsRerender) {
+              updateTaskInDOM(task.id, task);
+            }
           });
-          updateColumnCounts();
+          LocalCache.set('tasks', State.tasks);
+          if (typeof CacheService !== 'undefined') {
+            CacheService.set('tasks', State.tasks).catch(function() {});
+          }
+          if (needsRerender && (State.currentView === 'my' || State.currentView === 'master')) {
+            var projectId = State.projectFilter || null;
+            State.board = buildBoardFromTasks(State.tasks, projectId);
+            renderBoard();
+            updateStats();
+          } else {
+            updateColumnCounts();
+          }
         })
         .withFailureHandler((error) => {
           console.error('SyncManager fetchChangedItems failed:', error);

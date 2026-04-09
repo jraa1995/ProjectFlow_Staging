@@ -83,6 +83,10 @@
     if (form) form.reset();
     $("modalTitle").textContent = "New Task";
     populateSelectOptions();
+    if (State.user && State.user.email) {
+      const assigneeSelect = $("taskAssignee");
+      if (assigneeSelect) assigneeSelect.value = State.user.email;
+    }
   }
 
   function saveTask(e) {
@@ -116,40 +120,132 @@
         })
         .saveTaskUpdate(State.editingTask.id, taskData);
     } else {
-      const tempId = 'temp_' + Date.now();
-      const status = taskData.status || 'To Do';
-      const tempTask = { ...taskData, id: tempId, createdAt: new Date().toISOString() };
-      closeTaskModal();
-      OptimisticUI.apply(
-        'createTask',
-        { taskId: tempId, id: tempId },
-        () => {
-          const taskList = document.querySelector(`.task-list[data-status="${status}"]`);
-          if (taskList) {
-            taskList.insertAdjacentHTML('afterbegin', renderTaskCard(tempTask, status));
-          }
-          updateColumnCounts();
-        },
-        () => {
-          if (State.tasks) State.tasks.push(tempTask);
-          if (State.cache?.tasks?.data) State.cache.tasks.data.push(tempTask);
-        },
-        () => new Promise((resolve, reject) => {
-          google.script.run
-            .withSuccessHandler(async (result) => {
-              await refreshAllData();
-              switchView(State.currentView || 'my');
-              toast('Task created', 'success');
-              resolve(result);
-            })
-            .withFailureHandler(reject)
-            .saveNewTask(taskData);
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(async (result) => {
+          showLoading(false);
+          closeTaskModal();
+          await refreshAllData();
+          switchView(State.currentView || 'my');
+          toast('Task created', 'success');
         })
-      );
+        .withFailureHandler((error) => {
+          showLoading(false);
+          handleError(error);
+        })
+        .saveNewTask(taskData);
     }
   }
 
+  var _newProjSettingsSchema = {
+    portfolio: [
+      { key: 'workstream', label: 'Workstream', type: 'text' },
+      { key: 'projectCategory', label: 'Project Category', type: 'text' },
+      { key: 'projectType', label: 'Project Type', type: 'text' },
+      { key: 'developmentPriority', label: 'Development Priority', type: 'text' },
+      { key: 'developmentPhase', label: 'Development Phase', type: 'text' },
+      { key: 'externalProjectId', label: 'External Project ID', type: 'text' },
+      { key: 'linkedProjectId', label: 'Linked Project ID', type: 'text' },
+      { key: 'sdmSupported', label: 'SDMs Supported', type: 'text' },
+      { key: 'docCompleteness', label: 'Documentation Completeness', type: 'text' },
+      { key: 'govRequestDate', label: 'Gov Request Date', type: 'date' },
+      { key: 'firstDeployDate', label: 'First Deploy Date', type: 'date' },
+      { key: 'isAiInvolved', label: 'AI Involved', type: 'boolean' },
+      { key: 'isInternalHive', label: 'Internal Hive', type: 'boolean' },
+      { key: 'inProjectFlow', label: 'In ProjectFlow', type: 'boolean' },
+      { key: 'legacyWbs', label: 'Legacy WBS', type: 'text' },
+      { key: 'notes', label: 'Notes', type: 'textarea' }
+    ],
+    ownership: [
+      { key: 'projectPoc', label: 'Project POC', type: 'text' },
+      { key: 'clientOwner', label: 'Client Owner', type: 'text' },
+      { key: 'clientStakeholders', label: 'Client Stakeholders', type: 'text' },
+      { key: 'futureOwner', label: 'Future Owner', type: 'text' },
+      { key: 'futureContractHome', label: 'Future Contract Home', type: 'text' },
+      { key: 'transitionPriority', label: 'Transition Priority', type: 'text' },
+      { key: 'transitionMeetingDate', label: 'Transition Meeting Date', type: 'date' },
+      { key: 'transitionComplete', label: 'Transition Complete', type: 'boolean' },
+      { key: 'gasOwner', label: 'GAS Owner', type: 'text' },
+      { key: 'dataMgmtOwner', label: 'Data Mgmt Owner', type: 'text' },
+      { key: 'dataTaskOwnership', label: 'Data Task Ownership', type: 'text' }
+    ],
+    infrastructure: [
+      { key: 'techStack', label: 'Tech Stack', type: 'text' },
+      { key: 'deploymentLocation', label: 'Deployment Location', type: 'text' },
+      { key: 'deployedPublicly', label: 'Deployed Publicly', type: 'boolean' },
+      { key: 'contractInitial', label: 'Contract (Initial)', type: 'text' },
+      { key: 'contractCurrent', label: 'Contract (Current)', type: 'text' },
+      { key: 'contractTask', label: 'Contract Task', type: 'text' },
+      { key: 'activeGas', label: 'Active GAS Project', type: 'boolean' },
+      { key: 'gasProjectUid', label: 'GAS Project UID', type: 'url' },
+      { key: 'activeDataMgmt', label: 'Active Data Mgmt', type: 'boolean' },
+      { key: 'dataCadence', label: 'Data Cadence', type: 'text' },
+      { key: 'dataSourceFiles', label: 'Data Source Files', type: 'text' },
+      { key: 'dataSourceExplain', label: 'Data Source', type: 'textarea' },
+      { key: 'standaloneAppLink', label: 'Standalone App', type: 'url' },
+      { key: 'd2dLink', label: 'D2D Link', type: 'url' },
+      { key: 'aasIntranetLink', label: 'AAS Intranet', type: 'url' },
+      { key: 'gsaLink', label: 'GSA Link', type: 'url' },
+      { key: 'tableauLink', label: 'Tableau', type: 'url' },
+      { key: 'googleDriveFolder', label: 'Google Drive', type: 'url' },
+      { key: 'githubLinks', label: 'GitHub Links', type: 'url' },
+      { key: 'devDocs', label: 'Dev Documentation', type: 'url' },
+      { key: 'sops', label: 'SOPs', type: 'url' },
+      { key: 'userGuides', label: 'User Guides', type: 'url' },
+      { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'url' },
+      { key: 'additionalFiles', label: 'Additional Files', type: 'url' }
+    ]
+  };
+
+  function _buildNewProjSettingsFields(groupKey) {
+    var schema = _newProjSettingsSchema[groupKey] || [];
+    return schema.map(function(field) {
+      var inputHtml = '';
+      var id = 'newProjSetting_' + field.key;
+      if (field.type === 'boolean') {
+        inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+          '<option value="false">No</option><option value="true">Yes</option></select>';
+      } else if (field.type === 'textarea') {
+        inputHtml = '<textarea id="' + id + '" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"></textarea>';
+      } else if (field.type === 'date') {
+        inputHtml = '<input id="' + id + '" type="date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
+      } else {
+        inputHtml = '<input id="' + id + '" type="' + (field.type === 'url' ? 'url' : 'text') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
+      }
+      return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + '</div>';
+    }).join('');
+  }
+
+  function switchNewProjTab(tabId) {
+    ['overview', 'portfolio', 'ownership', 'infrastructure'].forEach(function(id) {
+      var panel = $('newProjTab_' + id);
+      if (panel) panel.classList.toggle('hidden', id !== tabId);
+    });
+    var buttons = document.querySelectorAll('#newProjTabBar button[data-nptab]');
+    buttons.forEach(function(btn) {
+      var isActive = btn.getAttribute('data-nptab') === tabId;
+      btn.className = 'px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap ' +
+        (isActive ? 'border-gray-900 font-semibold text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300');
+    });
+  }
+
   function openProjectModal() {
+    var ownerSelect = $('newProjOwner');
+    if (ownerSelect) {
+      var users = (typeof State !== 'undefined' && State.users) ? State.users : [];
+      ownerSelect.innerHTML = '<option value="">Current User (default)</option>' +
+        users.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '">' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('');
+    }
+    ['newProjName', 'newProjDesc', 'newProjStartDate', 'newProjEndDate', 'newProjVersion', 'newProjRepoUrl', 'newProjTags'].forEach(function(id) {
+      var el = $(id);
+      if (el) el.value = '';
+    });
+    if (ownerSelect) ownerSelect.value = '';
+    ['portfolio', 'ownership', 'infrastructure'].forEach(function(group) {
+      var panel = $('newProjTab_' + group);
+      if (panel) panel.innerHTML = _buildNewProjSettingsFields(group);
+    });
+    switchNewProjTab('overview');
     show($("projectModal"));
   }
 
@@ -157,21 +253,45 @@
     hide($("projectModal"));
   }
 
-  function saveProject(e) {
-    e.preventDefault();
-    const projectData = {
-      name: $("projectName").value,
-      description: $("projectDescription").value,
+  function saveProject() {
+    var name = ($('newProjName') || {}).value || '';
+    if (!name.trim()) { toast('Project name is required', 'error'); return; }
+    var settings = {};
+    ['portfolio', 'ownership', 'infrastructure'].forEach(function(group) {
+      var schema = _newProjSettingsSchema[group] || [];
+      schema.forEach(function(field) {
+        var el = $('newProjSetting_' + field.key);
+        if (!el) return;
+        if (field.type === 'boolean') {
+          settings[field.key] = el.value === 'true';
+        } else if (el.value && el.value.trim()) {
+          settings[field.key] = el.value.trim();
+        }
+      });
+    });
+    var tagsRaw = ($('newProjTags') || {}).value || '';
+    var tags = tagsRaw.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+    var projectData = {
+      name: name.trim(),
+      description: ($('newProjDesc') || {}).value || '',
+      ownerId: ($('newProjOwner') || {}).value || '',
+      startDate: ($('newProjStartDate') || {}).value || '',
+      endDate: ($('newProjEndDate') || {}).value || '',
+      version: ($('newProjVersion') || {}).value || '',
+      repoUrl: ($('newProjRepoUrl') || {}).value || '',
+      tags: JSON.stringify(tags),
+      settings: JSON.stringify(settings)
     };
     showLoading(true);
     google.script.run
-      .withSuccessHandler(() => {
+      .withSuccessHandler(function() {
         showLoading(false);
         closeProjectModal();
-        loadBoard();
+        if (typeof loadBoard === 'function') loadBoard();
+        if (typeof ProjectPage !== 'undefined' && typeof ProjectPage.loadProjects === 'function') ProjectPage.loadProjects();
         toast("Project created", "success");
       })
-      .withFailureHandler((error) => {
+      .withFailureHandler(function(error) {
         showLoading(false);
         handleError(error);
       })
@@ -313,7 +433,7 @@
         switchView('projects');
         setTimeout(function() { if (typeof ProjectPage !== 'undefined') ProjectPage.selectProject(r.id); }, 200);
       } else if (r.type === 'action') {
-        if (r.id === 'new-task') openTaskModal();
+        if (r.id === 'new-task') TaskEditModal.openNew({ projectId: State.projectFilter || '' });
         else if (r.id === 'view-my') switchView('my');
         else if (r.id === 'view-home') switchView('home');
         else if (r.id === 'view-list') switchView('list');

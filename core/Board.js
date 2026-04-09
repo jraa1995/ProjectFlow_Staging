@@ -4,6 +4,7 @@ function getMyBoard(projectId) {
   return buildBoardData(tasks, projectId, {
     view: "my",
     userEmail: userEmail,
+    skipDependencies: true,
   });
 }
 
@@ -11,6 +12,7 @@ function getMasterBoard(projectId) {
   const tasks = RequestCache.getTasks();
   return buildBoardData(tasks, projectId, {
     view: "master",
+    skipDependencies: true,
   });
 }
 
@@ -20,40 +22,42 @@ function buildBoardData(allTasks, projectId, options = {}) {
     tasks = tasks.filter((t) => t.projectId === projectId);
   }
 
-  const depMap = getAllDependenciesMap();
-  const taskMap = {};
-  allTasks.forEach(t => { taskMap[t.id] = t; });
+  if (!options.skipDependencies) {
+    const depMap = RequestCache.getDependencies();
+    const taskMap = {};
+    allTasks.forEach(t => { taskMap[t.id] = t; });
 
-  tasks = tasks.map(task => {
-    try {
-      const predecessors = depMap.bySuccessor[task.id] || [];
-      const successors = depMap.byPredecessor[task.id] || [];
-      const hasDependencies = predecessors.length > 0 || successors.length > 0;
-      const blockedBy = predecessors.filter(dep => {
-        const predecessorTask = taskMap[dep.predecessorId];
-        return predecessorTask && predecessorTask.status !== 'Done';
-      });
-      const isBlocked = blockedBy.length > 0;
-      return {
-        ...task,
-        hasDependencies,
-        isBlocked,
-        blockedByCount: blockedBy.length,
-        blockingCount: successors.length,
-        dependencyMetadata: {
-          predecessorCount: predecessors.length,
-          successorCount: successors.length,
-          blockedByTasks: blockedBy.map(dep => {
-            const t = taskMap[dep.predecessorId];
-            return t ? { id: t.id, title: t.title, status: t.status } : null;
-          }).filter(Boolean)
-        }
-      };
-    } catch (error) {
-      console.error('Failed to load dependencies for task ' + task.id + ':', error);
-      return task;
-    }
-  });
+    tasks = tasks.map(task => {
+      try {
+        const predecessors = depMap.bySuccessor[task.id] || [];
+        const successors = depMap.byPredecessor[task.id] || [];
+        const hasDependencies = predecessors.length > 0 || successors.length > 0;
+        const blockedBy = predecessors.filter(dep => {
+          const predecessorTask = taskMap[dep.predecessorId];
+          return predecessorTask && predecessorTask.status !== 'Done';
+        });
+        const isBlocked = blockedBy.length > 0;
+        return {
+          ...task,
+          hasDependencies,
+          isBlocked,
+          blockedByCount: blockedBy.length,
+          blockingCount: successors.length,
+          dependencyMetadata: {
+            predecessorCount: predecessors.length,
+            successorCount: successors.length,
+            blockedByTasks: blockedBy.map(dep => {
+              const t = taskMap[dep.predecessorId];
+              return t ? { id: t.id, title: t.title, status: t.status } : null;
+            }).filter(Boolean)
+          }
+        };
+      } catch (error) {
+        console.error('Failed to load dependencies for task ' + task.id + ':', error);
+        return task;
+      }
+    });
+  }
 
   const columns = CONFIG.STATUSES.map((status, index) => {
     const columnTasks = tasks
@@ -70,8 +74,8 @@ function buildBoardData(allTasks, projectId, options = {}) {
   });
 
   const stats = calculateBoardStats(tasks);
-  const projects = getAllProjects();
-  const users = getActiveUsers();
+  const projects = RequestCache.getProjects();
+  const users = RequestCache.getUsers();
 
   return {
     columns: columns,
@@ -320,7 +324,7 @@ function getAllLabels() {
   return Array.from(labelSet).sort();
 }
 
-function getAllSprints() {
+function getAllSprintNames() {
   const tasks = getAllTasks();
   const sprintSet = new Set();
 

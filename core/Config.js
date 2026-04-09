@@ -56,6 +56,7 @@ const CONFIG = {
     'priority',
     'type',
     'assignee',
+    'watchers',
     'reporter',
     'dueDate',
     'startDate',
@@ -402,20 +403,19 @@ function generateId(prefix) {
   return `${prefix}_${timestamp}${random}`;
 }
 
-function generateTaskId(projectId, existingTasks) {
+function generateTaskId(projectId) {
   const prefix = projectId || 'TASK';
-  let maxNum = 0;
-  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
-
-  existingTasks.forEach(task => {
-    const match = task.id?.match(pattern);
-    if (match) {
-      const num = parseInt(match[1]);
-      if (num > maxNum) maxNum = num;
-    }
-  });
-
-  return `${prefix}-${maxNum + 1}`;
+  const key = 'TASK_SEQ_' + prefix;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const next = parseInt(props.getProperty(key) || '0') + 1;
+    props.setProperty(key, String(next));
+    return prefix + '-' + next;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function generateProjectAcronym(name, existingProjects) {
@@ -451,6 +451,8 @@ function sanitize(input) {
   return input
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
     .replace(/javascript\s*:/gi, '')
+    .replace(/data\s*:[^,]*,/gi, '')
     .replace(/on\w+\s*=/gi, '')
-    .replace(/[<>]/g, '');
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
