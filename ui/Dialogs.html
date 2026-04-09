@@ -125,7 +125,19 @@
         .withSuccessHandler(async (result) => {
           showLoading(false);
           closeTaskModal();
-          await refreshAllData();
+          if (result && result.id && State.tasks) {
+            State.tasks.push(result);
+            LocalCache.set('tasks', State.tasks);
+            if (typeof CacheService !== 'undefined') {
+              CacheService.set('tasks', State.tasks).catch(function() {});
+            }
+          }
+          if (typeof buildBoardFromTasks === 'function' && typeof renderBoard === 'function') {
+            var projectId = State.projectFilter || null;
+            State.board = buildBoardFromTasks(State.tasks, projectId);
+            renderBoard();
+            updateStats();
+          }
           switchView(State.currentView || 'my');
           toast('Task created', 'success');
         })
