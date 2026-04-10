@@ -1,5 +1,6 @@
 const PasswordService = {
   ITERATIONS: 1000,
+  LEGACY_ITERATIONS: 10000,
   SALT_LENGTH: 32,
   HASH_ALGORITHM: Utilities.DigestAlgorithm.SHA_256,
 
@@ -48,11 +49,27 @@ const PasswordService = {
 
     try {
       const computedHash = this.hashPassword(password, salt);
-      return this.constantTimeCompare(computedHash, storedHash);
+      if (this.constantTimeCompare(computedHash, storedHash)) {
+        return true;
+      }
+      const legacyHash = this.hashPasswordWithIterations(password, salt, this.LEGACY_ITERATIONS);
+      if (this.constantTimeCompare(legacyHash, storedHash)) {
+        return { valid: true, needsRehash: true };
+      }
+      return false;
     } catch (error) {
       console.error('Password verification error:', error);
       return false;
     }
+  },
+
+  hashPasswordWithIterations(password, salt, iterations) {
+    let hash = password + salt;
+    for (let i = 0; i < iterations; i++) {
+      const hashBytes = Utilities.computeDigest(this.HASH_ALGORITHM, hash);
+      hash = Utilities.base64Encode(hashBytes);
+    }
+    return hash;
   },
 
   constantTimeCompare(a, b) {
@@ -104,8 +121,8 @@ const PasswordService = {
     return true;
   },
 
-  needsRehash(metadata) {
-    return false;
+  needsRehash(result) {
+    return result && typeof result === 'object' && result.needsRehash === true;
   }
 };
 

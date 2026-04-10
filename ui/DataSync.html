@@ -487,6 +487,15 @@
       google.script.run
         .withSuccessHandler((tasks) => {
           var needsRerender = false;
+          var returnedIds = new Set(tasks.map(t => t.id));
+          taskIds.forEach(id => {
+            if (!returnedIds.has(id) && State.tasks) {
+              State.tasks = State.tasks.filter(t => t.id !== id);
+              needsRerender = true;
+              var card = document.querySelector('[data-task-id="' + id + '"]');
+              if (card) card.remove();
+            }
+          });
           tasks.forEach(task => {
             if (State.editingTask && State.editingTask === task.id) return;
             if (State.tasks) {

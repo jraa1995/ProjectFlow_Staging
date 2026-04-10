@@ -9,13 +9,15 @@ function getBatchDataFast() {
     if (cached) {
       try { return JSON.parse(cached); } catch (e) {}
     }
-    var jsonCached = readJsonCache('BATCH_DATA', 15);
-    if (jsonCached) {
-      try {
-        var jsonStr = JSON.stringify(jsonCached);
-        if (jsonStr.length < 100000) cache.put('BATCH_DATA_CACHE', jsonStr, 1800);
-      } catch (e) {}
-      return jsonCached;
+    if (!cache.get('BATCH_DATA_DIRTY')) {
+      var jsonCached = readJsonCache('BATCH_DATA', 15);
+      if (jsonCached) {
+        try {
+          var jsonStr = JSON.stringify(jsonCached);
+          if (jsonStr.length < 100000) cache.put('BATCH_DATA_CACHE', jsonStr, 1800);
+        } catch (e) {}
+        return jsonCached;
+      }
     }
     return rebuildBatchCache() || buildBatchDataFallback();
   } catch (error) {
@@ -61,6 +63,7 @@ function rebuildBatchCache() {
         task.estimatedHrs = parseFloat(task.estimatedHrs) || 0;
         task.actualHrs = parseFloat(task.actualHrs) || 0;
         task.position = parseInt(task.position) || 0;
+        task.isMilestone = task.isMilestone === true || task.isMilestone === 'true' || task.isMilestone === 'TRUE' || task.isMilestone === 1;
         tasks.push(task);
       }
     }
@@ -119,6 +122,7 @@ function rebuildBatchCache() {
     if (jsonStr.length < 45000) {
       writeJsonCache('BATCH_DATA', result);
     }
+    cache.remove('BATCH_DATA_DIRTY');
     return result;
   } finally {
     cache.remove(lockKey);
@@ -324,6 +328,7 @@ function invalidateTaskCache(taskId, changeType) {
     }
 
     cache.remove('BATCH_DATA_CACHE');
+    cache.put('BATCH_DATA_DIRTY', '1', 900);
   } catch (error) {
     console.error('invalidateTaskCache failed:', error);
   }

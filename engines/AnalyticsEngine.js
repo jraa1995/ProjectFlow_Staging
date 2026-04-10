@@ -203,40 +203,6 @@ class AnalyticsEngine {
     };
   }
 
-  static calculateBurndownData(sprintId, projectId, opts) {
-    var tasks = (opts && opts.tasks) ? opts.tasks.slice() : getAllTasks();
-    if (projectId) {
-      tasks = tasks.filter(task => task.projectId === projectId);
-    }
-    if (sprintId) {
-      tasks = tasks.filter(task => task.sprint === sprintId);
-    }
-    const totalStoryPoints = tasks.reduce((sum, task) => sum + (parseInt(task.storyPoints) || 0), 0);
-    const completedStoryPoints = tasks
-      .filter(task => task.status === 'Done')
-      .reduce((sum, task) => sum + (parseInt(task.storyPoints) || 0), 0);
-    const sprintDays = 14;
-    const idealBurndown = [];
-    for (let day = 0; day <= sprintDays; day++) {
-      idealBurndown.push({
-        day: day,
-        remaining: totalStoryPoints - (totalStoryPoints * day / sprintDays)
-      });
-    }
-    const actualBurndown = [
-      { day: 0, remaining: totalStoryPoints },
-      { day: sprintDays, remaining: totalStoryPoints - completedStoryPoints }
-    ];
-    return {
-      totalStoryPoints: totalStoryPoints,
-      completedStoryPoints: completedStoryPoints,
-      remainingStoryPoints: totalStoryPoints - completedStoryPoints,
-      idealBurndown: idealBurndown,
-      actualBurndown: actualBurndown,
-      sprintProgress: totalStoryPoints > 0 ? (completedStoryPoints / totalStoryPoints) * 100 : 0
-    };
-  }
-
   static generateExecutiveDashboard(portfolioFilter, opts) {
     var allTasks = (opts && opts.tasks) ? opts.tasks : getAllTasks();
     var allProjects = (opts && opts.projects) ? opts.projects : getAllProjects();

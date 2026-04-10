@@ -249,10 +249,6 @@ function getFilteredTasks(filters) {
     tasks = tasks.filter((t) => filters.type.includes(t.type));
   }
 
-  if (filters.sprint) {
-    tasks = tasks.filter((t) => t.sprint === filters.sprint);
-  }
-
   if (filters.labels && filters.labels.length > 0) {
     tasks = tasks.filter((t) => {
       const taskLabels = t.labels || [];
@@ -322,23 +318,6 @@ function getAllLabels() {
   });
 
   return Array.from(labelSet).sort();
-}
-
-function getAllSprintNames() {
-  const tasks = getAllTasks();
-  const sprintSet = new Set();
-
-  tasks.forEach((task) => {
-    if (task.sprint) {
-      sprintSet.add(task.sprint);
-    }
-  });
-
-  return Array.from(sprintSet).sort((a, b) => {
-    const numA = parseInt(a) || 0;
-    const numB = parseInt(b) || 0;
-    return numA - numB;
-  });
 }
 
 function getSubtasks(parentId) {

@@ -35,10 +35,11 @@ function include(filename) {
 function testIncludes() {
   var files = ['ui/HomeView', 'ui/FunnelView', 'ui/ListView', 'ui/ProjectView', 'ui/Scripts', 'ui/Utils',
                'ui/DataSync', 'ui/BoardView', 'ui/LoginModule', 'ui/Dialogs', 'ui/Sidebar',
-               'ui/TimelineModule', 'ui/AnalyticsModule', 'ui/Shortcuts',
-               'ui/SprintView', 'ui/SurgeView', 'ui/MilestoneView',
+               'ui/AnalyticsModule', 'ui/Shortcuts',
+               'ui/SurgeView',
                'ui/TaskDetailPanel', 'ui/TaskEditModal', 'ui/MentionAutocomplete',
-               'ui/DependencyPicker', 'ui/NotificationCenter', 'ui/CacheService'];
+               'ui/DependencyPicker', 'ui/NotificationCenter', 'ui/CacheService',
+               'ui/DataAssetView', 'ui/DataAssetViewScript'];
   var results = {};
   files.forEach(function(f) {
     try {
@@ -112,7 +113,8 @@ function initializeSystem() {
       { fn: getNotificationsSheet, name: 'Notifications' },
       { fn: getAnalyticsCacheSheet, name: 'Analytics Cache' },
       { fn: getTaskDependenciesSheet, name: 'Task Dependencies' },
-      { fn: getFunnelStagingSheet, name: 'Funnel Staging' }
+      { fn: getFunnelStagingSheet, name: 'Funnel Staging' },
+      { fn: getDataAssetsSheet, name: 'Data Assets' }
     ];
 
     sheetCreators.forEach(({ fn, name }) => {

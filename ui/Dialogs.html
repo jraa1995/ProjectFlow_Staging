@@ -107,11 +107,20 @@
     if (State.editingTask) {
       showLoading(true);
       google.script.run
-        .withSuccessHandler(async () => {
+        .withSuccessHandler(async (result) => {
           showLoading(false);
           closeTaskModal();
-          await refreshAllData();
-          switchView(State.currentView || 'my');
+          if (State.tasks) {
+            var updated = State.tasks.map(function(t) { return t.id === State.editingTask.id ? Object.assign({}, t, taskData) : t; });
+            State.setTasks(updated);
+            LocalCache.set('tasks', updated);
+            if (typeof CacheService !== 'undefined') {
+              CacheService.set('tasks', updated).catch(function() {});
+            }
+          }
+          if (typeof loadBoard === 'function') {
+            loadBoard(true);
+          }
           toast("Task updated", "success");
         })
         .withFailureHandler((error) => {
@@ -126,19 +135,16 @@
           showLoading(false);
           closeTaskModal();
           if (result && result.id && State.tasks) {
-            State.tasks.push(result);
-            LocalCache.set('tasks', State.tasks);
+            var updated = State.tasks.concat([result]);
+            State.setTasks(updated);
+            LocalCache.set('tasks', updated);
             if (typeof CacheService !== 'undefined') {
-              CacheService.set('tasks', State.tasks).catch(function() {});
+              CacheService.set('tasks', updated).catch(function() {});
             }
           }
-          if (typeof buildBoardFromTasks === 'function' && typeof renderBoard === 'function') {
-            var projectId = State.projectFilter || null;
-            State.board = buildBoardFromTasks(State.tasks, projectId);
-            renderBoard();
-            updateStats();
+          if (typeof loadBoard === 'function') {
+            loadBoard(true);
           }
-          switchView(State.currentView || 'my');
           toast('Task created', 'success');
         })
         .withFailureHandler((error) => {

@@ -1,38 +1,20 @@
 <script>
-  let lastBoardView = null;
-  let lastBoardProjectFilter = null;
-
-  function loadBoard() {
+  function loadBoard(skipFetch) {
     if (State.currentView === "timeline" || State.currentView === "analytics") {
       return;
     }
     const projectId = State.projectFilter || null;
-    const isSameContext = (lastBoardView === State.view && lastBoardProjectFilter === projectId);
-    if (State.board && State.board.columns && isSameContext) {
+    if (State.tasks && State.tasks.length > 0 && State.config) {
+      State.board = buildBoardFromTasks(State.tasks, projectId);
       renderBoard();
       updateStats();
       showLoading(false);
-      return;
+      if (skipFetch) return;
+      if (State.getTasks()) return;
     }
-    var cachedTasks = State.getTasks();
-    if (cachedTasks && cachedTasks.length > 0 && State.config) {
-      var board = buildBoardFromTasks(cachedTasks, projectId);
-      State.board = board;
-      lastBoardView = State.view;
-      lastBoardProjectFilter = projectId;
-      renderBoard();
-      updateStats();
-      showLoading(false);
-      return;
-    }
-    if (State.board && State.board.columns) {
-      renderBoard();
-      updateStats();
-    } else {
+    if (!State.tasks || State.tasks.length === 0) {
       showLoading(true);
     }
-    lastBoardView = State.view;
-    lastBoardProjectFilter = projectId;
     if (State.view === "master") {
       google.script.run
         .withSuccessHandler(handleBoardData)
@@ -57,7 +39,7 @@
           col.tasks.forEach(task => {
             flatTasks.push({
               ...task,
-              status: col.id
+              status: task.status || col.name
             });
           });
         }
@@ -78,13 +60,14 @@
       return false;
     }
     if (changes.status) {
+      var normalizedStatus = changes.status.toLowerCase().replace(/\s+/g, '_');
       const targetColumn = document.querySelector(
-        `.task-list[data-status="${changes.status}"]`
+        `.task-list[data-status="${normalizedStatus}"]`
       );
       if (targetColumn && card.parentElement !== targetColumn) {
         card.remove();
         targetColumn.appendChild(card);
-        card.dataset.status = changes.status;
+        card.dataset.status = normalizedStatus;
         updateColumnCounts();
       }
     }
@@ -111,6 +94,24 @@
         pointsEl.textContent = changes.storyPoints || '';
         pointsEl.style.display = changes.storyPoints ? '' : 'none';
       }
+    }
+    if (changes.isMilestone !== undefined || changes.recurringConfig !== undefined) {
+      var fullTask = null;
+      if (State.tasks) {
+        fullTask = State.tasks.find(function(t) { return t.id === taskId; });
+      }
+      if (fullTask) {
+        var merged = Object.assign({}, fullTask, changes);
+        var statusId = (merged.status || 'To Do').toLowerCase().replace(/\s+/g, '_');
+        var newHtml = renderTaskCard(merged, statusId);
+        var temp = document.createElement('div');
+        temp.innerHTML = newHtml;
+        var newCard = temp.firstElementChild;
+        if (card && newCard) {
+          card.replaceWith(newCard);
+        }
+      }
+      return true;
     }
     if (State.tasks) {
       const task = State.tasks.find(t => t.id === taskId);
@@ -173,19 +174,15 @@
 
 
   function removeTaskFromDOM(taskId) {
-    const card = document.querySelector(`[data-task-id="${taskId}"]`);
-    if (card) {
-      card.remove();
-      updateColumnCounts();
-      if (State.tasks) {
-        State.tasks = State.tasks.filter(t => t.id !== taskId);
+    if (State.tasks) {
+      var updated = State.tasks.filter(t => t.id !== taskId);
+      State.setTasks(updated);
+      LocalCache.set('tasks', updated);
+      if (typeof CacheService !== 'undefined') {
+        CacheService.set('tasks', updated).catch(function() {});
       }
-      if (State.cache?.tasks?.data) {
-        State.cache.tasks.data = State.cache.tasks.data.filter(t => t.id !== taskId);
-      }
-      return true;
     }
-    return false;
+    loadBoard(true);
   }
 
   function renderBoard() {
@@ -258,8 +255,14 @@
       blockedClass = 'task-blocked';
       cardBorderStyle = 'border-red-400 border-2';
     }
+    let recurringConfig = null;
+    try {
+      recurringConfig = task.recurringConfig ? (typeof task.recurringConfig === 'string' ? JSON.parse(task.recurringConfig) : task.recurringConfig) : null;
+    } catch (e) {}
+    const isRecurring = recurringConfig && recurringConfig.freq;
+    const recurringClass = isRecurring ? 'recurring' : '';
     return `
-  <div class="task-card ${milestoneClass} ${milestoneState} ${blockedClass} bg-white rounded-lg p-3 shadow-sm border ${cardBorderStyle || 'border-gray-200'} cursor-pointer hover:shadow-md transition-shadow"
+  <div class="task-card ${milestoneClass} ${milestoneState} ${blockedClass} ${recurringClass} bg-white rounded-lg p-3 shadow-sm border ${cardBorderStyle || 'border-gray-200'} cursor-pointer hover:shadow-md transition-shadow"
   draggable="true"
   data-task-id="${task.id}"
   data-status="${columnId || ''}"
@@ -300,6 +303,14 @@
     : ""
   }
   ${
+    isRecurring
+    ? `<div class="recurring-badge">
+    <i class="fas fa-sync-alt"></i>
+    RECURRING
+    </div>`
+    : ""
+  }
+  ${
     isBlocked && task.dependencyMetadata && task.dependencyMetadata.blockedByTasks && task.dependencyMetadata.blockedByTasks.length > 0
     ? `<div class="text-xs text-red-600 mb-2 p-2 bg-red-50 rounded border border-red-200">
     <div class="font-semibold mb-1">Blocked by:</div>
@@ -331,6 +342,28 @@
   `;
   }
 
+  function insertNewTaskCard(task) {
+    if (!task || !task.id) return;
+    if (document.querySelector('[data-task-id="' + task.id + '"]')) return;
+    if (State.currentView === 'list') {
+      if (typeof ListViewPage !== 'undefined') ListViewPage.applyFilters();
+      return;
+    }
+    if (State.currentView !== 'my' && State.currentView !== 'master') return;
+    if (State.currentView === 'my' && State.user?.email && task.assignee?.toLowerCase() !== State.user.email.toLowerCase()) return;
+    if (State.projectFilter && task.projectId !== State.projectFilter) return;
+    var statusId = (task.status || 'To Do').toLowerCase().replace(/\s+/g, '_');
+    var taskList = document.querySelector('.task-list[data-status="' + statusId + '"]');
+    if (!taskList) return;
+    var cardHtml = renderTaskCard(task, statusId);
+    taskList.insertAdjacentHTML('afterbegin', cardHtml);
+    var col = taskList.closest('.board-column');
+    if (col) {
+      var countEl = col.querySelector('.column-header span');
+      if (countEl) countEl.textContent = taskList.querySelectorAll('.task-card').length;
+    }
+  }
+
   function openTaskDetailPanel(taskId) {
     try {
       if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
@@ -345,18 +378,6 @@
       console.error('openTaskDetailPanel error:', error);
       toast('Failed to open task: ' + (error.message || 'Unknown error'), 'error');
     }
-  }
-
-  function findTaskInCache(taskId) {
-    if (State.board && State.board.columns) {
-      for (const col of State.board.columns) {
-        if (col.tasks) {
-          const task = col.tasks.find(t => t.id === taskId);
-          if (task) return task;
-        }
-      }
-    }
-    return null;
   }
 
   function showSimpleTaskModal(taskId, cachedTask) {
@@ -710,6 +731,59 @@
     return html;
   }
 
+  function appendOptimisticDependency(depData, depType, currentTaskId) {
+    var listEl = document.getElementById('dependenciesList');
+    var loadingEl = document.getElementById('dependenciesLoading');
+    if (!listEl) return;
+    if (loadingEl) loadingEl.style.display = 'none';
+    listEl.style.display = 'block';
+
+    var task = depData.task;
+    if (!task) return;
+    var isPredecessor = (depType === 'predecessor');
+    var bgColor = isPredecessor ? '#fef2f2' : '#eff6ff';
+    var borderColor = isPredecessor ? '#fecaca' : '#bfdbfe';
+    var idBg = isPredecessor ? '#fee2e2' : '#dbeafe';
+    var idColor = isPredecessor ? '#991b1b' : '#1e40af';
+    var titleColor = isPredecessor ? '#7f1d1d' : '#1e3a8a';
+    var btnColor = isPredecessor ? '#dc2626' : '#2563eb';
+
+    var depHtml = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:' + bgColor + ';border:1px solid ' + borderColor + ';border-radius:8px;margin-bottom:6px;">'
+      + '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">'
+      + '<span style="font-size:11px;font-family:monospace;color:' + idColor + ';background:' + idBg + ';padding:2px 6px;border-radius:4px;">' + escapeHtml(task.id) + '</span>'
+      + '<span style="font-size:13px;color:' + titleColor + ';font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(task.title) + '</span>'
+      + '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:white;color:#6b7280;">' + escapeHtml(task.status) + '</span>'
+      + '</div>'
+      + '<button onclick="removeDependency(\'' + depData.id + '\',\'' + currentTaskId + '\')" style="background:none;border:none;color:' + btnColor + ';cursor:pointer;padding:4px;" title="Remove dependency">'
+      + '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+      + '</button></div>';
+
+    var emptyState = listEl.querySelector('[style*="dashed"]');
+    if (emptyState) listEl.innerHTML = '';
+
+    var sectionLabel = isPredecessor ? 'Blocked By' : 'Blocking';
+    var sectionColor = isPredecessor ? '#dc2626' : '#2563eb';
+    var sectionIcon = isPredecessor
+      ? '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="10"/></svg>'
+      : '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+
+    var sectionHeaders = listEl.querySelectorAll('[style*="text-transform"]');
+    var existingSection = null;
+    sectionHeaders.forEach(function(h) {
+      if (h.textContent.indexOf(sectionLabel) !== -1) existingSection = h.parentElement;
+    });
+
+    if (existingSection) {
+      existingSection.insertAdjacentHTML('beforeend', depHtml);
+    } else {
+      var sectionHtml = '<div style="margin-bottom:12px;">'
+        + '<div style="font-size:11px;text-transform:uppercase;color:' + sectionColor + ';font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:4px;">'
+        + sectionIcon + ' ' + sectionLabel + ' (1)</div>'
+        + depHtml + '</div>';
+      listEl.insertAdjacentHTML(isPredecessor ? 'afterbegin' : 'beforeend', sectionHtml);
+    }
+  }
+
   function openDependencyPickerFromModal(taskId, type) {
     if (typeof DependencyPicker !== 'undefined') {
       DependencyPicker.open(taskId, type);
@@ -725,6 +799,19 @@
       document.removeEventListener('keydown', window._simpleModalEscHandler);
       window._simpleModalEscHandler = null;
     }
+  }
+
+  function removeDependency(dependencyId, taskId) {
+    google.script.run
+      .withSuccessHandler(() => {
+        toast('Dependency removed', 'success');
+        loadModalDependencies(taskId);
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to remove dependency:', error);
+        toast('Failed to remove dependency', 'error');
+      })
+      .removeDependency(dependencyId);
   }
 
   function openEditFromSimpleModal(taskId) {
@@ -910,7 +997,7 @@
           const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
           if (cachedTask) cachedTask.status = statusName;
         }
-        LocalCache.set('tasks', State.cache.tasks.data);
+        LocalCache.set('tasks', State.tasks);
       },
       () => new Promise((resolve, reject) => {
         google.script.run
@@ -997,7 +1084,7 @@
           const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
           if (cachedTask) cachedTask.status = statusName;
         }
-        LocalCache.set('tasks', State.cache.tasks.data);
+        LocalCache.set('tasks', State.tasks);
       },
       () => new Promise((resolve, reject) => {
         google.script.run
@@ -1105,7 +1192,7 @@
           const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
           if (cachedTask) cachedTask.status = statusName;
         }
-        LocalCache.set('tasks', State.cache.tasks.data);
+        LocalCache.set('tasks', State.tasks);
       },
       () => new Promise((resolve, reject) => {
         google.script.run

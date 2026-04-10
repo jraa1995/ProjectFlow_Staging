@@ -1,0 +1,613 @@
+<script>
+(function() {
+try {
+var DataAssetPage = {
+  assets: [],
+  selectedAsset: null,
+  isEditing: false,
+  filterStatus: '',
+  searchTerm: '',
+  formOptions: { users: [], projects: [] },
+  _formOptionsLoaded: false,
+
+  init() {
+    if (typeof SplitPane !== 'undefined') SplitPane.init('dataAssetSplitPane', 'dataassets', 288);
+    this.loadAssets();
+    this._loadFormOptions();
+  },
+
+  _loadFormOptions() {
+    google.script.run
+      .withSuccessHandler((result) => {
+        if (result && result.success) {
+          this.formOptions = { users: result.users || [], projects: result.projects || [] };
+          this._formOptionsLoaded = true;
+        }
+      })
+      .withFailureHandler(() => {})
+      .getDataAssetFormOptions();
+  },
+
+  loadAssets() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to load data assets', 'error');
+          return;
+        }
+        this.assets = result.assets || [];
+        this.renderAssetList();
+        if (this.assets.length > 0 && !this.selectedAsset) {
+          this.selectAsset(this.assets[0].id);
+        }
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Load data assets failed:', error);
+        toast('Failed to load data assets', 'error');
+      })
+      .getDataAssetDetailsList();
+  },
+
+  selectAsset(assetId) {
+    this.selectedAsset = this.assets.find(a => a.id === assetId) || null;
+    this.isEditing = false;
+    this.renderAssetList();
+    this.renderAssetDetail();
+  },
+
+  _getFilteredAssets() {
+    return this.assets.filter(a => {
+      var matchStatus = !this.filterStatus || a.status === this.filterStatus;
+      var term = (this.searchTerm || '').toLowerCase();
+      var matchSearch = !term ||
+        (a.assetName || '').toLowerCase().includes(term) ||
+        (a.assetOwner || '').toLowerCase().includes(term) ||
+        (a.dataSource || '').toLowerCase().includes(term);
+      return matchStatus && matchSearch;
+    });
+  },
+
+  _ensureSearchBar() {
+    var container = document.getElementById('dataAssetListContainer');
+    if (!container) return;
+    if (!document.getElementById('daSearchBar')) {
+      var bar = document.createElement('div');
+      bar.id = 'daSearchBar';
+      bar.className = 'p-3 border-b border-gray-100 space-y-2';
+      bar.innerHTML = '<input type="text" id="daSearchInput" placeholder="Search assets..." ' +
+        'class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />' +
+        '<select id="daFilterSelect" ' +
+        'class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+        '<option value="">All Statuses</option>' +
+        '<option value="Active">Active</option>' +
+        '<option value="Inactive">Inactive</option>' +
+        '<option value="Deprecated">Deprecated</option>' +
+        '<option value="In Development">In Development</option>' +
+        '</select>';
+      if (!document.getElementById('daListItems')) {
+        var list = document.createElement('div');
+        list.id = 'daListItems';
+        container.innerHTML = '';
+        container.appendChild(bar);
+        container.appendChild(list);
+      }
+      var searchInput = document.getElementById('daSearchInput');
+      var filterSelect = document.getElementById('daFilterSelect');
+      searchInput.addEventListener('input', function() {
+        DataAssetPage.searchTerm = this.value;
+        DataAssetPage._renderListItems();
+      });
+      filterSelect.addEventListener('change', function() {
+        DataAssetPage.filterStatus = this.value;
+        DataAssetPage._renderListItems();
+      });
+    }
+    var inp = document.getElementById('daSearchInput');
+    var sel = document.getElementById('daFilterSelect');
+    if (inp && inp.value !== (this.searchTerm || '')) inp.value = this.searchTerm || '';
+    if (sel && sel.value !== (this.filterStatus || '')) sel.value = this.filterStatus || '';
+  },
+
+  _renderListItems() {
+    var listEl = document.getElementById('daListItems');
+    if (!listEl) return;
+    var filtered = this._getFilteredAssets();
+    if (!filtered.length) {
+      listEl.innerHTML = '<div class="flex flex-col items-center justify-center h-32 text-gray-400">' +
+        '<i class="fas fa-database text-2xl mb-2 text-gray-300"></i>' +
+        '<p class="text-sm">No data assets found</p></div>';
+      return;
+    }
+    var self = this;
+    listEl.innerHTML = filtered.map(function(asset) {
+      var isActive = self.selectedAsset && self.selectedAsset.id === asset.id;
+      var dotColor = self._statusColor(asset.status);
+      return '<div onclick="DataAssetPage.selectAsset(\'' + escapeHtml(asset.id) + '\')" ' +
+        'class="p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 transition-colors ' +
+        (isActive ? 'bg-gray-100 border-l-4 border-l-gray-900' : '') + '">' +
+        '<div class="flex items-center gap-2 min-w-0">' +
+        '<span class="w-2 h-2 rounded-full flex-shrink-0" style="background-color:' + dotColor + '"></span>' +
+        '<span class="text-sm font-medium text-gray-900 truncate">' + escapeHtml(asset.assetName || '-') + '</span>' +
+        '</div>' +
+        '<div class="mt-1 pl-4">' +
+        '<p class="text-xs text-gray-500 truncate">' + escapeHtml(asset.assetOwner || '') + '</p>' +
+        '<p class="text-xs text-gray-400 truncate">' + escapeHtml(asset.dataSource || '') + '</p>' +
+        '</div></div>';
+    }).join('');
+  },
+
+  renderAssetList() {
+    this._ensureSearchBar();
+    this._renderListItems();
+  },
+
+  renderAssetDetail() {
+    var container = document.getElementById('dataAssetDetailContainer');
+    if (!container) return;
+    if (!this.selectedAsset) {
+      container.innerHTML = '<div class="flex-1 flex flex-col items-center justify-center text-gray-400">' +
+        '<i class="fas fa-database text-4xl mb-3 text-gray-300"></i>' +
+        '<p class="text-sm font-medium text-gray-500">Select a data asset to view details</p>' +
+        '<p class="text-xs text-gray-400 mt-1">Choose from the list on the left</p></div>';
+      return;
+    }
+    var a = this.selectedAsset;
+    var dotColor = this._statusColor(a.status);
+
+    var header = '<div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">' +
+      '<div class="flex items-center gap-3 min-w-0">' +
+      '<h2 class="text-lg font-semibold text-gray-900 truncate">' + escapeHtml(a.assetName || '-') + '</h2>' +
+      '<span class="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border border-gray-200 text-gray-700 flex-shrink-0">' +
+      '<span class="w-1.5 h-1.5 rounded-full" style="background-color:' + dotColor + '"></span>' +
+      escapeHtml(a.status || '') + '</span>' +
+      '</div>' +
+      '<div class="flex items-center gap-2 flex-shrink-0">' +
+      '<button onclick="DataAssetPage.toggleEdit()" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">' +
+      '<i class="fas fa-pencil-alt text-xs"></i> Edit</button>' +
+      '<button onclick="DataAssetPage.confirmDelete(\'' + escapeHtml(a.id) + '\')" class="flex items-center gap-2 px-3 py-1.5 border border-red-200 text-red-600 text-sm rounded-lg hover:bg-red-50 transition-colors">' +
+      '<i class="fas fa-trash text-xs"></i> Delete</button>' +
+      '</div></div>';
+
+    var row = function(label, value) {
+      return '<div class="px-4 py-3 flex items-start gap-4 border-b border-gray-50">' +
+        '<span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-44 flex-shrink-0 mt-0.5">' + label + '</span>' +
+        '<div class="flex-1 min-w-0 text-sm text-gray-900">' + (value || '<span class="text-gray-400">-</span>') + '</div>' +
+        '</div>';
+    };
+
+    var linkVal = function(url) {
+      if (!url) return '<span class="text-gray-400">-</span>';
+      var u = escapeHtml(url);
+      var display = url.length > 60 ? escapeHtml(url.substring(0, 57)) + '...' : u;
+      return '<a href="' + u + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 flex items-center gap-1">' +
+        display + '<i class="fas fa-external-link-alt text-xs text-gray-400"></i></a>';
+    };
+
+    var relProjectsDisplay = '';
+    if (a.relatedProjects) {
+      var ids = (a.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      var names = ids.map(function(pid) {
+        var p = (DataAssetPage.formOptions.projects || []).find(function(pr) { return pr.id === pid; });
+        return p ? escapeHtml(p.name) : escapeHtml(pid);
+      });
+      relProjectsDisplay = names.join(', ');
+    }
+
+    var schedDays = (a.updateSchedule || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean).join(', ');
+
+    var fields = row('Status',
+        '<span class="flex items-center gap-1.5">' +
+        '<span class="w-2 h-2 rounded-full" style="background-color:' + dotColor + '"></span>' +
+        escapeHtml(a.status || '') + '</span>') +
+      row('Asset Owner', escapeHtml(a.assetOwner || '')) +
+      row('Backup Owner', escapeHtml(a.backupOwner || '')) +
+      row('Asset Name', escapeHtml(a.assetName || '')) +
+      row('Data Source', escapeHtml(a.dataSource || '')) +
+      row('Target File(s)', escapeHtml(a.targetFiles || '')) +
+      row('Related Project(s)', relProjectsDisplay || '') +
+      row('Primary Stakeholder', escapeHtml(a.primaryStakeholder || '')) +
+      row('Update Frequency', escapeHtml(a.updateFrequency || '')) +
+      row('Update Schedule', schedDays) +
+      row('Automated Schedule', escapeHtml(a.automatedSchedule || '')) +
+      row('Current Environment', escapeHtml(a.currentEnvironment || '')) +
+      row('GitHub Link', linkVal(a.githubLink)) +
+      row('Data Sharing Doc', linkVal(a.dataSharingDocLink));
+
+    var fmtDate = function(d) {
+      if (!d) return '-';
+      var s = String(d);
+      if (s.length > 10) s = s.substring(0, 10);
+      return s;
+    };
+    var updatedByDisplay = '';
+    if (a.lastUpdatedBy && typeof a.lastUpdatedBy === 'string' && !a.lastUpdatedBy.startsWith('{')) {
+      var match = (DataAssetPage.formOptions.users || []).find(function(u) { return u.email === a.lastUpdatedBy; });
+      updatedByDisplay = match ? match.name : a.lastUpdatedBy;
+    }
+    var timestamps = '<div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1">' +
+      '<span class="text-xs text-gray-400">Created: ' + escapeHtml(fmtDate(a.createdAt)) + '</span>' +
+      '<span class="text-xs text-gray-400">Updated: ' + escapeHtml(fmtDate(a.updatedAt)) + '</span>' +
+      (updatedByDisplay ? '<span class="text-xs text-gray-400">Updated By: ' + escapeHtml(updatedByDisplay) + '</span>' : '') +
+      '</div>';
+
+    container.innerHTML = header +
+      '<div class="flex-1 overflow-y-auto p-6">' +
+      '<div class="max-w-2xl bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' +
+      fields + timestamps +
+      '</div></div>';
+  },
+
+  _buildUserSelect(id, label, selectedVal) {
+    var users = this.formOptions.users || [];
+    var hasMatch = false;
+    var optItems = users.map(function(u) {
+      var matched = selectedVal && (selectedVal === u.name || selectedVal === u.email);
+      if (matched) hasMatch = true;
+      return '<option value="' + escapeHtml(u.name) + '"' + (matched ? ' selected' : '') + '>' + escapeHtml(u.name) + '</option>';
+    }).join('');
+    var placeholder = '<option value="" disabled' + (!hasMatch ? ' selected' : '') + ' hidden>' + escapeHtml(label) + '</option>';
+    return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + label + '</label>' +
+      '<select id="assetForm_' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+      placeholder + optItems + '</select></div>';
+  },
+
+  _buildMultiCheckbox(id, label, options, selectedCsv) {
+    var selected = (selectedCsv || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var selectedMap = {};
+    selected.forEach(function(s) { selectedMap[s] = true; });
+    var checks = options.map(function(opt) {
+      var chk = selectedMap[opt.value] ? ' checked' : '';
+      return '<label class="flex items-center gap-2 py-1 cursor-pointer">' +
+        '<input type="checkbox" data-multicheck="' + id + '" value="' + escapeHtml(opt.value) + '"' + chk +
+        ' class="rounded border-gray-300 text-gray-900 focus:ring-gray-400" />' +
+        '<span class="text-sm text-gray-700">' + escapeHtml(opt.label) + '</span></label>';
+    }).join('');
+    return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + label + '</label>' +
+      '<div id="assetForm_' + id + '" class="max-h-40 overflow-y-auto border border-gray-300 rounded-lg px-3 py-2">' +
+      (checks || '<span class="text-sm text-gray-400">No options available</span>') + '</div></div>';
+  },
+
+  _buildComboSelect(id, label, options, selectedVal) {
+    var matched = false;
+    var seen = {};
+    var optItems = '';
+    options.forEach(function(o) {
+      var val = typeof o === 'string' ? o : o.value;
+      var display = typeof o === 'string' ? o : o.label;
+      if (seen[val]) return;
+      seen[val] = true;
+      var sel = selectedVal === val ? ' selected' : '';
+      if (sel) matched = true;
+      optItems += '<option value="' + escapeHtml(val) + '"' + sel + '>' + escapeHtml(display) + '</option>';
+    });
+    if (selectedVal && !matched) {
+      optItems += '<option value="' + escapeHtml(selectedVal) + '" selected>' + escapeHtml(selectedVal) + '</option>';
+    }
+    var placeholder = '<option value="" disabled' + (!matched && !selectedVal ? ' selected' : '') + ' hidden>' + escapeHtml(label) + '</option>';
+    optItems += '<option value="__custom__">Other (type below)</option>';
+    return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + label + '</label>' +
+      '<select id="assetForm_' + id + '" onchange="DataAssetPage._handleComboChange(\'' + id + '\')" ' +
+      'class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+      placeholder + optItems + '</select>' +
+      '<input type="text" id="assetForm_' + id + '_custom" style="display:none" placeholder="Type name..." ' +
+      'class="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" /></div>';
+  },
+
+  _handleComboChange(id) {
+    var sel = document.getElementById('assetForm_' + id);
+    var custom = document.getElementById('assetForm_' + id + '_custom');
+    if (!sel || !custom) return;
+    if (sel.value === '__custom__') {
+      custom.style.display = '';
+      custom.focus();
+    } else {
+      custom.style.display = 'none';
+      custom.value = '';
+    }
+  },
+
+  _buildDropdown(id, label, options, selectedVal) {
+    var hasMatch = options.some(function(o) { return selectedVal === o; });
+    var placeholder = '<option value="" disabled' + (!hasMatch ? ' selected' : '') + ' hidden>' + escapeHtml(label) + '</option>';
+    var optItems = options.map(function(o) {
+      return '<option value="' + escapeHtml(o) + '"' + (selectedVal === o ? ' selected' : '') + '>' + escapeHtml(o) + '</option>';
+    }).join('');
+    return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + label + '</label>' +
+      '<select id="assetForm_' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+      placeholder + optItems + '</select></div>';
+  },
+
+  _buildDaysPicker(id, label, selectedCsv) {
+    var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    var selected = (selectedCsv || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var selectedMap = {};
+    selected.forEach(function(s) { selectedMap[s] = true; });
+    var checks = days.map(function(d) {
+      var chk = selectedMap[d] ? ' checked' : '';
+      return '<label class="flex items-center gap-2 cursor-pointer">' +
+        '<input type="checkbox" data-daycheck="' + id + '" value="' + d + '"' + chk +
+        ' class="rounded border-gray-300 text-gray-900 focus:ring-gray-400" />' +
+        '<span class="text-sm text-gray-700">' + d.substring(0, 3) + '</span></label>';
+    }).join('');
+    return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + label + '</label>' +
+      '<div id="assetForm_' + id + '" class="flex flex-wrap gap-3 border border-gray-300 rounded-lg px-3 py-2">' +
+      checks + '</div></div>';
+  },
+
+  _buildForm(asset) {
+    var a = asset || {};
+    var statusOptions = ['Active', 'Inactive', 'Deprecated', 'In Development'].map(function(s) {
+      return '<option value="' + s + '" ' + (a.status === s ? 'selected' : '') + '>' + s + '</option>';
+    }).join('');
+
+    var field = function(id, label, value, type) {
+      type = type || 'text';
+      var input = type === 'textarea'
+        ? '<textarea id="assetForm_' + id + '" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none">' + escapeHtml(String(value || '')) + '</textarea>'
+        : '<input id="assetForm_' + id + '" type="' + type + '" value="' + escapeHtml(String(value || '')) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" />';
+      return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + label + '</label>' + input + '</div>';
+    };
+
+    var projectOpts = (this.formOptions.projects || []).map(function(p) {
+      return { value: p.id, label: p.name || p.id };
+    });
+
+    var stakeholderOpts = [{ value: 'PPMs', label: 'PPMs' }];
+    (this.formOptions.users || []).forEach(function(u) {
+      stakeholderOpts.push({ value: 'BI - ' + u.name, label: 'BI - ' + u.name });
+    });
+
+    return '<div class="space-y-4">' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Status</label>' +
+      '<select id="assetForm_status" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+      statusOptions + '</select></div>' +
+      this._buildUserSelect('assetOwner', 'Asset Owner', a.assetOwner) +
+      this._buildUserSelect('backupOwner', 'Backup Owner', a.backupOwner) +
+      field('assetName', 'Asset Name', a.assetName) +
+      field('dataSource', 'Data Source', a.dataSource) +
+      field('targetFiles', 'Target File(s)', a.targetFiles, 'textarea') +
+      this._buildMultiCheckbox('relatedProjects', 'Related Project(s)', projectOpts, a.relatedProjects) +
+      this._buildComboSelect('primaryStakeholder', 'Primary Stakeholder', stakeholderOpts, a.primaryStakeholder) +
+      this._buildDropdown('updateFrequency', 'Update Frequency', ['Daily', 'Weekly', 'Monthly', 'Tableau Server Schedule'], a.updateFrequency) +
+      this._buildDaysPicker('updateSchedule', 'Update Schedule', a.updateSchedule) +
+      this._buildDropdown('automatedSchedule', 'Automated Schedule', ['Yes', 'No', 'Pending', 'N/A'], a.automatedSchedule) +
+      this._buildDropdown('currentEnvironment', 'Current Environment', ['Databricks', 'AWS', 'Manual'], a.currentEnvironment) +
+      field('githubLink', 'GitHub Link', a.githubLink, 'url') +
+      field('dataSharingDocLink', 'Data Sharing Doc Link', a.dataSharingDocLink, 'url') +
+      '</div>';
+  },
+
+  _collectFormData() {
+    var data = {};
+    var simpleIds = ['status','assetOwner','backupOwner','assetName','dataSource','targetFiles',
+      'updateFrequency','automatedSchedule','currentEnvironment','githubLink','dataSharingDocLink'];
+    simpleIds.forEach(function(id) {
+      var el = document.getElementById('assetForm_' + id);
+      data[id] = el ? el.value : '';
+    });
+
+    var relChecks = document.querySelectorAll('[data-multicheck="relatedProjects"]:checked');
+    var relVals = [];
+    relChecks.forEach(function(cb) { relVals.push(cb.value); });
+    data.relatedProjects = relVals.join(',');
+
+    var stakeSel = document.getElementById('assetForm_primaryStakeholder');
+    var stakeCustom = document.getElementById('assetForm_primaryStakeholder_custom');
+    if (stakeSel && stakeSel.value === '__custom__' && stakeCustom) {
+      data.primaryStakeholder = stakeCustom.value.trim();
+    } else {
+      data.primaryStakeholder = stakeSel ? stakeSel.value : '';
+    }
+
+    var dayChecks = document.querySelectorAll('[data-daycheck="updateSchedule"]:checked');
+    var dayVals = [];
+    dayChecks.forEach(function(cb) { dayVals.push(cb.value); });
+    data.updateSchedule = dayVals.join(',');
+
+    return data;
+  },
+
+  openNewAssetForm() {
+    this.selectedAsset = null;
+    this.isEditing = false;
+    this.renderAssetList();
+    var container = document.getElementById('dataAssetDetailContainer');
+    if (!container) return;
+
+    container.innerHTML = '<div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">' +
+      '<h2 class="text-lg font-semibold text-gray-900">New Data Asset</h2>' +
+      '</div>' +
+      '<div class="flex-1 overflow-y-auto p-6">' +
+      '<div class="max-w-2xl bg-white border border-gray-200 rounded-lg p-6">' +
+      this._buildForm(null) +
+      '<div class="flex items-center gap-3 mt-6">' +
+      '<button onclick="DataAssetPage.saveNewAsset()" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Asset</button>' +
+      '<button onclick="DataAssetPage.renderAssetDetail()" class="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
+      '</div></div></div>';
+  },
+
+  saveNewAsset() {
+    var data = this._collectFormData();
+    if (!data.assetName) {
+      toast('Asset name is required', 'error');
+      return;
+    }
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to save asset', 'error');
+          return;
+        }
+        var newAsset = result.asset || Object.assign({ id: result.id }, data);
+        this.assets.unshift(newAsset);
+        this.selectedAsset = newAsset;
+        this.renderAssetList();
+        this.renderAssetDetail();
+        toast('Data asset created', 'success');
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Save new asset failed:', error);
+        toast('Failed to save asset', 'error');
+      })
+      .saveNewDataAsset(data);
+  },
+
+  toggleEdit() {
+    if (!this.selectedAsset) return;
+    this.isEditing = true;
+    var a = this.selectedAsset;
+    var container = document.getElementById('dataAssetDetailContainer');
+    if (!container) return;
+
+    container.innerHTML = '<div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">' +
+      '<h2 class="text-lg font-semibold text-gray-900">Edit: ' + escapeHtml(a.assetName || '') + '</h2>' +
+      '</div>' +
+      '<div class="flex-1 overflow-y-auto p-6">' +
+      '<div class="max-w-2xl bg-white border border-gray-200 rounded-lg p-6">' +
+      this._buildForm(a) +
+      '<div class="flex items-center gap-3 mt-6">' +
+      '<button onclick="DataAssetPage.saveEdit()" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Changes</button>' +
+      '<button onclick="DataAssetPage.isEditing=false;DataAssetPage.renderAssetDetail()" class="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
+      '</div></div></div>';
+  },
+
+  saveEdit() {
+    if (!this.selectedAsset) return;
+    var data = this._collectFormData();
+    data.id = this.selectedAsset.id;
+    if (!data.assetName) {
+      toast('Asset name is required', 'error');
+      return;
+    }
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to update asset', 'error');
+          return;
+        }
+        Object.assign(this.selectedAsset, data);
+        var idx = this.assets.findIndex(a => a.id === data.id);
+        if (idx !== -1) Object.assign(this.assets[idx], data);
+        this.isEditing = false;
+        this.renderAssetList();
+        this.renderAssetDetail();
+        toast('Data asset updated', 'success');
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Save asset edit failed:', error);
+        toast('Failed to update asset', 'error');
+      })
+      .updateDataAssetDetails(data);
+  },
+
+  confirmDelete(assetId) {
+    var asset = this.assets.find(a => a.id === assetId);
+    var name = asset ? asset.assetName : 'this asset';
+    if (confirm('Delete "' + name + '"? This cannot be undone.')) {
+      this.deleteAsset(assetId);
+    }
+  },
+
+  deleteAsset(assetId) {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to delete asset', 'error');
+          return;
+        }
+        this.assets = this.assets.filter(a => a.id !== assetId);
+        this.selectedAsset = null;
+        this.renderAssetList();
+        this.renderAssetDetail();
+        toast('Data asset deleted', 'success');
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Delete asset failed:', error);
+        toast('Failed to delete asset', 'error');
+      })
+      .deleteExistingDataAsset(assetId);
+  },
+
+  importFromWorklog() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        if (!result.workbookId) {
+          showLoading(false);
+          this.promptForDataAssetsWorkbookId();
+          return;
+        }
+        this.runDataAssetImport(result.workbookId);
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to get workbook ID:', error);
+        showLoading(false);
+        this.promptForDataAssetsWorkbookId();
+      })
+      .getStoredDataAssetsWorkbookId();
+  },
+
+  promptForDataAssetsWorkbookId() {
+    var workbookId = prompt('Enter the Data Assets workbook ID (from the Google Sheets URL):');
+    if (!workbookId || !workbookId.trim()) return;
+    workbookId = workbookId.trim();
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(() => {
+        this.runDataAssetImport(workbookId);
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to save workbook ID:', error);
+        toast('Failed to save workbook ID', 'error');
+        showLoading(false);
+      })
+      .saveDataAssetsWorkbookId(workbookId);
+  },
+
+  runDataAssetImport(workbookId) {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Import failed', 'error');
+          return;
+        }
+        toast('Imported ' + result.imported + ' assets, skipped ' + result.skipped + ' duplicates', 'success');
+        this.loadAssets();
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Import data assets failed:', error);
+        toast('Import failed: ' + error.message, 'error');
+      })
+      .importWorkLogDataAssets(workbookId);
+  },
+
+  _statusColor(status) {
+    var map = {
+      'Active': '#22c55e',
+      'Inactive': '#9ca3af',
+      'Deprecated': '#ef4444',
+      'In Development': '#3b82f6'
+    };
+    return map[status] || '#9ca3af';
+  }
+};
+
+window.DataAssetPage = DataAssetPage;
+} catch (e) { console.error('DataAssetViewScript init error:', e); }
+})();
+</script>

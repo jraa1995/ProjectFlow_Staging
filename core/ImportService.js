@@ -1,3 +1,21 @@
+function getProjectsWorkbookId() {
+  return PropertiesService.getScriptProperties().getProperty('PROJECTS_WORKBOOK_ID') || '';
+}
+
+function setProjectsWorkbookId(workbookId) {
+  PropertiesService.getScriptProperties().setProperty('PROJECTS_WORKBOOK_ID', workbookId);
+  return true;
+}
+
+function getDataAssetsWorkbookId() {
+  return PropertiesService.getScriptProperties().getProperty('DATA_ASSETS_WORKBOOK_ID') || '';
+}
+
+function setDataAssetsWorkbookId(workbookId) {
+  PropertiesService.getScriptProperties().setProperty('DATA_ASSETS_WORKBOOK_ID', workbookId);
+  return true;
+}
+
 var WORKLOG_STATUS_MAP = {
   '02-In Development': 'active',
   '03-Deployed (Actively Maintained)': 'active',
@@ -163,7 +181,9 @@ function buildWorklogSettings(row) {
 
 function importProjectsFromWorkLog(workbookId) {
   PermissionGuard.requirePermission('project:create');
-  var sourceSpreadsheet = SpreadsheetApp.openById(workbookId);
+  var storedId = workbookId || getProjectsWorkbookId();
+  if (!storedId) throw new Error('No workbook ID provided');
+  var sourceSpreadsheet = SpreadsheetApp.openById(storedId);
   var sourceSheet = sourceSpreadsheet.getSheets()[0];
   var sourceData = sourceSheet.getDataRange().getValues();
 
@@ -243,7 +263,9 @@ function importProjectsFromWorkLog(workbookId) {
 
 function syncWorklogSettings(workbookId) {
   PermissionGuard.requirePermission('project:update');
-  var sourceSpreadsheet = SpreadsheetApp.openById(workbookId);
+  var storedId = workbookId || getProjectsWorkbookId();
+  if (!storedId) throw new Error('No workbook ID provided');
+  var sourceSpreadsheet = SpreadsheetApp.openById(storedId);
   var sourceSheet = sourceSpreadsheet.getSheets()[0];
   var sourceData = sourceSheet.getDataRange().getValues();
 
@@ -294,4 +316,100 @@ function syncWorklogSettings(workbookId) {
   try { CacheService.getScriptCache().remove('BATCH_DATA_CACHE'); } catch (e) {}
 
   return { success: true, updated: updated.length, skipped: skipped.length, updatedNames: updated, skippedNames: skipped };
+}
+
+var DATA_ASSET_COL = {
+  status: 0,
+  assetOwner: 1,
+  backupOwner: 2,
+  assetName: 3,
+  dataSource: 4,
+  targetFiles: 5,
+  relatedProjects: 6,
+  primaryStakeholder: 7,
+  updateSchedule: 8,
+  automatedSchedule: 9,
+  currentEnvironment: 10,
+  githubLink: 11,
+  dataSharingDocLink: 12
+};
+
+function importDataAssetsFromWorkLog(workbookId) {
+  PermissionGuard.requirePermission('dataasset:create');
+  var storedId = workbookId || getDataAssetsWorkbookId() || getRequestsWorkbookId();
+  if (!storedId) throw new Error('No workbook ID provided');
+
+  var sourceSpreadsheet = SpreadsheetApp.openById(storedId);
+  var sourceSheet = sourceSpreadsheet.getSheetByName('Data Assets');
+  if (!sourceSheet) throw new Error('Sheet "Data Assets" not found in workbook');
+
+  var sourceData = sourceSheet.getDataRange().getValues();
+  if (sourceData.length <= 2) return { success: true, imported: 0, skipped: 0, importedNames: [], skippedNames: [] };
+
+  var C = DATA_ASSET_COL;
+  var existingAssets = getAllDataAssets();
+  var existingNames = {};
+  existingAssets.forEach(function(a) { existingNames[(a.assetName || '').toLowerCase().trim()] = true; });
+
+  var sheet = getDataAssetsSheet();
+  var columns = CONFIG.DATA_ASSET_COLUMNS;
+  var currentUser = getCurrentUserEmail();
+  var timestamp = now();
+
+  var rows = [];
+  var imported = [];
+  var skipped = [];
+
+  for (var i = 2; i < sourceData.length; i++) {
+    var row = sourceData[i];
+    var name = String(row[C.assetName] || '').trim();
+    if (!name) continue;
+
+    if (existingNames[name.toLowerCase()]) {
+      skipped.push(name);
+      continue;
+    }
+    existingNames[name.toLowerCase()] = true;
+
+    var asset = {
+      id: generateId('DA'),
+      status: sanitize(String(row[C.status] || 'Active')),
+      assetOwner: sanitize(String(row[C.assetOwner] || '')),
+      backupOwner: sanitize(String(row[C.backupOwner] || '')),
+      assetName: sanitize(name),
+      dataSource: sanitize(String(row[C.dataSource] || '')),
+      targetFiles: sanitize(String(row[C.targetFiles] || '')),
+      relatedProjects: sanitize(String(row[C.relatedProjects] || '')),
+      primaryStakeholder: sanitize(String(row[C.primaryStakeholder] || '')),
+      updateFrequency: '',
+      updateSchedule: sanitize(String(row[C.updateSchedule] || '')),
+      automatedSchedule: sanitize(String(row[C.automatedSchedule] || '')),
+      currentEnvironment: sanitize(String(row[C.currentEnvironment] || '')),
+      githubLink: String(row[C.githubLink] || '').trim(),
+      dataSharingDocLink: String(row[C.dataSharingDocLink] || '').trim(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      lastUpdatedBy: currentUser
+    };
+
+    rows.push(objectToRow(asset, columns));
+    imported.push(name);
+  }
+
+  if (rows.length > 0) {
+    var lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, rows.length, columns.length).setValues(rows);
+    SpreadsheetApp.flush();
+    logActivity(currentUser, 'bulk_imported', 'dataasset', 'batch', { count: rows.length });
+  }
+
+  invalidateDataAssetCache();
+
+  return {
+    success: true,
+    imported: imported.length,
+    skipped: skipped.length,
+    importedNames: imported,
+    skippedNames: skipped
+  };
 }

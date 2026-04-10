@@ -25,7 +25,7 @@ const CONFIG = {
     SLA_CONFIG: 'SLA_Config',
     TRIAGE_QUEUE: 'Triage_Queue',
     JSON_CACHE: 'JSON_Cache',
-    SPRINTS: 'Sprints'
+    DATA_ASSETS: 'Data_Assets'
   },
 
   JSON_CACHE_COLUMNS: ['key', 'data', 'updatedAt'],
@@ -35,8 +35,6 @@ const CONFIG = {
   PRIORITIES: ['Lowest', 'Low', 'Medium', 'High', 'Highest', 'Critical'],
 
   TYPES: ['Task', 'Bug', 'Feature', 'Story', 'Epic', 'Spike'],
-
-  MILESTONE_TYPES: ['phase-end', 'deliverable', 'review', 'launch', 'other'],
 
   COLORS: {
     'Backlog': '#6B7280',
@@ -374,21 +372,16 @@ const CONFIG = {
 
   FUNNEL_STATUSES: ['pending', 'reviewed', 'imported', 'rejected'],
 
-  SPRINT_COLUMNS: [
-    'id',
-    'projectId',
-    'name',
-    'goal',
-    'startDate',
-    'endDate',
-    'status',
-    'createdAt',
-    'createdBy',
-    'completedAt',
-    'jsonData'
+  DATA_ASSET_COLUMNS: [
+    'id', 'status', 'assetOwner', 'backupOwner', 'assetName',
+    'dataSource', 'targetFiles', 'relatedProjects', 'primaryStakeholder',
+    'updateSchedule', 'automatedSchedule', 'currentEnvironment',
+    'githubLink', 'dataSharingDocLink',
+    'createdAt', 'updatedAt', 'lastUpdatedBy', 'jsonData', 'updateFrequency'
   ],
 
-  SPRINT_STATUSES: ['planning', 'active', 'completed']
+  DATA_ASSET_STATUSES: ['Active', 'Inactive', 'Deprecated', 'In Development']
+
 };
 
 function getColumnIndex(sheetType, columnName) {
@@ -448,6 +441,9 @@ function now() {
 
 function sanitize(input) {
   if (typeof input !== 'string') return input;
+  if (/^[=+\-@]/.test(input)) {
+    input = "'" + input;
+  }
   return input
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
     .replace(/javascript\s*:/gi, '')

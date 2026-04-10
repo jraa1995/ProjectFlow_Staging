@@ -14,6 +14,7 @@ function getAutomationRules(projectId) {
 
 function createAutomationRule(ruleData) {
   try {
+    PermissionGuard.requirePermission('admin:settings');
     if (typeof AutomationEngine === 'undefined') {
       return { success: false, error: 'AutomationEngine not available' };
     }
@@ -28,6 +29,7 @@ function createAutomationRule(ruleData) {
 
 function updateAutomationRule(ruleId, updates) {
   try {
+    PermissionGuard.requirePermission('admin:settings');
     if (typeof AutomationEngine === 'undefined') {
       return { success: false, error: 'AutomationEngine not available' };
     }
@@ -42,6 +44,7 @@ function updateAutomationRule(ruleId, updates) {
 
 function deleteAutomationRule(ruleId) {
   try {
+    PermissionGuard.requirePermission('admin:settings');
     if (typeof AutomationEngine === 'undefined') {
       return { success: false, error: 'AutomationEngine not available' };
     }
@@ -165,6 +168,7 @@ function getSlaConfigs() {
 
 function syncRequestsFromWorkbook(workbookId) {
   try {
+    PermissionGuard.requirePermission('admin:settings');
     const result = importFromRequestsWorkbook(workbookId || '');
     return result;
   } catch (error) {
@@ -184,6 +188,7 @@ function getStoredRequestsWorkbookId() {
 
 function saveRequestsWorkbookId(workbookId) {
   try {
+    PermissionGuard.requirePermission('admin:settings');
     setRequestsWorkbookId(workbookId);
     return { success: true };
   } catch (error) {
@@ -306,12 +311,17 @@ function markAllNotificationsRead() {
     const userIdIndex = columns.indexOf('userId');
     const readIndex = columns.indexOf('read');
     let markedCount = 0;
+    const readCol = data.map(function(row) { return [row[readIndex]]; });
 
     for (let i = 1; i < data.length; i++) {
       if (data[i][userIdIndex] === userEmail && data[i][readIndex] !== true) {
-        sheet.getRange(i + 1, readIndex + 1).setValue(true);
+        readCol[i] = [true];
         markedCount++;
       }
+    }
+
+    if (markedCount > 0) {
+      sheet.getRange(1, readIndex + 1, data.length, 1).setValues(readCol);
     }
 
     return { success: true, markedCount: markedCount };
@@ -324,10 +334,10 @@ function markAllNotificationsRead() {
 function updateNotificationPreferences(preferences) {
   const userEmail = getCurrentUserEmailOptimized();
   if (!userEmail) throw new Error('Not authenticated');
-  return saveNotificationPreferences(userEmail, preferences);
+  return saveNotificationPreferences_(userEmail, preferences);
 }
 
-function saveNotificationPreferences(userEmail, preferences) {
+function saveNotificationPreferences_(userEmail, preferences) {
   try {
     const sheet = getUserPreferencesSheet();
     const data = sheet.getDataRange().getValues();
@@ -401,17 +411,11 @@ function addDependency(successorId, predecessorId, dependencyType, lag) {
       return { success: false, error: 'DependencyEngine not available' };
     }
     const result = DependencyEngine.addDependency(successorId, predecessorId, dependencyType || 'finish_to_start', lag || 0);
-    invalidateDependencyCache();
-    return {
-      success: true,
-      dependency: result
-    };
+    if (result.success) invalidateDependencyCache();
+    return result;
   } catch (error) {
     console.error('addDependency failed:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }
 
@@ -420,17 +424,12 @@ function removeDependency(dependencyId) {
     if (typeof DependencyEngine === 'undefined') {
       return { success: false, error: 'DependencyEngine not available' };
     }
-    DependencyEngine.removeDependency(dependencyId);
-    invalidateDependencyCache();
-    return {
-      success: true
-    };
+    const result = DependencyEngine.removeDependency(dependencyId);
+    if (result.success) invalidateDependencyCache();
+    return result;
   } catch (error) {
     console.error('removeDependency failed:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }
 
@@ -439,57 +438,17 @@ function getTaskDependenciesWithDetails(taskId) {
     if (typeof DependencyEngine === 'undefined') {
       return { predecessors: [], successors: [] };
     }
-    const dependencies = DependencyEngine.getTaskDependencies(taskId);
-
-    const result = {
-      predecessors: dependencies.predecessors.map(dep => {
-        const task = getTaskById(dep.predecessorId);
-        return {
-          id: dep.id,
-          predecessorId: dep.predecessorId,
-          dependencyType: dep.dependencyType,
-          lag: dep.lag,
-          task: task ? {
-            id: task.id,
-            title: task.title,
-            status: task.status,
-            priority: task.priority,
-            assignee: task.assignee
-          } : null
-        };
-      }),
-      successors: dependencies.successors.map(dep => {
-        const task = getTaskById(dep.successorId);
-        return {
-          id: dep.id,
-          successorId: dep.successorId,
-          dependencyType: dep.dependencyType,
-          lag: dep.lag,
-          task: task ? {
-            id: task.id,
-            title: task.title,
-            status: task.status,
-            priority: task.priority,
-            assignee: task.assignee
-          } : null
-        };
-      })
-    };
-
-    return result;
+    return DependencyEngine.getTaskDependenciesWithDetails(taskId);
   } catch (error) {
     console.error('getTaskDependenciesWithDetails failed:', error);
-    return {
-      predecessors: [],
-      successors: []
-    };
+    return { predecessors: [], successors: [] };
   }
 }
 
 function getTasksForDependencyPicker(currentTaskId) {
   try {
-    const allTasks = getAllTasks();
-    const projects = getAllProjects();
+    const allTasks = RequestCache.getTasks();
+    const projects = RequestCache.getProjects();
     const availableTasks = allTasks.filter(task => task.id !== currentTaskId);
 
     return {
@@ -499,12 +458,7 @@ function getTasksForDependencyPicker(currentTaskId) {
     };
   } catch (error) {
     console.error('getTasksForDependencyPicker failed:', error);
-    return {
-      success: false,
-      error: error.message,
-      tasks: [],
-      projects: []
-    };
+    return { success: false, error: error.message, tasks: [], projects: [] };
   }
 }
 
@@ -596,6 +550,7 @@ function processRecurringTasksWrapper() {
 
 function setupRecurringTrigger() {
   try {
+    PermissionGuard.requirePermission('admin:settings');
     const triggers = ScriptApp.getProjectTriggers();
     const existing = triggers.find(t => t.getHandlerFunction() === 'processRecurringTasksWrapper');
     if (existing) return { success: true, message: 'Trigger already exists' };
@@ -648,14 +603,6 @@ function exportViewToSheets(viewType, filters) {
     }
     if (filters.assignee) {
       tasks = tasks.filter(t => t.assignee && t.assignee.toLowerCase() === filters.assignee.toLowerCase());
-    }
-    if (filters.sprint) {
-      tasks = tasks.filter(t => t.sprint === filters.sprint);
-    }
-    if (viewType === 'board') {
-      tasks = tasks.filter(t => !t.isMilestone);
-    } else if (viewType === 'sprint') {
-      tasks = tasks.filter(t => t.sprint && t.sprint !== '');
     }
     const headers = ['ID', 'Project', 'Title', 'Status', 'Priority', 'Type', 'Assignee', 'Reporter', 'Due Date', 'Sprint', 'Story Points', 'Labels', 'Created At'];
     const rows = tasks.map(t => [

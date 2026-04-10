@@ -315,13 +315,13 @@ const AuthService = {
       };
     }
 
-    const passwordValid = PasswordService.verifyPassword(
+    const passwordResult = PasswordService.verifyPassword(
       password,
       user.passwordHash,
       user.passwordSalt
     );
 
-    if (!passwordValid) {
+    if (!passwordResult) {
       const failResult = this.recordFailedAttempt(email);
       return {
         success: false,
@@ -329,6 +329,15 @@ const AuthService = {
         remainingAttempts: failResult.remainingAttempts,
         lockoutUntil: failResult.lockoutUntil
       };
+    }
+
+    if (PasswordService.needsRehash(passwordResult)) {
+      try {
+        const { hash, salt } = PasswordService.createPasswordHash(password);
+        this.updateUserPassword(email, hash, salt);
+      } catch (e) {
+        console.error('Password rehash failed for ' + email + ':', e);
+      }
     }
 
     if (user.mfaEnabled) {
@@ -384,13 +393,13 @@ const AuthService = {
         return { success: false, error: 'Current password is required' };
       }
 
-      const currentValid = PasswordService.verifyPassword(
+      const currentResult = PasswordService.verifyPassword(
         currentPassword,
         user.passwordHash,
         user.passwordSalt
       );
 
-      if (!currentValid) {
+      if (!currentResult) {
         return { success: false, error: 'Current password is incorrect' };
       }
     }

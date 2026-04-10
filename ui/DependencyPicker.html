@@ -1,4 +1,4 @@
-<div id="dependencyPickerModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[10010] hidden"
+<div id="dependencyPickerModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100010] hidden"
   onclick="DependencyPicker.handleOverlayClick(event)">
   <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
     onclick="event.stopPropagation()">
@@ -108,7 +108,7 @@
   </div>
 </div>
 
-<div id="dependencyTypeHelpModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-[10020] hidden"
+<div id="dependencyTypeHelpModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-[100020] hidden"
   onclick="DependencyPicker.hideTypeHelp()">
   <div class="bg-white rounded-lg shadow-xl max-w-lg p-6" onclick="event.stopPropagation()">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Dependency Types</h3>
@@ -203,9 +203,18 @@ var DependencyPicker = {
     document.getElementById('dependencyPickerTaskList').classList.add('hidden');
     document.getElementById('dependencyPickerEmpty').classList.add('hidden');
 
+    if (State.tasks && State.tasks.length > 0) {
+      this.allTasks = State.tasks.filter(function(t) { return t.id !== this.currentTaskId; }.bind(this));
+      this.projects = State.projects || [];
+      this.populateProjectFilter();
+      this.filterTasks();
+      document.getElementById('dependencyPickerLoading').classList.add('hidden');
+      return;
+    }
+
     google.script.run
       .withSuccessHandler((result) => {
-        this.allTasks = result.tasks || [];
+        this.allTasks = (result.tasks || []).filter(function(t) { return t.id !== this.currentTaskId; }.bind(this));
         this.projects = result.projects || [];
         this.populateProjectFilter();
         this.filterTasks();
@@ -304,10 +313,9 @@ var DependencyPicker = {
   },
 
   selectTask(selectedTaskId) {
-    const dependencyType = document.getElementById('dependencyPickerType')?.value || 'finish_to_start';
+    var dependencyType = document.getElementById('dependencyPickerType')?.value || 'finish_to_start';
 
-    let successorId, predecessorId;
-
+    var successorId, predecessorId;
     if (this.dependencyType === 'predecessor') {
       successorId = this.currentTaskId;
       predecessorId = selectedTaskId;
@@ -316,36 +324,72 @@ var DependencyPicker = {
       predecessorId = this.currentTaskId;
     }
 
-    toast('Creating dependency...', 'info');
+    var allCards = document.querySelectorAll('.task-picker-card');
+    allCards.forEach(function(card) {
+      card.style.pointerEvents = 'none';
+      card.style.opacity = '0.5';
+    });
+    var clickedCard = document.querySelector('.task-picker-card[onclick*="\'' + selectedTaskId + '\'"]');
+    if (clickedCard) {
+      clickedCard.style.opacity = '1';
+      clickedCard.style.borderColor = '#3b82f6';
+      clickedCard.style.background = '#eff6ff';
+      var chevron = clickedCard.querySelector('.fa-chevron-right');
+      if (chevron) chevron.className = 'fas fa-spinner fa-spin text-blue-500';
+    }
+
+    var self = this;
+    var depTask = this.allTasks.find(function(t) { return t.id === selectedTaskId; });
 
     google.script.run
-      .withSuccessHandler((result) => {
+      .withSuccessHandler(function(result) {
         if (result.success) {
           toast('Dependency created', 'success');
-          this.close();
+          self.close();
+
+          var optimisticDep = {
+            id: result.dependency?.id || '',
+            task: depTask || { id: selectedTaskId, title: '', status: '' },
+            dependencyType: dependencyType
+          };
 
           if (typeof TaskDetailPanel !== 'undefined' && TaskDetailPanel.isOpen) {
-            TaskDetailPanel.loadDependencies();
+            TaskDetailPanel.appendOptimisticDependency(optimisticDep, self.dependencyType);
           }
 
-          if (typeof loadModalDependencies === 'function' && document.getElementById('simpleTaskModal')) {
-            loadModalDependencies(this.currentTaskId);
+          if (typeof appendOptimisticDependency === 'function' && document.getElementById('simpleTaskModal')) {
+            appendOptimisticDependency(optimisticDep, self.dependencyType, self.currentTaskId);
           }
 
-          if (typeof TaskEditModal !== 'undefined' && TaskEditModal.isOpen) {
-            TaskEditModal.loadDependencies();
-          }
-
-          if (typeof loadBoard === 'function') {
-            loadBoard();
+          if (typeof TaskEditModal !== 'undefined' && TaskEditModal.isOpen && TaskEditModal.task) {
+            var editListEl = document.getElementById('taskEditDependenciesList');
+            var editEmptyEl = document.getElementById('taskEditDependenciesEmpty');
+            if (editListEl) {
+              if (editEmptyEl) editEmptyEl.classList.add('hidden');
+              editListEl.classList.remove('hidden');
+              var depsObj = self.dependencyType === 'predecessor'
+                ? { predecessors: [optimisticDep], successors: [] }
+                : { predecessors: [], successors: [optimisticDep] };
+              editListEl.insertAdjacentHTML('beforeend', TaskEditModal.renderDependenciesList(depsObj));
+            }
           }
         } else {
           toast(result.error || 'Failed to create dependency', 'error');
+          allCards.forEach(function(card) { card.style.pointerEvents = ''; card.style.opacity = ''; });
+          if (clickedCard) {
+            var spinner = clickedCard.querySelector('.fa-spinner');
+            if (spinner) spinner.className = 'fas fa-chevron-right text-gray-400';
+          }
         }
       })
-      .withFailureHandler((error) => {
+      .withFailureHandler(function(error) {
         console.error('Failed to create dependency:', error);
         toast('Failed to create dependency', 'error');
+        allCards.forEach(function(card) { card.style.pointerEvents = ''; card.style.opacity = ''; });
+        if (clickedCard) {
+          var spinner = clickedCard.querySelector('.fa-spinner');
+          if (spinner) spinner.className = 'fas fa-chevron-right text-gray-400';
+        }
       })
       .addDependency(successorId, predecessorId, dependencyType, 0);
   },

@@ -912,53 +912,6 @@ function deleteTask(taskId) {
   }
 }
 
-function getMilestones(projectId) {
-  let tasks = getAllTasks();
-  tasks = tasks.filter(t =>
-    t.isMilestone === true ||
-    t.isMilestone === 'true' ||
-    t.isMilestone === 'TRUE' ||
-    t.isMilestone === 1 ||
-    t.isMilestone === '1'
-  );
-  if (projectId) {
-    tasks = tasks.filter(t => t.projectId === projectId);
-  }
-  tasks.sort((a, b) => {
-    const dateA = a.milestoneDate ? new Date(a.milestoneDate) : new Date(9999, 11, 31);
-    const dateB = b.milestoneDate ? new Date(b.milestoneDate) : new Date(9999, 11, 31);
-    return dateA - dateB;
-  });
-  return tasks;
-}
-
-function getUpcomingMilestones(days = 30) {
-  const milestones = getMilestones();
-  const now = new Date();
-  const futureDate = new Date(now.getTime() + (days * 24 * 60 * 60 * 1000));
-  return milestones.filter(m => {
-    if (!m.milestoneDate) return false;
-    const milestoneDate = new Date(m.milestoneDate);
-    return milestoneDate >= now && milestoneDate <= futureDate;
-  });
-}
-
-function getOverdueMilestones() {
-  const milestones = getMilestones();
-  const now = new Date();
-  return milestones.filter(m => {
-    if (!m.milestoneDate) return false;
-    if (m.status === 'Done') return false;
-    const milestoneDate = new Date(m.milestoneDate);
-    return milestoneDate < now;
-  });
-}
-
-function getCompletedMilestones() {
-  const milestones = getMilestones();
-  return milestones.filter(m => m.status === 'Done');
-}
-
 function getCurrentUserEmail() {
   try {
     const manualEmail = getManualUserEmail();
@@ -1068,6 +1021,13 @@ function getUserByEmail(email) {
 }
 
 function createUser(userData) {
+  var currentUser = getCurrentUserEmailOptimized();
+  if (currentUser) {
+    var caller = getUserByEmail(currentUser);
+    if (!caller || caller.role !== 'admin') {
+      throw new Error('Permission denied: only admins can create users');
+    }
+  }
   const sheet = getUsersSheet();
   if (getUserByEmail(userData.email)) {
     return getUserByEmail(userData.email);
@@ -1075,7 +1035,7 @@ function createUser(userData) {
   const user = {
     email: userData.email.toLowerCase().trim(),
     name: userData.name || userData.email.split('@')[0],
-    role: userData.role || 'member',
+    role: 'member',
     active: true,
     workbookId: userData.workbookId || '',
     createdAt: now()
@@ -1086,6 +1046,28 @@ function createUser(userData) {
 }
 
 function updateUser(email, updates) {
+  var currentUser = getCurrentUserEmailOptimized();
+  if (currentUser && currentUser.toLowerCase() !== email.toLowerCase()) {
+    var caller = getUserByEmail(currentUser);
+    if (!caller || caller.role !== 'admin') {
+      throw new Error('Permission denied: only admins can update other users');
+    }
+  }
+  if (updates.role) {
+    var adminCheck = getUserByEmail(currentUser);
+    if (!adminCheck || adminCheck.role !== 'admin') {
+      throw new Error('Permission denied: only admins can change roles');
+    }
+  }
+  delete updates.passwordHash;
+  delete updates.passwordSalt;
+  const allowedFields = ['name', 'role', 'active', 'workbookId', 'avatar', 'department', 'title'];
+  var safeUpdates = {};
+  allowedFields.forEach(function(key) {
+    if (updates.hasOwnProperty(key)) {
+      safeUpdates[key] = updates[key];
+    }
+  });
   const lock = LockService.getScriptLock();
   lock.waitLock(5000);
   try {
@@ -1096,7 +1078,7 @@ function updateUser(email, updates) {
     for (let i = 1; i < data.length; i++) {
       if (data[i][emailIndex]?.toLowerCase() === email?.toLowerCase()) {
         const user = rowToObject(data[i], columns);
-        Object.assign(user, updates);
+        Object.assign(user, safeUpdates);
         const newRow = objectToRow(user, columns);
         sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
         UserCache.invalidate();
@@ -1305,6 +1287,7 @@ function writeJsonCache(key, data) {
   }
 }
 
+
 function readJsonCache(key, maxAgeMinutes) {
   try {
     const sheet = getJsonCacheSheet();
@@ -1420,11 +1403,20 @@ function addComment(taskId, content) {
 }
 
 function deleteComment(commentId) {
+  const currentUser = getCurrentUserEmailOptimized();
   const sheet = getCommentsSheet();
   const data = sheet.getDataRange().getValues();
+  const columns = CONFIG.COMMENT_COLUMNS;
   const idIndex = 0;
+  const userIdIndex = columns.indexOf('userId');
   for (let i = 1; i < data.length; i++) {
     if (data[i][idIndex] === commentId) {
+      if (currentUser && data[i][userIdIndex] !== currentUser) {
+        var caller = getUserByEmail(currentUser);
+        if (!caller || caller.role !== 'admin') {
+          throw new Error('Permission denied: you can only delete your own comments');
+        }
+      }
       sheet.deleteRow(i + 1);
       return true;
     }
@@ -1533,12 +1525,17 @@ function getNotificationsForUser(userId, limit = 50, unreadOnly = false) {
 }
 
 function markNotificationAsRead(notificationId) {
+  const currentUser = getCurrentUserEmailOptimized();
   const sheet = getNotificationsSheet();
   const data = sheet.getDataRange().getValues();
   const columns = CONFIG.NOTIFICATION_COLUMNS;
   const idIndex = 0;
+  const userIdIndex = columns.indexOf('userId');
   for (let i = 1; i < data.length; i++) {
     if (data[i][idIndex] === notificationId) {
+      if (currentUser && data[i][userIdIndex] !== currentUser) {
+        throw new Error('Permission denied');
+      }
       const notification = rowToObject(data[i], columns);
       notification.read = true;
       const newRow = objectToRow(notification, columns);
@@ -1769,153 +1766,6 @@ function getRecentActivity(limit = 50, entityId = null) {
   return activities.slice(0, limit);
 }
 
-function getSprintsSheet() {
-  if (!CONFIG || !CONFIG.SPRINT_COLUMNS) {
-    throw new Error('CONFIG.SPRINT_COLUMNS is undefined. Check Config.gs for syntax errors.');
-  }
-  return getSheet(CONFIG.SHEETS.SPRINTS, CONFIG.SPRINT_COLUMNS);
-}
-
-function getAllSprints(projectId) {
-  const sheet = getSprintsSheet();
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return [];
-  const columns = CONFIG.SPRINT_COLUMNS;
-  let sprints = [];
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    if (!row[0]) continue;
-    sprints.push(rowToObject(row, columns));
-  }
-  if (projectId) {
-    sprints = sprints.filter(s => s.projectId === projectId);
-  }
-  return sprints;
-}
-
-function getSprintById(sprintId) {
-  const sprints = getAllSprints();
-  return sprints.find(s => s.id === sprintId) || null;
-}
-
-function createSprint(sprintData) {
-  PermissionGuard.requirePermission('project:update', { projectId: sprintData.projectId });
-  const sheet = getSprintsSheet();
-  const currentUser = getCurrentUserEmail();
-  const projectId = sprintData.projectId || '';
-  if (projectId) {
-    const activeSprint = getAllSprints(projectId).find(s => s.status === 'active');
-    if (activeSprint) {
-      throw new Error('Project already has an active sprint: ' + activeSprint.id);
-    }
-  }
-  const sprint = {
-    id: generateId('SPR'),
-    projectId: projectId,
-    name: sanitize(sprintData.name || 'New Sprint'),
-    goal: sanitize(sprintData.goal || ''),
-    startDate: sprintData.startDate || '',
-    endDate: sprintData.endDate || '',
-    status: 'planning',
-    createdAt: now(),
-    createdBy: currentUser,
-    completedAt: ''
-  };
-  sheet.appendRow(objectToRow(sprint, CONFIG.SPRINT_COLUMNS));
-  logActivity(currentUser, 'created', 'sprint', sprint.id, { name: sprint.name });
-  return sprint;
-}
-
-function updateSprint(sprintId, updates) {
-  const sheet = getSprintsSheet();
-  const data = sheet.getDataRange().getValues();
-  const columns = CONFIG.SPRINT_COLUMNS;
-  const idIndex = 0;
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][idIndex] === sprintId) {
-      const sprint = rowToObject(data[i], columns);
-      Object.assign(sprint, updates);
-      sheet.getRange(i + 1, 1, 1, columns.length).setValues([objectToRow(sprint, columns)]);
-      return sprint;
-    }
-  }
-  throw new Error('Sprint not found: ' + sprintId);
-}
-
-function startSprint(sprintId) {
-  const sprint = getSprintById(sprintId);
-  if (!sprint) throw new Error('Sprint not found: ' + sprintId);
-  PermissionGuard.requirePermission('project:update', { projectId: sprint.projectId });
-  if (sprint.status !== 'planning') {
-    throw new Error('Only sprints in planning status can be started');
-  }
-  const activeSprint = getAllSprints(sprint.projectId).find(s => s.status === 'active' && s.id !== sprintId);
-  if (activeSprint) {
-    throw new Error('Project already has an active sprint: ' + activeSprint.id);
-  }
-  return updateSprint(sprintId, { status: 'active', startDate: now() });
-}
-
-function completeSprint(sprintId) {
-  const sprint = getSprintById(sprintId);
-  if (!sprint) throw new Error('Sprint not found: ' + sprintId);
-  PermissionGuard.requirePermission('project:update', { projectId: sprint.projectId });
-  if (sprint.status !== 'active') {
-    throw new Error('Only active sprints can be completed');
-  }
-  const incompleteTasks = getAllTasks({ sprint: sprintId }, { skipPermissionCheck: true })
-    .filter(t => t.status !== 'Done');
-  incompleteTasks.forEach(task => {
-    try {
-      updateTask(task.id, { status: 'To Do', sprint: '' });
-    } catch (e) {
-      console.error('completeSprint: failed to roll back task ' + task.id + ':', e);
-    }
-  });
-  return updateSprint(sprintId, { status: 'completed', completedAt: now() });
-}
-
-function getSprintBurndown(sprintId) {
-  const sprint = getSprintById(sprintId);
-  if (!sprint) throw new Error('Sprint not found: ' + sprintId);
-  const sprintTasks = getAllTasks({ sprint: sprintId }, { skipPermissionCheck: true });
-  const totalPoints = sprintTasks.reduce((sum, t) => sum + (parseInt(t.storyPoints) || 0), 0);
-  if (!sprint.startDate) return { sprintId: sprintId, totalPoints: totalPoints, days: [] };
-  const startDate = new Date(sprint.startDate);
-  const endDate = sprint.completedAt ? new Date(sprint.completedAt) : new Date();
-  const days = [];
-  const cursor = new Date(startDate);
-  cursor.setHours(0, 0, 0, 0);
-  while (cursor <= endDate) {
-    const dayEnd = new Date(cursor);
-    dayEnd.setHours(23, 59, 59, 999);
-    const dayIso = cursor.toISOString().split('T')[0];
-    const burnedPoints = sprintTasks
-      .filter(t => t.status === 'Done' && t.completedAt && new Date(t.completedAt) <= dayEnd)
-      .reduce((sum, t) => sum + (parseInt(t.storyPoints) || 0), 0);
-    days.push({ date: dayIso, remaining: totalPoints - burnedPoints });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return { sprintId: sprintId, totalPoints: totalPoints, days: days };
-}
-
-function assignProjectTasksToSprint(sprintId, projectId) {
-  var allTasks = getAllTasks({}, { skipPermissionCheck: true });
-  var eligibleTasks = allTasks.filter(function(t) {
-    return t.projectId === projectId && (!t.sprint || t.sprint === '') && t.status !== 'Done';
-  });
-  var count = 0;
-  eligibleTasks.forEach(function(task) {
-    try {
-      updateTask(task.id, { sprint: sprintId });
-      count++;
-    } catch (e) {
-      console.error('assignProjectTasksToSprint: failed to assign task ' + task.id + ':', e);
-    }
-  });
-  return count;
-}
-
 function syncTaskToCalendar(task) {
   if (!task || !task.dueDate) return;
   try {
@@ -2039,4 +1889,104 @@ function processRecurringTasks() {
       console.error('processRecurringTasks: failed to process task ' + task.id + ':', e);
     }
   });
+}
+
+function getDataAssetsSheet() {
+  return getSheet(CONFIG.SHEETS.DATA_ASSETS, CONFIG.DATA_ASSET_COLUMNS);
+}
+
+function getAllDataAssets() {
+  const sheet = getDataAssetsSheet();
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  const columns = CONFIG.DATA_ASSET_COLUMNS;
+  const assets = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row[0]) continue;
+    assets.push(rowToObject(row, columns));
+  }
+  return assets;
+}
+
+function getDataAssetById(assetId) {
+  const assets = getAllDataAssets();
+  return assets.find(a => a.id === assetId) || null;
+}
+
+function createDataAsset(assetData) {
+  PermissionGuard.requirePermission('dataasset:create');
+  const sheet = getDataAssetsSheet();
+  const currentUser = getCurrentUserEmail();
+  const asset = {
+    id: generateId('DA'),
+    status: assetData.status || 'Active',
+    assetOwner: sanitize(assetData.assetOwner || currentUser),
+    backupOwner: sanitize(assetData.backupOwner || ''),
+    assetName: sanitize(assetData.assetName || ''),
+    dataSource: sanitize(assetData.dataSource || ''),
+    targetFiles: sanitize(assetData.targetFiles || ''),
+    relatedProjects: assetData.relatedProjects || '',
+    primaryStakeholder: sanitize(assetData.primaryStakeholder || ''),
+    updateFrequency: assetData.updateFrequency || '',
+    updateSchedule: assetData.updateSchedule || '',
+    automatedSchedule: assetData.automatedSchedule || '',
+    currentEnvironment: sanitize(assetData.currentEnvironment || ''),
+    githubLink: sanitize(assetData.githubLink || ''),
+    dataSharingDocLink: sanitize(assetData.dataSharingDocLink || ''),
+    createdAt: now(),
+    updatedAt: now(),
+    lastUpdatedBy: currentUser,
+    jsonData: assetData.jsonData || ''
+  };
+  sheet.appendRow(objectToRow(asset, CONFIG.DATA_ASSET_COLUMNS));
+  SpreadsheetApp.flush();
+  logActivity(currentUser, 'created', 'dataasset', asset.id, { name: asset.assetName });
+  return asset;
+}
+
+function updateDataAsset(assetId, updates) {
+  PermissionGuard.requirePermission('dataasset:update');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = getDataAssetsSheet();
+    const data = sheet.getDataRange().getValues();
+    const columns = CONFIG.DATA_ASSET_COLUMNS;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === assetId) {
+        const asset = rowToObject(data[i], columns);
+        Object.assign(asset, updates);
+        asset.updatedAt = now();
+        asset.lastUpdatedBy = getCurrentUserEmail();
+        sheet.getRange(i + 1, 1, 1, columns.length).setValues([objectToRow(asset, columns)]);
+        SpreadsheetApp.flush();
+        return asset;
+      }
+    }
+    throw new Error('Data asset not found: ' + assetId);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteDataAsset(assetId) {
+  PermissionGuard.requirePermission('dataasset:delete');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = getDataAssetsSheet();
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === assetId) {
+        sheet.deleteRow(i + 1);
+        SpreadsheetApp.flush();
+        logActivity(getCurrentUserEmail(), 'deleted', 'dataasset', assetId, {});
+        return;
+      }
+    }
+    throw new Error('Data asset not found: ' + assetId);
+  } finally {
+    lock.releaseLock();
+  }
 }

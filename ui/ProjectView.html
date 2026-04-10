@@ -1,9 +1,24 @@
 <div id="projectView" class="h-full flex flex-col">
   <div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
-    <h1 class="text-xl font-bold text-gray-900">Projects</h1>
-    <button onclick="_pc('ProjectPage','openNewProjectForm')" class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">
-      <i class="fas fa-plus text-xs"></i> New Project
-    </button>
+    <div class="flex items-center gap-4">
+      <h1 class="text-xl font-bold text-gray-900">Projects</h1>
+      <select id="projectStatusFilter" onchange="ProjectPage.filterStatus=this.value;ProjectPage.renderProjectList()"
+        class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
+        <option value="">All Statuses</option>
+        <option value="active">Active</option>
+        <option value="completed">Completed</option>
+        <option value="paused">Paused</option>
+        <option value="archived">Archived</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="_pc('ProjectPage','importFromWorklog')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">
+        <i class="fas fa-file-import text-xs"></i> Import from Worklog
+      </button>
+      <button onclick="_pc('ProjectPage','openNewProjectForm')" class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">
+        <i class="fas fa-plus text-xs"></i> New Project
+      </button>
+    </div>
   </div>
 
   <div id="projectSplitPane" class="split-pane flex-1 min-h-0">

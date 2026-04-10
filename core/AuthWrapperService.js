@@ -34,6 +34,10 @@ function loginWithEmail(email) {
     }
 
     email = email.toLowerCase().trim();
+    var sessionEmail = Session.getActiveUser().getEmail();
+    if (sessionEmail && sessionEmail.toLowerCase() !== email) {
+      throw new Error('Email mismatch. You can only log in as yourself.');
+    }
     var user = getUserByEmailOptimized(email);
 
     if (!user) {

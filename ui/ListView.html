@@ -1210,31 +1210,31 @@ var ListViewPage = {
           <input
             type="checkbox"
             ${this.selectedTasks.has(task.id) ? 'checked' : ''}
-            onchange="ListViewPage.toggleTaskSelection('${task.id}')">
+            onchange="ListViewPage.toggleTaskSelection('${escapeHtml(task.id)}')">
         </td>
-        <td>${task.id || ''}</td>
-        <td class="editable-cell" data-field="title" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
-          ${task.title || ''}
+        <td>${escapeHtml(task.id || '')}</td>
+        <td class="editable-cell" data-field="title" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
+          ${escapeHtml(task.title || '')}
         </td>
-        <td class="editable-cell" data-field="status" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
+        <td class="editable-cell" data-field="status" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           <span class="status-badge status-${(task.status || '').toLowerCase().replace(/\s+/g, '-')}">${this.formatStatus(task.status || '')}</span>
         </td>
-        <td class="editable-cell" data-field="priority" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
+        <td class="editable-cell" data-field="priority" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           <span class="priority-badge priority-${(task.priority || '').toLowerCase()}">${this.formatPriority(task.priority || '')}</span>
         </td>
-        <td>${task.type || ''}</td>
-        <td class="editable-cell" data-field="assignee" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
-          ${assigneeName}
+        <td>${escapeHtml(task.type || '')}</td>
+        <td class="editable-cell" data-field="assignee" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
+          ${escapeHtml(assigneeName)}
         </td>
-        <td class="editable-cell" data-field="dueDate" data-task-id="${task.id}" onclick="ListViewPage.startInlineEdit(this)">
+        <td class="editable-cell" data-field="dueDate" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           ${task.dueDate ? this.formatDate(task.dueDate) : ''}
         </td>
         <td>${task.createdDate ? this.formatDate(task.createdDate) : ''}</td>
         <td>
-          <button onclick="ListViewPage.editTask('${task.id}')" class="btn btn-secondary btn-sm" title="Edit">
+          <button onclick="ListViewPage.editTask('${escapeHtml(task.id)}')" class="btn btn-secondary btn-sm" title="Edit">
             <i class="fas fa-edit"></i>
           </button>
-          <button onclick="ListViewPage.deleteTask('${task.id}')" class="btn btn-danger btn-sm" title="Delete">
+          <button onclick="ListViewPage.deleteTask('${escapeHtml(task.id)}')" class="btn btn-danger btn-sm" title="Delete">
             <i class="fas fa-trash"></i>
           </button>
         </td>
@@ -1623,14 +1623,18 @@ var ListViewPage = {
     this.showLoading(true);
 
     if (typeof google !== 'undefined' && google.script && google.script.run) {
+      if (typeof removeTaskFromDOM === 'function') removeTaskFromDOM(taskId);
+      const idx = this.allTasks.findIndex(t => t.requestId === taskId || t.id === taskId);
+      if (idx >= 0) this.allTasks.splice(idx, 1);
+      this.applyFilters();
+      this.showLoading(false);
       google.script.run
         .withSuccessHandler(() => {
           this.toast('Task deleted', 'success');
-          this.loadData();
         })
         .withFailureHandler((error) => {
           this.toast('Failed to delete task: ' + error.message, 'error');
-          this.showLoading(false);
+          this.loadData();
         })
         .removeTask(taskId);
     } else {

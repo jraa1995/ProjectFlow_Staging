@@ -294,9 +294,6 @@
       link.classList.toggle("active", linkProjectId === projectId);
     });
     switch (State.currentView) {
-      case "timeline":
-        loadTimelineData();
-        break;
       case "analytics":
         loadAnalyticsData();
         break;
@@ -307,15 +304,6 @@
         }
         if (typeof ListViewPage !== 'undefined' && ListViewPage.applyFilters) {
           ListViewPage.applyFilters();
-        }
-        break;
-      case "milestones":
-        const msProjectFilter = document.getElementById('milestoneFilterProject');
-        if (msProjectFilter) {
-          msProjectFilter.value = projectId || '';
-        }
-        if (typeof MilestonePage !== 'undefined' && MilestonePage.applyFilters) {
-          MilestonePage.applyFilters();
         }
         break;
       case "funnel":
@@ -341,14 +329,12 @@
 
   var ViewRegistry = {
     home: { container: 'homeViewContainer', page: 'HomePage', title: 'Home' },
-    timeline: { container: 'timelineView', loader: 'loadTimelineData', title: 'Project Timeline' },
     analytics: { container: 'analyticsView', loader: 'loadAnalyticsData', title: 'Analytics Dashboard', requiredRole: 'manager' },
     funnel: { container: 'funnelView', page: 'FunnelPage', title: 'Ticket Funnel', requiredRole: 'manager' },
     list: { container: 'listView', page: 'ListViewPage', title: 'List View' },
-    milestones: { container: 'milestoneViewContainer', page: 'MilestonePage', title: 'Milestones Dashboard' },
     projects: { container: 'projectsView', page: 'ProjectPage', title: 'Projects' },
+    dataassets: { container: 'dataAssetsView', page: 'DataAssetPage', title: 'Data Assets' },
     surge: { container: 'surgeView', page: 'SurgePage', title: 'Pick Ups / Surge' },
-    sprints: { container: 'sprintView', page: 'SprintPage', title: 'Sprint Management' },
     master: { container: 'boardView', loader: 'loadBoard', title: 'Master Board', requiredRole: 'manager' },
     my: { container: 'boardView', loader: 'loadBoard', title: 'My Board' }
   };

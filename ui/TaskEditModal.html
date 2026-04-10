@@ -622,6 +622,7 @@ var TaskEditModal = {
       modal.classList.remove('hidden');
       this.isOpen = true;
     }
+    State.editingTask = null;
     this.mode = 'create';
     this.task = {};
     this.originalTask = null;
@@ -672,6 +673,7 @@ var TaskEditModal = {
       modal.classList.remove('hidden');
       this.isOpen = true;
     }
+    State.editingTask = taskId;
     this.task = null;
     this.originalTask = null;
     this.hasUnsavedChanges = false;
@@ -703,6 +705,7 @@ var TaskEditModal = {
       modal.classList.add('hidden');
       this.isOpen = false;
     }
+    State.editingTask = null;
     document.removeEventListener('keydown', this.handleKeydown);
     this.task = null;
     this.originalTask = null;
@@ -897,10 +900,10 @@ var TaskEditModal = {
       var closeHandler = function(e) {
         if (!e.target.closest('#taskEditWatchersContainer')) {
           dropdown.classList.add('hidden');
-          document.removeEventListener('click', closeHandler);
+          document.removeEventListener('click', closeHandler, true);
         }
       };
-      setTimeout(function() { document.addEventListener('click', closeHandler); }, 0);
+      setTimeout(function() { document.addEventListener('click', closeHandler, true); }, 0);
     } else {
       dropdown.classList.add('hidden');
     }
@@ -945,7 +948,8 @@ var TaskEditModal = {
 
   attachChangeListeners() {
     const form = document.getElementById('taskEditForm');
-    if (!form) return;
+    if (!form || form._changeListenersAttached) return;
+    form._changeListenersAttached = true;
 
     const inputFields = form.querySelectorAll('input[type="text"], input[type="number"], input[type="date"], textarea');
     inputFields.forEach(field => {
@@ -1237,7 +1241,7 @@ var TaskEditModal = {
     const endType = endTypeEl ? endTypeEl.value : 'never';
     const endCount = endType === 'count' ? (parseInt(this.getInputValue('taskEditRecurEndCount')) || null) : null;
     const endDate = endType === 'date' ? (this.getInputValue('taskEditRecurEndDate') || null) : null;
-    return { freq, day, endType, endCount, endDate };
+    return JSON.stringify({ freq, day, endType, endCount, endDate });
   },
 
   toggleRecurrenceFields(enabled) {
@@ -1298,32 +1302,30 @@ var TaskEditModal = {
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
       }
-      this.close();
-      showLoading(true);
+      var self = this;
       google.script.run
         .withSuccessHandler(function(result) {
           if (result && result.id && State.tasks) {
-            State.tasks.push(result);
-            LocalCache.set('tasks', State.tasks);
+            var updated = State.tasks.concat([result]);
+            State.setTasks(updated);
+            LocalCache.set('tasks', updated);
             if (typeof CacheService !== 'undefined') {
-              CacheService.set('tasks', State.tasks).catch(function() {});
+              CacheService.set('tasks', updated).catch(function() {});
             }
           }
-          if (typeof buildBoardFromTasks === 'function' && typeof renderBoard === 'function') {
-            var projectId = State.projectFilter || null;
-            State.board = buildBoardFromTasks(State.tasks, projectId);
-            renderBoard();
-            updateStats();
-          } else if (typeof loadBoard === 'function') {
-            loadBoard();
+          self.close();
+          if (typeof insertNewTaskCard === 'function') {
+            insertNewTaskCard(result);
           }
-          showLoading(false);
           toast('Task created', 'success');
         })
         .withFailureHandler(function(error) {
-          showLoading(false);
           console.error('Failed to create task:', error);
           toast('Failed to create task: ' + (error.message || 'Unknown error'), 'error');
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-save"></i> Create Task';
+          }
         })
         .saveNewTask(formData);
       return;
@@ -1337,35 +1339,26 @@ var TaskEditModal = {
       saveBtn.disabled = true;
       saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
     }
-    toast('Saving changes...', 'info');
-    showLoading(true);
     google.script.run
       .withSuccessHandler((result) => {
-        showLoading(false);
         if (result && State.tasks) {
-          var idx = State.tasks.findIndex(function(t) { return t.id === result.id; });
-          if (idx >= 0) State.tasks[idx] = result;
-          LocalCache.set('tasks', State.tasks);
+          var updated = State.tasks.map(function(t) { return t.id === result.id ? result : t; });
+          State.setTasks(updated);
+          LocalCache.set('tasks', updated);
           if (typeof CacheService !== 'undefined') {
-            CacheService.set('tasks', State.tasks).catch(function() {});
+            CacheService.set('tasks', updated).catch(function() {});
           }
         }
-        if (typeof buildBoardFromTasks === 'function' && typeof renderBoard === 'function') {
-          var projectId = State.projectFilter || null;
-          State.board = buildBoardFromTasks(State.tasks, projectId);
-          renderBoard();
-          updateStats();
-        } else if (typeof loadBoard === 'function') {
-          loadBoard();
+        if (typeof updateTaskInDOM === 'function') {
+          updateTaskInDOM(result.id, result);
         }
-        toast('Task updated successfully', 'success');
+        toast('Task updated', 'success');
         this.close();
         if (TaskDetailPanel.isOpen && TaskDetailPanel.task?.id === this.task.id) {
           TaskDetailPanel.loadTask(this.task.id);
         }
       })
       .withFailureHandler((error) => {
-        showLoading(false);
         console.error('Failed to save task:', error);
         toast('Failed to save changes. Please try again.', 'error');
         if (saveBtn) {
@@ -1392,24 +1385,24 @@ var TaskEditModal = {
 
     toast('Deleting task...', 'info');
     showLoading(true);
+    const deletingTaskId = this.task.id;
+    if (typeof removeTaskFromDOM === 'function') removeTaskFromDOM(deletingTaskId);
+    this.close();
+    if (TaskDetailPanel.isOpen && TaskDetailPanel.task?.id === deletingTaskId) {
+      TaskDetailPanel.close();
+    }
     google.script.run
       .withSuccessHandler(() => {
         showLoading(false);
         toast('Task deleted successfully', 'success');
-        if (typeof loadBoard === 'function') {
-          loadBoard();
-        }
-        this.close();
-        if (TaskDetailPanel.isOpen && TaskDetailPanel.task?.id === this.task.id) {
-          TaskDetailPanel.close();
-        }
       })
       .withFailureHandler((error) => {
         showLoading(false);
         console.error('Failed to delete task:', error);
-        toast('Failed to delete task. Please try again.', 'error');
+        toast('Failed to delete task. Please refresh.', 'error');
+        if (typeof loadBoard === 'function') loadBoard();
       })
-      .removeTask(this.task.id);
+      .removeTask(deletingTaskId);
   },
 
   setElementText(id, text) {

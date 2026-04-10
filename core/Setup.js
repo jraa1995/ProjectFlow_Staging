@@ -1,5 +1,6 @@
 function quickSetup() {
   try {
+    PermissionGuard.requirePermission('admin:settings');
     if (typeof CONFIG === 'undefined') {
       throw new Error('CONFIG object is undefined. Check Config.gs for syntax errors.');
     }
@@ -155,6 +156,7 @@ function createSampleTasks() {
 }
 
 function cleanupDuplicateSheets() {
+  PermissionGuard.requirePermission('admin:settings');
   const ss = getColonySpreadsheet_();
   const sheets = ss.getSheets();
   const requiredSheets = ['Tasks', 'Users', 'Projects', 'Comments', 'Activity', 'Mentions', 'Notifications', 'Analytics_Cache', 'Task_Dependencies'];
@@ -187,6 +189,7 @@ function cleanupDuplicateSheets() {
 }
 
 function clearSampleData() {
+  PermissionGuard.requirePermission('admin:settings');
   const tasks = getAllTasks();
   let cleared = 0;
 
@@ -203,6 +206,7 @@ function clearSampleData() {
 }
 
 function resetSystem() {
+  PermissionGuard.requirePermission('admin:settings');
   const ui = SpreadsheetApp.getUi();
   const response = ui.alert(
     'Reset System',
@@ -411,6 +415,7 @@ function activateUser(email) {
 }
 
 function bulkMoveTasksToStatus(fromStatus, toStatus) {
+  PermissionGuard.requirePermission('admin:settings');
   const tasks = getAllTasks({ status: fromStatus });
   let moved = 0;
 
@@ -427,6 +432,7 @@ function bulkMoveTasksToStatus(fromStatus, toStatus) {
 }
 
 function bulkAssignTasks(taskIds, assigneeEmail) {
+  PermissionGuard.requirePermission('admin:settings');
   var sheet = getTasksSheet();
   var columns = CONFIG.TASK_COLUMNS;
   var data = sheet.getDataRange().getValues();
@@ -470,6 +476,7 @@ function bulkAssignTasks(taskIds, assigneeEmail) {
 }
 
 function archiveOldCompletedTasks(daysOld) {
+  PermissionGuard.requirePermission('admin:settings');
   daysOld = daysOld || 30;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - daysOld);

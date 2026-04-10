@@ -90,56 +90,6 @@ function addProjectChangelogEntry(projectId, entry) {
   }
 }
 
-function getProjectSprints(projectId) {
-  try {
-    const sprints = getAllSprints(projectId);
-    return { success: true, sprints: sprints };
-  } catch (error) {
-    console.error('getProjectSprints failed:', error);
-    return { success: false, error: error.message, sprints: [] };
-  }
-}
-
-function createNewSprint(sprintData) {
-  try {
-    const sprint = createSprint(sprintData);
-    return { success: true, sprint: sprint };
-  } catch (error) {
-    console.error('createNewSprint failed:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-function startProjectSprint(sprintId) {
-  try {
-    const sprint = startSprint(sprintId);
-    return { success: true, sprint: sprint };
-  } catch (error) {
-    console.error('startProjectSprint failed:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-function completeProjectSprint(sprintId) {
-  try {
-    const sprint = completeSprint(sprintId);
-    return { success: true, sprint: sprint };
-  } catch (error) {
-    console.error('completeProjectSprint failed:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-function getSprintBurndownData(sprintId) {
-  try {
-    const burndown = getSprintBurndown(sprintId);
-    return { success: true, burndown: burndown };
-  } catch (error) {
-    console.error('getSprintBurndownData failed:', error);
-    return { success: false, error: error.message };
-  }
-}
-
 function archiveProject(projectId) {
   try {
     var result = updateProject(projectId, { status: 'archived' });
@@ -212,13 +162,23 @@ function syncWorkLogProjects(workbookId) {
   }
 }
 
-function autoPopulateSprintTasks(sprintId, projectId) {
+function getStoredProjectsWorkbookId() {
   try {
-    var count = assignProjectTasksToSprint(sprintId, projectId);
-    invalidateTaskCache();
-    return { success: true, assignedCount: count };
+    return { success: true, workbookId: getProjectsWorkbookId() };
   } catch (error) {
-    console.error('autoPopulateSprintTasks failed:', error);
+    console.error('getStoredProjectsWorkbookId failed:', error);
+    return { success: false, workbookId: '' };
+  }
+}
+
+function saveProjectsWorkbookId(workbookId) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    setProjectsWorkbookId(workbookId);
+    return { success: true };
+  } catch (error) {
+    console.error('saveProjectsWorkbookId failed:', error);
     return { success: false, error: error.message };
   }
 }
+

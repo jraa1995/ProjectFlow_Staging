@@ -1,5 +1,11 @@
 function generateCriticalPathAnalysis(projectId = null, options = {}) {
   try {
+    if (typeof TimelineEngine === 'undefined') {
+      if (typeof DependencyEngine !== 'undefined') {
+        return { criticalPath: [], criticalTasks: [], analysis: DependencyEngine.calculateCriticalPath(projectId), scenarios: [], dependencies: [] };
+      }
+      return { criticalPath: [], analysis: { totalTasks: 0, criticalTasks: 0, projectDuration: 0, completionDate: null, riskLevel: 'low' } };
+    }
     const timelineData = TimelineEngine.generateProjectTimeline(projectId);
     if (!timelineData.tasks.length) {
       return {

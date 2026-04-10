@@ -1018,17 +1018,18 @@ var TaskDetailPanel = {
     toast('Deleting task...', 'info');
     showLoading(true);
     var taskId = this.task.id;
+    if (typeof removeTaskFromDOM === 'function') removeTaskFromDOM(taskId);
+    TaskDetailPanel.close();
     google.script.run
       .withSuccessHandler(function() {
         showLoading(false);
         toast('Task deleted successfully', 'success');
-        TaskDetailPanel.close();
-        if (typeof loadBoard === 'function') loadBoard();
       })
       .withFailureHandler(function(error) {
         showLoading(false);
         console.error('Failed to delete task:', error);
-        toast('Failed to delete task. Please try again.', 'error');
+        toast('Failed to delete task. Please refresh.', 'error');
+        if (typeof loadBoard === 'function') loadBoard();
       })
       .removeTask(taskId);
   },
@@ -1400,6 +1401,19 @@ var TaskDetailPanel = {
     `;
   },
 
+  appendOptimisticDependency(depData, depType) {
+    var isPredecessor = (depType === 'predecessor');
+    var listId = isPredecessor ? 'taskDetailBlockedByList' : 'taskDetailBlockingList';
+    var listEl = document.getElementById(listId);
+    if (!listEl) return;
+
+    var emptyMsg = listEl.querySelector('.italic');
+    if (emptyMsg) listEl.innerHTML = '';
+
+    var cardHtml = this.renderDependencyCard(depData, isPredecessor ? 'predecessor' : 'successor');
+    listEl.insertAdjacentHTML('beforeend', cardHtml);
+  },
+
   openDependencyPicker(type) {
     if (!this.task || !this.task.id) return;
 
@@ -1524,13 +1538,21 @@ var TaskDetailPanel = {
 
     showLoading(true);
     google.script.run
-      .withSuccessHandler(() => {
+      .withSuccessHandler((result) => {
         showLoading(false);
         this.originalTask = JSON.parse(JSON.stringify(this.task));
-        toast('Task updated successfully', 'success');
-        if (typeof loadBoard === 'function') {
-          loadBoard();
+        if (State.tasks) {
+          var updated = State.tasks.map(t => t.id === this.task.id ? Object.assign({}, t, formData) : t);
+          State.setTasks(updated);
+          LocalCache.set('tasks', updated);
+          if (typeof CacheService !== 'undefined') {
+            CacheService.set('tasks', updated).catch(function() {});
+          }
         }
+        if (typeof loadBoard === 'function') {
+          loadBoard(true);
+        }
+        toast('Task updated successfully', 'success');
       })
       .withFailureHandler((error) => {
         showLoading(false);
@@ -1756,7 +1778,7 @@ var TaskDetailPanel = {
     const initials = this.getInitials(comment.userId);
     const authorName = this.getUserDisplayName(comment.userId);
     const timestamp = this.formatRelativeTime(comment.createdAt);
-    const formattedContent = comment.formattedContent || this.formatMentions(comment.content, comment.mentionedUsers);
+    const formattedContent = this.formatMentions(comment.content, comment.mentionedUsers);
 
     div.innerHTML = `
       <div class="comment-avatar" title="${escapeHtml(comment.userId)}">${initials}</div>

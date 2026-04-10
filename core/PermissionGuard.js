@@ -24,7 +24,11 @@ const PermissionGuard = {
     'admin:settings': 'Manage system settings',
     'admin:audit_log': 'View audit logs',
     'admin:automation': 'Manage automation rules',
-    'admin:webhooks': 'Manage webhooks'
+    'admin:webhooks': 'Manage webhooks',
+    'dataasset:create': 'Create data assets',
+    'dataasset:read': 'View data assets',
+    'dataasset:update': 'Update data assets',
+    'dataasset:delete': 'Delete data assets'
   },
 
   DEFAULT_ROLES: {
@@ -37,7 +41,8 @@ const PermissionGuard = {
         'project:create', 'project:read', 'project:update', 'project:delete', 'project:manage_members',
         'user:create', 'user:read', 'user:update', 'user:delete', 'user:manage_roles',
         'analytics:view:own', 'analytics:view:team', 'analytics:view:all',
-        'admin:settings', 'admin:audit_log', 'admin:automation', 'admin:webhooks'
+        'admin:settings', 'admin:audit_log', 'admin:automation', 'admin:webhooks',
+        'dataasset:create', 'dataasset:read', 'dataasset:update', 'dataasset:delete'
       ],
       isSystemRole: true
     },
@@ -48,7 +53,8 @@ const PermissionGuard = {
         'task:create', 'task:read:all', 'task:update:all', 'task:delete:own', 'task:assign',
         'project:create', 'project:read', 'project:update', 'project:manage_members',
         'user:read',
-        'analytics:view:own', 'analytics:view:team'
+        'analytics:view:own', 'analytics:view:team',
+        'dataasset:create', 'dataasset:read', 'dataasset:update'
       ],
       isSystemRole: true
     },
@@ -59,7 +65,8 @@ const PermissionGuard = {
         'task:create', 'task:read:own', 'task:read:all', 'task:update:own', 'task:delete:own',
         'project:create', 'project:read',
         'user:read',
-        'analytics:view:own'
+        'analytics:view:own',
+        'dataasset:read', 'dataasset:create'
       ],
       isSystemRole: true
     },
@@ -70,7 +77,8 @@ const PermissionGuard = {
         'task:read:all',
         'project:read',
         'user:read',
-        'analytics:view:own'
+        'analytics:view:own',
+        'dataasset:read'
       ],
       isSystemRole: true
     }
@@ -205,21 +213,24 @@ const PermissionGuard = {
           'task:create', 'task:read:all', 'task:update:all', 'task:delete:own', 'task:assign',
           'project:create', 'project:read', 'project:update', 'project:manage_members',
           'user:read',
-          'analytics:view:own', 'analytics:view:team'
+          'analytics:view:own', 'analytics:view:team',
+          'dataasset:create', 'dataasset:read', 'dataasset:update'
         ];
       case 'member':
         return [
           'task:create', 'task:read:own', 'task:read:all', 'task:update:own', 'task:delete:own',
           'project:create', 'project:read',
           'user:read',
-          'analytics:view:own'
+          'analytics:view:own',
+          'dataasset:read', 'dataasset:create'
         ];
       case 'viewer':
         return [
           'task:read:all',
           'project:read',
           'user:read',
-          'analytics:view:own'
+          'analytics:view:own',
+          'dataasset:read'
         ];
       default:
         return ['task:read:own', 'project:read'];

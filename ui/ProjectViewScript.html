@@ -10,6 +10,8 @@ var ProjectPage = {
   showAddRelease: false,
   showAddUpdate: false,
   _editSecondaryUsers: [],
+  filterStatus: '',
+  searchTerm: '',
 
   _settingsSchema: {
     portfolio: [
@@ -88,7 +90,19 @@ var ProjectPage = {
           toast(result.error || 'Failed to load projects', 'error');
           return;
         }
-        this.projects = result.projects || [];
+        var allProjects = result.projects || [];
+        if (typeof State !== 'undefined' && State.user && State.user.role !== 'admin') {
+          var email = State.user.email;
+          allProjects = allProjects.filter(function(p) {
+            if (p.ownerId === email) return true;
+            try {
+              var s = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {});
+              if (Array.isArray(s.secondaryUsers) && s.secondaryUsers.indexOf(email) !== -1) return true;
+            } catch (e) {}
+            return false;
+          });
+        }
+        this.projects = allProjects;
         if (typeof State !== 'undefined' && State.setProjects) {
           State.setProjects(this.projects);
         }
@@ -125,31 +139,73 @@ var ProjectPage = {
     this.renderProjectDetail();
   },
 
-  renderProjectList() {
+  _getFilteredProjects() {
+    var self = this;
+    return this.projects.filter(function(p) {
+      var matchStatus = !self.filterStatus || (p.status || '').toLowerCase() === self.filterStatus;
+      var term = (self.searchTerm || '').toLowerCase();
+      var matchSearch = !term ||
+        (p.name || '').toLowerCase().includes(term) ||
+        (p.ownerId || '').toLowerCase().includes(term);
+      return matchStatus && matchSearch;
+    });
+  },
+
+  _ensureProjectSearchBar() {
     var container = document.getElementById('projectListContainer');
     if (!container) return;
-    if (!this.projects.length) {
-      container.innerHTML = '<div class="flex flex-col items-center justify-center h-32 text-gray-400"><i class="fas fa-folder text-2xl mb-2 text-gray-300"></i><p class="text-sm">No projects yet</p></div>';
+    if (!document.getElementById('projSearchBar')) {
+      var bar = document.createElement('div');
+      bar.id = 'projSearchBar';
+      bar.className = 'p-3 border-b border-gray-100';
+      bar.innerHTML = '<input type="text" id="projSearchInput" placeholder="Search projects..." ' +
+        'class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />';
+      var list = document.createElement('div');
+      list.id = 'projListItems';
+      container.innerHTML = '';
+      container.appendChild(bar);
+      container.appendChild(list);
+      document.getElementById('projSearchInput').addEventListener('input', function() {
+        ProjectPage.searchTerm = this.value;
+        ProjectPage._renderProjectItems();
+      });
+    }
+    var inp = document.getElementById('projSearchInput');
+    if (inp && inp.value !== (this.searchTerm || '')) inp.value = this.searchTerm || '';
+  },
+
+  _renderProjectItems() {
+    var listEl = document.getElementById('projListItems');
+    if (!listEl) return;
+    var filtered = this._getFilteredProjects();
+    if (!filtered.length) {
+      listEl.innerHTML = '<div class="flex flex-col items-center justify-center h-32 text-gray-400"><i class="fas fa-folder text-2xl mb-2 text-gray-300"></i><p class="text-sm">No projects found</p></div>';
       return;
     }
-    container.innerHTML = this.projects.map(p => {
-      var isActive = this.selectedProject && this.selectedProject.id === p.id;
-      var statusDot = this._statusDotColor(p.status);
+    var self = this;
+    listEl.innerHTML = filtered.map(function(p) {
+      var isActive = self.selectedProject && self.selectedProject.id === p.id;
+      var statusDot = self._statusDotColor(p.status);
       var taskCount = parseInt(p.taskCount) || 0;
-      return `<div onclick="_pc('ProjectPage','selectProject','${escapeHtml(p.id)}')" class="p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 transition-colors ${isActive ? 'bg-gray-50 border-l-4 border-l-gray-900' : ''}">
-        <div class="flex items-start justify-between gap-2">
-          <div class="flex items-center gap-2 min-w-0">
-            <span class="w-2 h-2 rounded-full flex-shrink-0 mt-1 ${statusDot}"></span>
-            <span class="text-sm font-medium text-gray-900 truncate">${escapeHtml(p.name)}</span>
-          </div>
-          ${p.version ? `<span class="text-xs bg-gray-900 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">${escapeHtml(p.version)}</span>` : ''}
-        </div>
-        <div class="mt-1 pl-4 flex items-center justify-between">
-          <span class="text-xs text-gray-400">${taskCount} task${taskCount !== 1 ? 's' : ''}</span>
-          ${p.status ? `<span class="text-xs text-gray-400 capitalize">${escapeHtml(p.status)}</span>` : ''}
-        </div>
-      </div>`;
+      return '<div onclick="_pc(\'ProjectPage\',\'selectProject\',\'' + escapeHtml(p.id) + '\')" class="p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 transition-colors ' +
+        (isActive ? 'bg-gray-50 border-l-4 border-l-gray-900' : '') + '">' +
+        '<div class="flex items-start justify-between gap-2">' +
+        '<div class="flex items-center gap-2 min-w-0">' +
+        '<span class="w-2 h-2 rounded-full flex-shrink-0 mt-1 ' + statusDot + '"></span>' +
+        '<span class="text-sm font-medium text-gray-900 truncate">' + escapeHtml(p.name) + '</span>' +
+        '</div>' +
+        (p.version ? '<span class="text-xs bg-gray-900 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">' + escapeHtml(p.version) + '</span>' : '') +
+        '</div>' +
+        '<div class="mt-1 pl-4 flex items-center justify-between">' +
+        '<span class="text-xs text-gray-400">' + taskCount + ' task' + (taskCount !== 1 ? 's' : '') + '</span>' +
+        (p.status ? '<span class="text-xs text-gray-400 capitalize">' + escapeHtml(p.status) + '</span>' : '') +
+        '</div></div>';
     }).join('');
+  },
+
+  renderProjectList() {
+    this._ensureProjectSearchBar();
+    this._renderProjectItems();
   },
 
   _statusDotColor(status) {
@@ -793,6 +849,62 @@ var ProjectPage = {
       var d = new Date(dateStr);
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     } catch (e) { return dateStr; }
+  },
+
+  importFromWorklog() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        if (!result.workbookId) {
+          showLoading(false);
+          this.promptForProjectsWorkbookId();
+          return;
+        }
+        this.runProjectImport(result.workbookId);
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to get workbook ID:', error);
+        showLoading(false);
+        this.promptForProjectsWorkbookId();
+      })
+      .getStoredProjectsWorkbookId();
+  },
+
+  promptForProjectsWorkbookId() {
+    var workbookId = prompt('Enter the Projects workbook ID (from the Google Sheets URL):');
+    if (!workbookId || !workbookId.trim()) return;
+    workbookId = workbookId.trim();
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(() => {
+        this.runProjectImport(workbookId);
+      })
+      .withFailureHandler((error) => {
+        console.error('Failed to save workbook ID:', error);
+        toast('Failed to save workbook ID', 'error');
+        showLoading(false);
+      })
+      .saveProjectsWorkbookId(workbookId);
+  },
+
+  runProjectImport(workbookId) {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler((result) => {
+        showLoading(false);
+        if (!result.success) {
+          toast(result.error || 'Import failed', 'error');
+          return;
+        }
+        toast('Imported ' + result.imported + ' projects, skipped ' + result.skipped + ' duplicates', 'success');
+        this.loadProjects();
+      })
+      .withFailureHandler((error) => {
+        showLoading(false);
+        console.error('Import projects failed:', error);
+        toast('Import failed: ' + error.message, 'error');
+      })
+      .importWorkLogProjects(workbookId);
   }
 };
 window.ProjectPage = ProjectPage;
