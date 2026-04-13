@@ -105,13 +105,19 @@ autocomplete="off"
 <label for="taskEditStartDate" class="form-label">
 <i class="far fa-calendar text-gray-400 mr-1"></i> Start Date
 </label>
-<input type="date" id="taskEditStartDate" class="form-input" onchange="TaskEditModal.autoCalcStoryPoints()" />
+<div class="flex items-center gap-2">
+<input type="date" id="taskEditStartDate" class="form-input flex-1" onchange="TaskEditModal.autoCalcStoryPoints()" />
+<button type="button" id="tbdStartDate" onclick="TaskEditModal.toggleTbd('start')" class="px-2 py-1.5 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors" title="Set as TBD">TBD</button>
+</div>
 </div>
 <div class="form-field">
 <label for="taskEditDueDate" class="form-label">
 <i class="far fa-calendar-check text-gray-400 mr-1"></i> Due Date
 </label>
-<input type="date" id="taskEditDueDate" class="form-input" onchange="TaskEditModal.autoCalcStoryPoints()" />
+<div class="flex items-center gap-2">
+<input type="date" id="taskEditDueDate" class="form-input flex-1" onchange="TaskEditModal.autoCalcStoryPoints()" />
+<button type="button" id="tbdDueDate" onclick="TaskEditModal.toggleTbd('due')" class="px-2 py-1.5 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors" title="Set as TBD">TBD</button>
+</div>
 </div>
 </div>
 <div class="grid grid-cols-3 gap-4">
@@ -595,9 +601,40 @@ var TaskEditModal = {
   mode: 'edit',
   selectedWatchers: [],
 
+  toggleTbd(which) {
+    var inputId = which === 'start' ? 'taskEditStartDate' : 'taskEditDueDate';
+    var btnId = which === 'start' ? 'tbdStartDate' : 'tbdDueDate';
+    var input = document.getElementById(inputId);
+    var btn = document.getElementById(btnId);
+    if (!input || !btn) return;
+    if (input.dataset.tbd === 'true') {
+      input.dataset.tbd = '';
+      input.disabled = false;
+      input.value = '';
+      btn.classList.remove('bg-gray-900', 'text-white', 'border-gray-900');
+      btn.classList.add('border-gray-300', 'text-gray-500');
+    } else {
+      input.dataset.tbd = 'true';
+      input.disabled = true;
+      input.value = '';
+      btn.classList.add('bg-gray-900', 'text-white', 'border-gray-900');
+      btn.classList.remove('border-gray-300', 'text-gray-500');
+    }
+    this.autoCalcStoryPoints();
+    this.hasUnsavedChanges = true;
+  },
+
   autoCalcStoryPoints() {
-    var startDate = document.getElementById('taskEditStartDate')?.value;
-    var dueDate = document.getElementById('taskEditDueDate')?.value;
+    var startEl = document.getElementById('taskEditStartDate');
+    var dueEl = document.getElementById('taskEditDueDate');
+    if (!startEl || !dueEl) return;
+    if (startEl.dataset.tbd === 'true' || dueEl.dataset.tbd === 'true') {
+      this.setInputValue('taskEditStoryPoints', '0');
+      this.setInputValue('taskEditEstimatedHrs', '0');
+      return;
+    }
+    var startDate = startEl.value;
+    var dueDate = dueEl.value;
     if (!startDate || !dueDate) return;
     var start = new Date(startDate);
     var end = new Date(dueDate);
@@ -735,6 +772,7 @@ var TaskEditModal = {
   },
 
   loadTask(taskId) {
+    this._warnDuplicateCacheIds(taskId);
     const cachedTask = this.getTaskFromCache(taskId);
     if (cachedTask) {
       this.handleTaskLoaded(cachedTask);
@@ -787,6 +825,14 @@ var TaskEditModal = {
     return null;
   },
 
+  _warnDuplicateCacheIds(taskId) {
+    if (!State.tasks || !Array.isArray(State.tasks)) return;
+    var matches = State.tasks.filter(t => t.id === taskId);
+    if (matches.length > 1) {
+      console.error('DUPLICATE TASK IN CLIENT CACHE: ' + taskId + ' found ' + matches.length + ' times');
+    }
+  },
+
   handleTaskLoaded(task) {
     this.task = task;
     this.originalTask = JSON.parse(JSON.stringify(task));
@@ -814,8 +860,32 @@ var TaskEditModal = {
     this.setInputValue('taskEditAssignee', task.assignee || '');
     this.selectedWatchers = task.watchers ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean) : [];
     this.renderWatcherTags();
-    this.setInputValue('taskEditStartDate', task.startDate || '');
-    this.setInputValue('taskEditDueDate', task.dueDate || '');
+    if (task.startDate === 'TBD') {
+      this.setInputValue('taskEditStartDate', '');
+      var startEl = document.getElementById('taskEditStartDate');
+      if (startEl) { startEl.disabled = true; startEl.dataset.tbd = 'true'; }
+      var startBtn = document.getElementById('tbdStartDate');
+      if (startBtn) { startBtn.classList.add('bg-gray-900', 'text-white', 'border-gray-900'); startBtn.classList.remove('border-gray-300', 'text-gray-500'); }
+    } else {
+      this.setInputValue('taskEditStartDate', task.startDate || '');
+      var startEl = document.getElementById('taskEditStartDate');
+      if (startEl) { startEl.disabled = false; startEl.dataset.tbd = ''; }
+      var startBtn = document.getElementById('tbdStartDate');
+      if (startBtn) { startBtn.classList.remove('bg-gray-900', 'text-white', 'border-gray-900'); startBtn.classList.add('border-gray-300', 'text-gray-500'); }
+    }
+    if (task.dueDate === 'TBD') {
+      this.setInputValue('taskEditDueDate', '');
+      var dueEl = document.getElementById('taskEditDueDate');
+      if (dueEl) { dueEl.disabled = true; dueEl.dataset.tbd = 'true'; }
+      var dueBtn = document.getElementById('tbdDueDate');
+      if (dueBtn) { dueBtn.classList.add('bg-gray-900', 'text-white', 'border-gray-900'); dueBtn.classList.remove('border-gray-300', 'text-gray-500'); }
+    } else {
+      this.setInputValue('taskEditDueDate', task.dueDate || '');
+      var dueEl = document.getElementById('taskEditDueDate');
+      if (dueEl) { dueEl.disabled = false; dueEl.dataset.tbd = ''; }
+      var dueBtn = document.getElementById('tbdDueDate');
+      if (dueBtn) { dueBtn.classList.remove('bg-gray-900', 'text-white', 'border-gray-900'); dueBtn.classList.add('border-gray-300', 'text-gray-500'); }
+    }
     this.setInputValue('taskEditStoryPoints', task.storyPoints || '');
     this.setInputValue('taskEditEstimatedHrs', task.estimatedHrs || '');
     this.setInputValue('taskEditActualHrs', task.actualHrs || '');
@@ -1219,8 +1289,8 @@ var TaskEditModal = {
       projectId: this.getInputValue('taskEditProject'),
       assignee: this.getInputValue('taskEditAssignee'),
       watchers: this.selectedWatchers.join(','),
-      startDate: this.getInputValue('taskEditStartDate'),
-      dueDate: this.getInputValue('taskEditDueDate'),
+      startDate: document.getElementById('taskEditStartDate')?.dataset.tbd === 'true' ? 'TBD' : this.getInputValue('taskEditStartDate'),
+      dueDate: document.getElementById('taskEditDueDate')?.dataset.tbd === 'true' ? 'TBD' : this.getInputValue('taskEditDueDate'),
       storyPoints: parseInt(this.getInputValue('taskEditStoryPoints')) || 0,
       estimatedHrs: parseFloat(this.getInputValue('taskEditEstimatedHrs')) || 0,
       actualHrs: parseFloat(this.getInputValue('taskEditActualHrs')) || 0,

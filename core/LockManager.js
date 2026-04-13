@@ -178,31 +178,13 @@ const LockManager = {
   },
 
   invalidateTaskCaches(taskId) {
-    try {
-      const scriptCache = CacheService.getScriptCache();
-      scriptCache.remove('ALL_TASKS_CACHE');
-      if (typeof RequestCache !== 'undefined') {
-        RequestCache.clear();
-      }
-    } catch (error) {
-      console.error('Cache invalidation failed:', error);
-    }
+    invalidateCache('task', taskId, 'update');
   },
 
   invalidateAllCaches() {
-    try {
-      const scriptCache = CacheService.getScriptCache();
-      scriptCache.removeAll([
-        'ALL_TASKS_CACHE',
-        'ALL_PROJECTS_CACHE',
-        'ACTIVE_USERS_CACHE'
-      ]);
-      if (typeof RequestCache !== 'undefined') {
-        RequestCache.clear();
-      }
-    } catch (error) {
-      console.error('Full cache invalidation failed:', error);
-    }
+    invalidateCache('task', null, 'update');
+    invalidateCache('project', null, 'update');
+    invalidateCache('user', null, 'update');
   },
 
   putChunked(key, jsonStr, ttl) {
@@ -256,23 +238,16 @@ const LockManager = {
       }
     }
 
-    var scriptCached = this.getChunked(key);
-
-    if (scriptCached) {
-      try {
-        var data = JSON.parse(scriptCached);
-        if (typeof RequestCache !== 'undefined') {
-          RequestCache[key] = data;
-        }
-        return data;
-      } catch (e) {
+    var cached = VersionedCache.get(key);
+    if (cached !== null) {
+      if (typeof RequestCache !== 'undefined') {
+        RequestCache[key] = cached;
       }
+      return cached;
     }
 
     var data = fetchFn();
-    var jsonData = JSON.stringify(data);
-
-    this.putChunked(key, jsonData, scriptTTL);
+    VersionedCache.put(key, data, scriptTTL);
 
     if (typeof RequestCache !== 'undefined') {
       RequestCache[key] = data;

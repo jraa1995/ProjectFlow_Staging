@@ -288,6 +288,8 @@
     ${formatDate(task.milestoneDate)}
     ${task.milestoneType ? `<span class="ml-1 opacity-75">(${task.milestoneType.replace(/-/g, ' ')})</span>` : ''}
     </div>`
+    : task.dueDate === 'TBD'
+    ? `<div class="text-xs mb-2"><span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 font-medium">TBD</span></div>`
     : task.dueDate
     ? `<div class="text-xs text-gray-500 mb-2"><i class="far fa-calendar mr-1"></i>${formatDate(
       task.dueDate
@@ -915,9 +917,12 @@
 
     board.addEventListener("drop", (e) => {
       e.preventDefault();
+      const card = e.target.closest(".task-card");
       const list = e.target.closest(".task-list");
       const column = e.target.closest(".board-column");
-      if (list) {
+      if (card) {
+        handleDropOnCard(e);
+      } else if (list) {
         handleDrop(e);
       } else if (column) {
         handleDropOnColumn(e);
@@ -1131,25 +1136,10 @@
     e.stopPropagation();
     e.currentTarget.classList.remove("drag-over");
     const taskId = e.dataTransfer.getData("text/plain");
-    let newStatus = e.currentTarget.dataset.status;
-    if (!newStatus) {
-      const taskList = e.target.closest('.task-list[data-status]');
-      if (taskList) {
-        newStatus = taskList.dataset.status;
-      }
-    }
-    if (!newStatus) {
-      const boardColumn = e.target.closest('.board-column[data-status]');
-      if (boardColumn) {
-        newStatus = boardColumn.dataset.status;
-      }
-    }
-    if (!newStatus) {
-      const taskCard = e.target.closest('.task-card[data-status]');
-      if (taskCard) {
-        newStatus = taskCard.dataset.status;
-      }
-    }
+    let newStatus = e.currentTarget.dataset.status
+      || e.target.closest('.task-list[data-status]')?.dataset.status
+      || e.target.closest('.board-column[data-status]')?.dataset.status
+      || e.target.closest('.task-card[data-status]')?.dataset.status;
     if (!taskId || !newStatus) {
       console.error('handleDrop: Missing taskId or newStatus', {
         taskId,
@@ -1170,6 +1160,14 @@
     }
     const previousStatus = State.draggedTask?.dataset.status;
     const statusName = getStatusName(newStatus);
+    if (State.tasks) {
+      var taskExists = State.tasks.some(t => t.id === taskId);
+      if (!taskExists) {
+        console.error('handleDrop: task not found in State:', taskId);
+        toast('Task not found', 'error');
+        return;
+      }
+    }
     OptimisticUI.apply(
       'moveTask', {
         taskId,

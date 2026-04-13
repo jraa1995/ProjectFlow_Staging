@@ -71,7 +71,7 @@ function deleteExistingDataAsset(assetId) {
 function invalidateDataAssetCache() {
   try {
     CacheService.getScriptCache().remove('ALL_DATA_ASSETS_CACHE');
-    CacheService.getScriptCache().remove('BATCH_DATA_CACHE');
+    invalidateCache('dataAsset', null, 'update');
   } catch (e) {}
 }
 

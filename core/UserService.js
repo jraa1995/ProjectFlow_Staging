@@ -1,39 +1,16 @@
 function getCurrentUserEmailOptimized() {
   try {
-    // Primary: use GAS built-in user identification (per-user, no crossover)
-    const activeUser = Session.getActiveUser();
+    var activeUser = Session.getActiveUser();
     if (activeUser) {
-      const email = activeUser.getEmail();
+      var email = activeUser.getEmail();
       if (email) {
         return email.toLowerCase().trim();
       }
     }
-
-    // Fallback: check user-specific session in cache (keyed by session token)
-    const cache = CacheService.getScriptCache();
-    const sessionEmail = cache.get('ACTIVE_SESSION_EMAIL_' + Session.getTemporaryActiveUserKey());
-    if (sessionEmail) {
-      return sessionEmail;
-    }
-
     return null;
   } catch (error) {
     console.error('getCurrentUserEmailOptimized failed:', error);
     return null;
-  }
-}
-
-function setCurrentUserEmailOptimized(email) {
-  try {
-    // Store session keyed by temporary user key (per-user, no crossover)
-    const userKey = Session.getTemporaryActiveUserKey();
-    if (userKey) {
-      const cache = CacheService.getScriptCache();
-      const sessionDuration = 24 * 60 * 60; // 24 hours in seconds
-      cache.put('ACTIVE_SESSION_EMAIL_' + userKey, email.toLowerCase().trim(), sessionDuration);
-    }
-  } catch (error) {
-    console.error('setCurrentUserEmailOptimized failed:', error);
   }
 }
 
@@ -46,8 +23,7 @@ function sanitizeUserForClient(user) {
     active: user.active,
     avatar: user.avatar,
     organizationId: user.organizationId,
-    teamId: user.teamId,
-    mfaEnabled: user.mfaEnabled || false
+    teamId: user.teamId
   };
 }
 

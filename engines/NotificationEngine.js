@@ -290,6 +290,54 @@ class NotificationEngine {
         </div>
         `
       },
+      task_updated: {
+        subject: 'Task updated in COLONY: {{taskTitle}}',
+        body: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h2 style="color: #1e293b; margin: 0;">Task Updated</h2>
+        </div>
+        <div style="background: white; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h3 style="color: #3b82f6; margin: 0 0 10px 0;">{{taskTitle}}</h3>
+        <p>{{message}}</p>
+        <p><strong>Status:</strong> {{taskStatus}}</p>
+        <p><strong>Priority:</strong> {{taskPriority}}</p>
+        {{#reason}}<p style="font-size: 12px; color: #64748b;">{{reason}}</p>{{/reason}}
+        <p>
+        <a href="{{taskUrl}}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block;">
+        View Task
+        </a>
+        </p>
+        </div>
+        <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #64748b;">
+        <p>This notification was sent by COLONY. To manage your notification preferences, visit your account settings.</p>
+        </div>
+        </div>
+        `
+      },
+      comment_added: {
+        subject: 'New comment on task in COLONY: {{taskTitle}}',
+        body: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h2 style="color: #1e293b; margin: 0;">New Comment</h2>
+        </div>
+        <div style="background: white; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h3 style="color: #3b82f6; margin: 0 0 10px 0;">{{taskTitle}}</h3>
+        <p>{{message}}</p>
+        {{#reason}}<p style="font-size: 12px; color: #64748b;">{{reason}}</p>{{/reason}}
+        <p>
+        <a href="{{taskUrl}}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block;">
+        View Task
+        </a>
+        </p>
+        </div>
+        <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #64748b;">
+        <p>This notification was sent by COLONY. To manage your notification preferences, visit your account settings.</p>
+        </div>
+        </div>
+        `
+      },
       default: {
         subject: 'COLONY Notification',
         body: `
@@ -342,6 +390,7 @@ class NotificationEngine {
       context.userName = user.name;
       context.userEmail = user.email;
     }
+    context.reason = notification.reason || '';
     return context;
   }
 

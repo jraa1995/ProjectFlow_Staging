@@ -29,6 +29,49 @@
     });
   }
 
+  var _hydratedViews = {};
+  var _hydratedScripts = {};
+
+  function hydrateViewHtml(viewName) {
+    if (_hydratedViews[viewName]) return;
+    var tmpl = document.querySelector('[data-view-html="' + viewName + '"]');
+    var container = document.querySelector('[data-lazy-view="' + viewName + '"]');
+    if (tmpl && container) {
+      container.innerHTML = tmpl.textContent;
+      _hydratedViews[viewName] = true;
+    }
+  }
+
+  function hydrateScript(scriptName) {
+    if (_hydratedScripts[scriptName]) return;
+    var tmpl = document.querySelector('[data-deferred="' + scriptName + '"]');
+    if (tmpl) {
+      var raw = tmpl.textContent;
+      var trimmed = raw.trim();
+      if (trimmed.substring(0, 7) === '<script') {
+        var content = raw.replace(/<\/?script[^>]*>/gi, '');
+        var s = document.createElement('script');
+        s.textContent = content;
+        document.body.appendChild(s);
+      } else {
+        var scriptIdx = raw.indexOf('<script');
+        if (scriptIdx !== -1) {
+          var htmlPart = raw.substring(0, scriptIdx);
+          var jsPart = raw.substring(scriptIdx).replace(/<\/?script[^>]*>/gi, '');
+          if (htmlPart.trim()) {
+            var wrapper = document.createElement('div');
+            wrapper.innerHTML = htmlPart;
+            while (wrapper.firstChild) document.body.appendChild(wrapper.firstChild);
+          }
+          var s = document.createElement('script');
+          s.textContent = jsPart;
+          document.body.appendChild(s);
+        }
+      }
+      _hydratedScripts[scriptName] = true;
+    }
+  }
+
   async function loadAllData(forceRefresh = false) {
     if (State.loading) {
       return new Promise((resolve) => {
@@ -214,6 +257,28 @@
     return await loadAllData(true);
   }
 
+  var _lofiPlaying = false;
+  function toggleLofi() {
+    var btn = document.getElementById('lofiToggle');
+    var player = document.getElementById('lofiPlayer');
+    var icon = btn.querySelector('i');
+    if (_lofiPlaying) {
+      player.src = '';
+      player.style.display = 'none';
+      icon.className = 'fas fa-play';
+      btn.classList.remove('text-green-500');
+      btn.classList.add('text-gray-400');
+      _lofiPlaying = false;
+    } else {
+      player.src = 'https://www.youtube.com/embed/jfKfPfyJRdk?autoplay=1&mute=0';
+      player.style.display = 'none';
+      icon.className = 'fas fa-pause';
+      btn.classList.remove('text-gray-400');
+      btn.classList.add('text-green-500');
+      _lofiPlaying = true;
+    }
+  }
+
   async function refreshCurrentView() {
     await refreshAllData();
     switchView(State.currentView || 'my');
@@ -329,14 +394,15 @@
 
   var ViewRegistry = {
     home: { container: 'homeViewContainer', page: 'HomePage', title: 'Home' },
-    analytics: { container: 'analyticsView', loader: 'loadAnalyticsData', title: 'Analytics Dashboard', requiredRole: 'manager' },
+    analytics: { container: 'analyticsView', loader: 'loadAnalyticsData', title: 'Analytics Dashboard', requiredRole: 'manager', scripts: ['AnalyticsModule'] },
     funnel: { container: 'funnelView', page: 'FunnelPage', title: 'Ticket Funnel', requiredRole: 'manager' },
     list: { container: 'listView', page: 'ListViewPage', title: 'List View' },
-    projects: { container: 'projectsView', page: 'ProjectPage', title: 'Projects' },
-    dataassets: { container: 'dataAssetsView', page: 'DataAssetPage', title: 'Data Assets' },
+    projects: { container: 'projectsView', page: 'ProjectPage', title: 'Projects', scripts: ['ProjectViewScript'] },
+    dataassets: { container: 'dataAssetsView', page: 'DataAssetPage', title: 'Data Assets', scripts: ['DataAssetViewScript'] },
     surge: { container: 'surgeView', page: 'SurgePage', title: 'Pick Ups / Surge' },
-    master: { container: 'boardView', loader: 'loadBoard', title: 'Master Board', requiredRole: 'manager' },
-    my: { container: 'boardView', loader: 'loadBoard', title: 'My Board' }
+    master: { container: 'boardView', loader: 'loadBoard', title: 'Master Board', requiredRole: 'manager', scripts: ['BoardView'] },
+    my: { container: 'boardView', loader: 'loadBoard', title: 'My Board', scripts: ['BoardView'] },
+    'access-requests': { container: 'access-requestsView', loader: 'loadAccessRequests', title: 'Access Requests', requiredRole: 'admin' }
   };
 
   function switchView(view) {
@@ -369,6 +435,8 @@
       return;
     }
     container.classList.remove("hidden");
+    if (entry.viewHtml) hydrateViewHtml(entry.viewHtml);
+    if (entry.scripts) entry.scripts.forEach(hydrateScript);
     if (entry.page) {
       if (typeof window[entry.page] !== 'undefined') {
         window[entry.page].init();
@@ -549,11 +617,252 @@
     }, delay + 3500);
   }
 
+  var _authSpinnerInterval = null;
+
   function init() {
-    LoginModal.show();
+    var cachedSession = null;
+    try {
+      var raw = localStorage.getItem('colony_session');
+      if (raw) cachedSession = JSON.parse(raw);
+    } catch(e) {}
+    if (cachedSession && cachedSession.user && cachedSession.data && cachedSession.timestamp) {
+      var age = Date.now() - cachedSession.timestamp;
+      if (age < 3600000) {
+        runSplashSequence(function() {
+          handleInitialData(cachedSession.data);
+          State.initialLoadComplete = true;
+          google.script.run
+            .withSuccessHandler(function(result) {
+              if (!result || !result.authenticated) {
+                localStorage.removeItem('colony_session');
+                showAuthenticateScreen();
+              }
+            })
+            .withFailureHandler(function() {})
+            .getSessionUser();
+        });
+        return;
+      }
+    }
     runSplashSequence(function() {
-      State.initialLoadComplete = true;
+      showAuthenticateScreen();
     });
+  }
+
+  function showAuthenticateScreen() {
+    var page = $('loginPage');
+    if (page) {
+      page.classList.remove('hidden');
+      page.style.opacity = '1';
+    }
+    var card = $('loginCard');
+    if (card) {
+      card.innerHTML = '<div class="text-center py-8">' +
+        '<div class="flex items-center justify-center gap-3 mb-6">' +
+        '<svg class="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-auth" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-auth)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-auth)" fill="none" opacity="0.4"/></svg>' +
+        '<span class="font-bold text-2xl text-white tracking-wide">COLONY</span>' +
+        '</div>' +
+        '<p class="text-gray-400 text-sm mb-6">Sign in with your Google Workspace account</p>' +
+        '<button id="authenticateBtn" onclick="handleAuthenticate()" class="w-full py-3 bg-gray-500 hover:bg-gray-400 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors">' +
+        '<i class="fas fa-shield-alt"></i>' +
+        '<span id="authenticateBtnText">Authenticate</span>' +
+        '</button>' +
+        '</div>';
+    }
+    startLoginAnimation();
+  }
+
+  function handleAuthenticate() {
+    var btn = $('authenticateBtn');
+    var btnText = $('authenticateBtnText');
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = 'Authenticating...';
+
+    var card = $('loginCard');
+    if (card) {
+      card.innerHTML = '<div id="authSpinnerContent" class="text-center py-12">' +
+        '<div class="mb-6"><i class="fas fa-circle-notch fa-spin text-4xl text-gray-400"></i></div>' +
+        '<p id="authSpinnerMessage" class="text-gray-400 text-sm">Authenticating user...</p>' +
+        '</div>';
+    }
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result.authenticated) {
+          var verbs = [
+            'Waking up the hive...',
+            'Rounding up your tasks...',
+            'Polishing the dashboard...',
+            'Herding the backlog...',
+            'Warming up the engines...',
+            'Summoning your projects...',
+            'Dusting off the board...',
+            'Brewing the data...'
+          ];
+          var shuffled = verbs.sort(function() { return 0.5 - Math.random(); });
+          updateAuthSpinnerMessage(shuffled[0]);
+          setTimeout(function() {
+            updateAuthSpinnerMessage(shuffled[1]);
+          }, 700);
+          setTimeout(function() {
+            updateAuthSpinnerMessage(shuffled[2]);
+          }, 1400);
+          setTimeout(function() {
+            updateAuthSpinnerMessage('You\'re in!');
+          }, 2100);
+          setTimeout(function() {
+            hideAuthScreen();
+            handleInitialData(result);
+            State.initialLoadComplete = true;
+            try { localStorage.setItem('colony_session', JSON.stringify({ user: result.user, data: result, timestamp: Date.now() })); } catch(e) {}
+            toast('Welcome back, ' + (result.user.name || result.user.email) + '!', 'success');
+          }, 2200);
+        } else if (result.reason === 'disabled') {
+          showAuthMessage('Account Disabled', 'Your account has been disabled. Contact your administrator for assistance.', 'fa-ban');
+        } else if (result.reason === 'no_account') {
+          showAccessRequestScreen(result.email);
+        } else {
+          showAuthMessage('Not Authorized', 'You are not authorized to access this application. Contact your administrator.', 'fa-lock');
+        }
+      })
+      .withFailureHandler(function(error) {
+        handleInitError(error);
+      })
+      .getSessionUser();
+  }
+
+  function updateAuthSpinnerMessage(msg) {
+    var el = $('authSpinnerMessage');
+    if (el) el.textContent = msg;
+  }
+
+  function hideAuthScreen() {
+    if (_authSpinnerInterval) {
+      clearInterval(_authSpinnerInterval);
+      _authSpinnerInterval = null;
+    }
+    var page = $('loginPage');
+    if (page) {
+      page.classList.add('login-exit');
+      setTimeout(function() {
+        page.classList.add('hidden');
+        page.classList.remove('login-exit');
+        stopLoginAnimation();
+      }, 400);
+    }
+  }
+
+  function showAuthMessage(title, message, icon) {
+    var page = $('loginPage');
+    if (page) {
+      page.classList.remove('hidden');
+      page.style.opacity = '1';
+    }
+    var card = $('loginCard');
+    if (card) {
+      card.innerHTML = '<div class="text-center py-8">' +
+        '<div class="mb-4"><i class="fas ' + icon + ' text-4xl text-gray-500"></i></div>' +
+        '<h3 class="text-xl font-semibold text-white mb-2">' + title + '</h3>' +
+        '<p class="text-gray-400 text-sm">' + message + '</p>' +
+        '</div>';
+    }
+    startLoginAnimation();
+  }
+
+  function showAccessRequestScreen(email) {
+    var card = $('loginCard');
+    if (card) {
+      card.innerHTML = '<div class="text-center py-8">' +
+        '<div class="flex items-center justify-center gap-3 mb-6">' +
+        '<svg class="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-ar" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-ar)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-ar)" fill="none" opacity="0.4"/></svg>' +
+        '<span class="font-bold text-2xl text-white tracking-wide">COLONY</span>' +
+        '</div>' +
+        '<p class="text-gray-400 text-sm mb-2">Signed in as</p>' +
+        '<p class="text-white font-medium mb-6">' + (email || '') + '</p>' +
+        '<p class="text-gray-400 text-sm mb-6">You don\'t have access to this application yet.</p>' +
+        '<button id="requestAccessBtn" onclick="handleRequestAccess()" class="w-full py-3 bg-gray-500 hover:bg-gray-400 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors">' +
+        '<i class="fas fa-paper-plane"></i>' +
+        '<span id="requestAccessBtnText">Request Access</span>' +
+        '</button>' +
+        '<div id="requestAccessResult" class="mt-4 hidden"></div>' +
+        '</div>';
+    }
+  }
+
+  function handleRequestAccess() {
+    var btn = $('requestAccessBtn');
+    var btnText = $('requestAccessBtnText');
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = 'Submitting...';
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.textContent = 'Request Access';
+        var resultEl = $('requestAccessResult');
+        if (resultEl) {
+          resultEl.classList.remove('hidden');
+          if (result.success) {
+            if (btn) btn.classList.add('hidden');
+            resultEl.innerHTML = '<div class="p-3 rounded-lg text-sm" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);color:#6ee7b7;">' +
+              '<i class="fas fa-check-circle mr-1"></i> ' + (result.message || 'Request submitted.') +
+              '</div>';
+          } else {
+            resultEl.innerHTML = '<div class="p-3 rounded-lg text-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">' +
+              '<i class="fas fa-exclamation-circle mr-1"></i> ' + (result.error || 'Failed to submit request.') +
+              '</div>';
+          }
+        }
+      })
+      .withFailureHandler(function(error) {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.textContent = 'Request Access';
+        var resultEl = $('requestAccessResult');
+        if (resultEl) {
+          resultEl.classList.remove('hidden');
+          resultEl.innerHTML = '<div class="p-3 rounded-lg text-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">' +
+            '<i class="fas fa-exclamation-circle mr-1"></i> ' + (error.message || 'Failed to submit request.') +
+            '</div>';
+        }
+      })
+      .requestAccess();
+  }
+
+  function updateSidebarDate() {
+    const el = $('sidebarDate');
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    }) + ' ' + now.toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit'
+    });
+  }
+
+  function updateStats() {
+    if (!State.board || !State.board.stats) return;
+    const stats = State.board.stats;
+    const elements = {
+      statTotal: stats.total,
+      statCompleted: stats.completed,
+      statProgress: stats.progress + "%",
+      statDueSoon: stats.dueSoon,
+      statOverdue: stats.overdue,
+    };
+    Object.entries(elements).forEach(([id, value]) => {
+      const el = $(id);
+      if (el) el.textContent = value;
+    });
+  }
+
+  function updateProjectNav() {
+    var label = $('projectSelectorLabel');
+    if (!label || !State.projects) return;
+    if (!State.projectFilter) {
+      label.textContent = 'All Projects';
+    } else {
+      var proj = State.projects.find(function(p) { return p.id === State.projectFilter; });
+      label.textContent = proj ? proj.name : State.projectFilter;
+    }
   }
 
   function handleInitialData(data) {
@@ -571,10 +880,7 @@
       data.board.columns.forEach(col => {
         if (col.tasks) {
           col.tasks.forEach(task => {
-            flatTasks.push({
-              ...task,
-              status: col.name || col.id
-            });
+            flatTasks.push(task);
           });
         }
       });
@@ -603,11 +909,7 @@
     populateFormOptions(data.config);
     State.initialLoadComplete = true;
     showLoading(false);
-    try {
-      updateProjectNav();
-    } catch (navError) {
-      console.error("❌ Error updating project nav:", navError);
-    }
+    updateProjectNav();
     restoreSidebarGroupStates();
     updateStats();
     switchView('home');
@@ -619,16 +921,21 @@
       } catch (syncError) {
         console.error("SyncManager init failed:", syncError);
       }
-    }, 3000);
-    setTimeout(function() { fetchFreshDataInBackground(); }, 5000);
+    }, 500);
+    setTimeout(function() {
+      hydrateScript('TaskDetailPanel');
+      hydrateScript('TaskEditModal');
+      hydrateScript('MentionAutocomplete');
+      hydrateScript('DependencyPicker');
+    }, 1000);
   } catch (error) {
     console.error("❌ Critical error in handleInitialData:", error);
     State.initialLoadComplete = true;
     showLoading(false);
     toast("Error initializing app: " + error.message, "error");
-    setTimeout(() => {
+    setTimeout(function() {
       if (!State.user) {
-        LoginModal.show();
+        showAuthenticateScreen();
       }
     }, 1000);
   }
@@ -684,28 +991,92 @@
       .getInitialDataFast();
   }
 
+  function loadAccessRequests() {
+    var listEl = $('accessRequestsList');
+    if (listEl) listEl.innerHTML = '<p class="text-gray-400">Loading...</p>';
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!listEl) return;
+        if (!result.success) {
+          listEl.innerHTML = '<p class="text-red-500">' + (result.error || 'Failed to load') + '</p>';
+          return;
+        }
+        if (!result.requests || result.requests.length === 0) {
+          listEl.innerHTML = '<p class="text-gray-400">No pending access requests.</p>';
+          return;
+        }
+        var html = '<div class="space-y-3">';
+        result.requests.forEach(function(req) {
+          html += '<div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">' +
+            '<div>' +
+            '<p class="font-medium text-gray-900">' + (req.email || '') + '</p>' +
+            '<p class="text-xs text-gray-500">Requested: ' + (req.requestedAt || '') + '</p>' +
+            '</div>' +
+            '<div class="flex gap-2">' +
+            '<button onclick="handleApproveAccess(\'' + req.email + '\')" class="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg">Approve</button>' +
+            '<button onclick="promptRejectAccess(\'' + req.email + '\')" class="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg">Reject</button>' +
+            '</div></div>';
+        });
+        html += '</div>';
+        listEl.innerHTML = html;
+      })
+      .withFailureHandler(function(error) {
+        if (listEl) listEl.innerHTML = '<p class="text-red-500">' + (error.message || 'Failed to load') + '</p>';
+      })
+      .getPendingAccessRequests();
+  }
+
+  function handleApproveAccess(email) {
+    if (!email) return;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result.success) {
+          toast('Access granted to ' + email, 'success');
+          loadAccessRequests();
+        } else {
+          toast(result.error || 'Failed to approve', 'error');
+        }
+      })
+      .withFailureHandler(function(error) {
+        toast(error.message || 'Failed to approve', 'error');
+      })
+      .approveAccessRequest(email);
+  }
+
+  function promptRejectAccess(email) {
+    if (!email) return;
+    var reason = prompt('Reason for rejection (optional):');
+    if (reason === null) return;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result.success) {
+          toast('Request from ' + email + ' rejected', 'info');
+          loadAccessRequests();
+        } else {
+          toast(result.error || 'Failed to reject', 'error');
+        }
+      })
+      .withFailureHandler(function(error) {
+        toast(error.message || 'Failed to reject', 'error');
+      })
+      .rejectAccessRequest(email, reason || '');
+  }
+
   function handleInitError(error) {
     console.error("Init error:", error);
     State.initialLoadComplete = true;
     showLoading(false);
-    const errorMessage = error && error.message ? error.message.toLowerCase() : "";
     State.user = null;
     State.board = null;
-    if (
-      errorMessage.includes("login") ||
-      errorMessage.includes("session") ||
-      errorMessage.includes("authenticated") ||
-      errorMessage.includes("no active") ||
-      errorMessage.includes("user not found") ||
-      !errorMessage
-    ) {
-      LoginModal.show();
-    } else {
-      console.error("Unexpected init error, showing login modal as fallback:", errorMessage);
-      toast("Session error. Please login.", "warning");
-      setTimeout(() => {
-        LoginModal.show();
-      }, 500);
+    var card = $('loginCard');
+    if (card) {
+      card.innerHTML = '<div class="text-center py-8">' +
+        '<div class="mb-4"><i class="fas fa-exclamation-triangle text-4xl text-gray-500"></i></div>' +
+        '<h3 class="text-xl font-semibold text-white mb-2">Authentication Error</h3>' +
+        '<p class="text-gray-400 text-sm mb-6">' + ((error && error.message) || 'Unable to authenticate.') + '</p>' +
+        '<button onclick="handleAuthenticate()" class="w-full py-3 bg-gray-500 hover:bg-gray-400 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors">' +
+        '<i class="fas fa-redo"></i> Try Again</button>' +
+        '</div>';
     }
   }
 

@@ -2,20 +2,80 @@ function getSpreadsheet() {
   return getColonySpreadsheet_();
 }
 
+var VersionedCache = {
+  _cache: null,
+  _versionForRequest: null,
+
+  _getCache: function() {
+    if (!this._cache) this._cache = CacheService.getScriptCache();
+    return this._cache;
+  },
+
+  _currentVersion: function() {
+    if (this._versionForRequest === null) {
+      this._versionForRequest = getGlobalVersion();
+    }
+    return this._versionForRequest;
+  },
+
+  resetRequestVersion: function() {
+    this._versionForRequest = null;
+  },
+
+  put: function(key, data, ttl) {
+    try {
+      var version = this._currentVersion();
+      var envelope = JSON.stringify({ v: version, d: data });
+      if (envelope.length > 95000) return false;
+      this._getCache().put(key, envelope, ttl || 900);
+      return true;
+    } catch (e) {
+      console.error('VersionedCache.put failed:', e);
+      return false;
+    }
+  },
+
+  get: function(key) {
+    try {
+      var raw = this._getCache().get(key);
+      if (!raw) return null;
+      var envelope = JSON.parse(raw);
+      if (envelope.v !== undefined && envelope.d !== undefined) {
+        if (envelope.v < this._currentVersion()) return null;
+        return envelope.d;
+      }
+      return envelope;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  remove: function(key) {
+    this._getCache().remove(key);
+  }
+};
+
+function invalidateCache(entityType, entityId, changeType) {
+  try {
+    logChange(entityType || 'unknown', entityId || '*', changeType || 'update');
+    VersionedCache.resetRequestVersion();
+    if (typeof RequestCache !== 'undefined') {
+      RequestCache.clear();
+    }
+    CacheService.getScriptCache().put('BATCH_DATA_DIRTY', '1', 900);
+  } catch (error) {
+    console.error('invalidateCache failed:', error);
+  }
+}
+
 function getBatchDataFast() {
   try {
-    const cache = CacheService.getScriptCache();
-    const cached = cache.get('BATCH_DATA_CACHE');
-    if (cached) {
-      try { return JSON.parse(cached); } catch (e) {}
-    }
-    if (!cache.get('BATCH_DATA_DIRTY')) {
+    var cached = VersionedCache.get('BATCH_DATA_CACHE');
+    if (cached) return cached;
+    if (!CacheService.getScriptCache().get('BATCH_DATA_DIRTY')) {
       var jsonCached = readJsonCache('BATCH_DATA', 15);
       if (jsonCached) {
-        try {
-          var jsonStr = JSON.stringify(jsonCached);
-          if (jsonStr.length < 100000) cache.put('BATCH_DATA_CACHE', jsonStr, 1800);
-        } catch (e) {}
+        VersionedCache.put('BATCH_DATA_CACHE', jsonCached, 1800);
         return jsonCached;
       }
     }
@@ -44,12 +104,14 @@ function rebuildBatchCache() {
     const taskJsonIdx = CONFIG.TASK_COLUMNS.indexOf('jsonData');
     const projJsonIdx = CONFIG.PROJECT_COLUMNS.indexOf('jsonData');
     const userJsonIdx = CONFIG.USER_COLUMNS.indexOf('jsonData');
+    const isDeletedIdx = CONFIG.TASK_COLUMNS.indexOf('isDeleted');
 
     const tasks = [];
     if (tasksData.length > 1) {
       for (let i = 1; i < tasksData.length; i++) {
         const row = tasksData[i];
         if (!row[0] && !row[2]) continue;
+        if (isDeletedIdx !== -1 && (row[isDeletedIdx] === true || row[isDeletedIdx] === 'true' || row[isDeletedIdx] === 'TRUE')) continue;
         var task;
         if (taskJsonIdx !== -1 && row[taskJsonIdx]) {
           try { task = JSON.parse(row[taskJsonIdx]); } catch (e) { task = rowToObject(row, CONFIG.TASK_COLUMNS); }
@@ -115,10 +177,8 @@ function rebuildBatchCache() {
       }
     };
 
+    VersionedCache.put('BATCH_DATA_CACHE', result, 1800);
     var jsonStr = JSON.stringify(result);
-    if (jsonStr.length < 100000) {
-      cache.put('BATCH_DATA_CACHE', jsonStr, 1800);
-    }
     if (jsonStr.length < 45000) {
       writeJsonCache('BATCH_DATA', result);
     }
@@ -145,22 +205,10 @@ function buildBatchDataFallback() {
 
 function getAllTasksOptimized() {
   try {
-    const cache = CacheService.getScriptCache();
-    const cacheKey = 'ALL_TASKS_CACHE';
-    const cached = cache.get(cacheKey);
-
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch (e) {
-      }
-    }
-
+    var cached = VersionedCache.get('ALL_TASKS_CACHE');
+    if (cached) return cached;
     const tasks = getAllTasks();
-    const jsonStr = JSON.stringify(tasks);
-    if (jsonStr.length < 100000) {
-      cache.put(cacheKey, jsonStr, 900);
-    }
+    VersionedCache.put('ALL_TASKS_CACHE', tasks, 900);
     return tasks;
   } catch (error) {
     console.error('getAllTasksOptimized failed:', error);
@@ -170,19 +218,10 @@ function getAllTasksOptimized() {
 
 function getAllProjectsOptimized() {
   try {
-    const cache = CacheService.getScriptCache();
-    const cacheKey = 'ALL_PROJECTS_CACHE';
-    const cached = cache.get(cacheKey);
-
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch (e) {
-      }
-    }
-
+    var cached = VersionedCache.get('ALL_PROJECTS_CACHE');
+    if (cached) return cached;
     const projects = getAllProjects();
-    cache.put(cacheKey, JSON.stringify(projects), 1800);
+    VersionedCache.put('ALL_PROJECTS_CACHE', projects, 1800);
     return projects;
   } catch (error) {
     console.error('getAllProjectsOptimized failed:', error);
@@ -192,21 +231,12 @@ function getAllProjectsOptimized() {
 
 function getActiveUsersOptimized(forceRefresh) {
   try {
-    const cache = CacheService.getScriptCache();
-    const cacheKey = 'ACTIVE_USERS_CACHE';
-
     if (!forceRefresh) {
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        try {
-          return JSON.parse(cached);
-        } catch (e) {
-        }
-      }
+      var cached = VersionedCache.get('ACTIVE_USERS_CACHE');
+      if (cached) return cached;
     }
-
     const users = getActiveUsers();
-    cache.put(cacheKey, JSON.stringify(users), 1800);
+    VersionedCache.put('ACTIVE_USERS_CACHE', users, 1800);
     return users;
   } catch (error) {
     console.error('getActiveUsersOptimized failed:', error);
@@ -223,6 +253,8 @@ function clearAllCaches() {
     const cache = CacheService.getScriptCache();
     cache.removeAll(['ALL_TASKS_CACHE', 'ALL_PROJECTS_CACHE', 'ACTIVE_USERS_CACHE', 'ALL_USERS_MENTIONS_CACHE', 'BATCH_DATA_CACHE']);
     RequestCache.clear();
+    incrementGlobalVersion();
+    VersionedCache.resetRequestVersion();
   } catch (error) {
     console.error('clearAllCaches failed:', error);
   }
@@ -241,66 +273,42 @@ function clearUserCache() {
 
 function patchTaskCache(taskId, updatedTask, changeType) {
   try {
-    const cache = CacheService.getScriptCache();
-    const cacheKey = 'ALL_TASKS_CACHE';
-    const cached = cache.get(cacheKey);
-
-    if (cached) {
-      const tasks = JSON.parse(cached);
-      const index = tasks.findIndex(t => t.id === taskId);
-
+    var tasks = VersionedCache.get('ALL_TASKS_CACHE');
+    if (tasks) {
+      var index = tasks.findIndex(function(t) { return t.id === taskId; });
       if (changeType === 'delete') {
         if (index >= 0) tasks.splice(index, 1);
       } else if (changeType === 'create' && updatedTask) {
-        tasks.push(updatedTask);
+        var dupeIdx = tasks.findIndex(function(t) { return t.id === updatedTask.id; });
+        if (dupeIdx >= 0) { tasks[dupeIdx] = updatedTask; } else { tasks.push(updatedTask); }
       } else if (updatedTask && index >= 0) {
         tasks[index] = updatedTask;
       }
-
-      const jsonStr = JSON.stringify(tasks);
-      if (jsonStr.length < 100000) {
-        cache.put(cacheKey, jsonStr, 300);
-      } else {
-        cache.remove(cacheKey);
-      }
+      VersionedCache.put('ALL_TASKS_CACHE', tasks, 300);
     }
 
-    cache.remove(`TASK_${taskId}`);
-    cache.remove(`row_Tasks_${taskId}`);
-    logChange('task', taskId, changeType || 'update');
-
-    const batchCached = cache.get('BATCH_DATA_CACHE');
-    if (batchCached) {
-      try {
-        const batchData = JSON.parse(batchCached);
-        const batchIndex = batchData.tasks.findIndex(t => t.id === taskId);
-        if (changeType === 'delete') {
-          if (batchIndex >= 0) batchData.tasks.splice(batchIndex, 1);
-        } else if (changeType === 'create' && updatedTask) {
-          batchData.tasks.push(updatedTask);
-        } else if (updatedTask && batchIndex >= 0) {
-          batchData.tasks[batchIndex] = updatedTask;
-        }
-        const batchJson = JSON.stringify(batchData);
-        if (batchJson.length < 100000) {
-          cache.put('BATCH_DATA_CACHE', batchJson, 300);
-        } else {
-          cache.remove('BATCH_DATA_CACHE');
-        }
-      } catch (e) {
-        try { rebuildBatchCache(); } catch (e2) { cache.remove('BATCH_DATA_CACHE'); }
+    var batchData = VersionedCache.get('BATCH_DATA_CACHE');
+    if (batchData && batchData.tasks) {
+      var batchIndex = batchData.tasks.findIndex(function(t) { return t.id === taskId; });
+      if (changeType === 'delete') {
+        if (batchIndex >= 0) batchData.tasks.splice(batchIndex, 1);
+      } else if (changeType === 'create' && updatedTask) {
+        var batchDupeIdx = batchData.tasks.findIndex(function(t) { return t.id === updatedTask.id; });
+        if (batchDupeIdx >= 0) { batchData.tasks[batchDupeIdx] = updatedTask; } else { batchData.tasks.push(updatedTask); }
+      } else if (updatedTask && batchIndex >= 0) {
+        batchData.tasks[batchIndex] = updatedTask;
       }
-    } else {
-      try { rebuildBatchCache(); } catch (e) {}
+      VersionedCache.put('BATCH_DATA_CACHE', batchData, 300);
     }
 
     if (RequestCache && RequestCache._tasks) {
       if (changeType === 'delete') {
-        RequestCache._tasks = RequestCache._tasks.filter(t => t.id !== taskId);
+        RequestCache._tasks = RequestCache._tasks.filter(function(t) { return t.id !== taskId; });
       } else if (changeType === 'create' && updatedTask) {
-        RequestCache._tasks.push(updatedTask);
+        var reqDupeIdx = RequestCache._tasks.findIndex(function(t) { return t.id === updatedTask.id; });
+        if (reqDupeIdx >= 0) { RequestCache._tasks[reqDupeIdx] = updatedTask; } else { RequestCache._tasks.push(updatedTask); }
       } else if (updatedTask) {
-        const idx = RequestCache._tasks.findIndex(t => t.id === taskId);
+        var idx = RequestCache._tasks.findIndex(function(t) { return t.id === taskId; });
         if (idx >= 0) RequestCache._tasks[idx] = updatedTask;
       }
     }
@@ -311,67 +319,19 @@ function patchTaskCache(taskId, updatedTask, changeType) {
 }
 
 function invalidateTaskCache(taskId, changeType) {
-  try {
-    const cache = CacheService.getScriptCache();
-    cache.remove('ALL_TASKS_CACHE');
-
-    if (taskId) {
-      cache.remove(`TASK_${taskId}`);
-      cache.remove(`row_Tasks_${taskId}`);
-      logChange('task', taskId, changeType || 'update');
-    } else {
-      incrementGlobalVersion();
-    }
-
-    if (RequestCache && RequestCache._tasks) {
-      RequestCache._tasks = null;
-    }
-
-    cache.remove('BATCH_DATA_CACHE');
-    cache.put('BATCH_DATA_DIRTY', '1', 900);
-  } catch (error) {
-    console.error('invalidateTaskCache failed:', error);
-  }
+  invalidateCache('task', taskId, changeType);
 }
 
 function invalidateProjectCache(projectId) {
-  try {
-    const cache = CacheService.getScriptCache();
-    cache.remove('ALL_PROJECTS_CACHE');
-
-    if (projectId) {
-      cache.remove(`PROJECT_${projectId}`);
-    }
-
-    if (RequestCache && RequestCache._projects !== undefined) {
-      RequestCache._projects = null;
-    }
-  } catch (error) {
-    console.error('invalidateProjectCache failed:', error);
-  }
+  invalidateCache('project', projectId, 'update');
 }
 
 function invalidateUserCache() {
-  try {
-    const cache = CacheService.getScriptCache();
-    cache.remove('ACTIVE_USERS_CACHE');
-
-    if (RequestCache && RequestCache._users !== undefined) {
-      RequestCache._users = null;
-    }
-  } catch (error) {
-    console.error('invalidateUserCache failed:', error);
-  }
+  invalidateCache('user', null, 'update');
 }
 
 function invalidateDependencyCache() {
-  try {
-    if (RequestCache) {
-      RequestCache._dependencies = null;
-    }
-  } catch (error) {
-    console.error('invalidateDependencyCache failed:', error);
-  }
+  invalidateCache('dependency', null, 'update');
 }
 
 function getGlobalVersion() {

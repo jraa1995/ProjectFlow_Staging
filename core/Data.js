@@ -92,20 +92,6 @@ function getTaskDependenciesSheet() {
   return getSheet(CONFIG.SHEETS.TASK_DEPENDENCIES, CONFIG.TASK_DEPENDENCY_COLUMNS);
 }
 
-function getSessionTokensSheet() {
-  if (!CONFIG || !CONFIG.SESSION_TOKEN_COLUMNS) {
-    throw new Error('CONFIG.SESSION_TOKEN_COLUMNS is undefined. Check Config.gs for syntax errors.');
-  }
-  return getSheet(CONFIG.SHEETS.SESSION_TOKENS, CONFIG.SESSION_TOKEN_COLUMNS);
-}
-
-function getMfaCodesSheet() {
-  if (!CONFIG || !CONFIG.MFA_CODE_COLUMNS) {
-    throw new Error('CONFIG.MFA_CODE_COLUMNS is undefined. Check Config.gs for syntax errors.');
-  }
-  return getSheet(CONFIG.SHEETS.MFA_CODES, CONFIG.MFA_CODE_COLUMNS);
-}
-
 function getRolesSheet() {
   if (!CONFIG || !CONFIG.ROLE_COLUMNS) {
     throw new Error('CONFIG.ROLE_COLUMNS is undefined. Check Config.gs for syntax errors.');
@@ -190,6 +176,13 @@ function getTriageQueueSheet() {
   return getSheet(CONFIG.SHEETS.TRIAGE_QUEUE, CONFIG.TRIAGE_QUEUE_COLUMNS);
 }
 
+function getAccessRequestsSheet() {
+  if (!CONFIG || !CONFIG.ACCESS_REQUEST_COLUMNS) {
+    throw new Error('CONFIG.ACCESS_REQUEST_COLUMNS is undefined. Check Config.gs for syntax errors.');
+  }
+  return getSheet(CONFIG.SHEETS.ACCESS_REQUESTS, CONFIG.ACCESS_REQUEST_COLUMNS);
+}
+
 const RowIndexCache = {
   CACHE_TTL: 600,
 
@@ -199,8 +192,7 @@ const RowIndexCache = {
 
   _getGeneration(sheetName) {
     try {
-      var cache = CacheService.getScriptCache();
-      return cache.get(this._getGenKey(sheetName)) || '0';
+      return String(getGlobalVersion());
     } catch (e) {
       return '0';
     }
@@ -341,6 +333,12 @@ function findRowWithCache(sheet, sheetName, id, idColumnIndex) {
     if (data[i][idColumnIndex] === id) {
       rowIndex = i + 1;
       RowIndexCache.set(sheetName, id, rowIndex);
+      for (let j = i + 1; j < data.length; j++) {
+        if (data[j][idColumnIndex] === id) {
+          console.error('DUPLICATE ID: ' + id + ' at rows ' + (i + 1) + ' and ' + (j + 1) + ' in ' + sheetName);
+          break;
+        }
+      }
       return rowIndex;
     }
   }
@@ -659,10 +657,12 @@ function getAllTasks(filters = {}, options = {}) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
   const columns = CONFIG.TASK_COLUMNS;
+  const isDeletedIdx = columns.indexOf('isDeleted');
   let tasks = [];
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     if (!row[0] && !row[2]) continue;
+    if (isDeletedIdx !== -1 && (row[isDeletedIdx] === true || row[isDeletedIdx] === 'true' || row[isDeletedIdx] === 'TRUE')) continue;
     const task = rowToObject(row, columns);
     if (typeof task.labels === 'string' && task.labels) {
       task.labels = task.labels.split(',').map(l => l.trim()).filter(l => l);
@@ -722,6 +722,7 @@ function getTasksForUser(email) {
 
 function calculateStoryPoints(startDate, dueDate) {
   if (!startDate || !dueDate) return { storyPoints: 0, estimatedHrs: 0 };
+  if (startDate === CONFIG.TBD_DATE_SENTINEL || dueDate === CONFIG.TBD_DATE_SENTINEL) return { storyPoints: 0, estimatedHrs: 0, isTbd: true };
   var start = new Date(startDate);
   var end = new Date(dueDate);
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return { storyPoints: 0, estimatedHrs: 0 };
@@ -780,10 +781,16 @@ function createTask(taskData) {
     milestoneDate: taskData.milestoneDate || '',
     milestoneType: taskData.milestoneType || ''
   };
-  if (task.startDate && task.dueDate) {
+  if (task.startDate && task.dueDate && task.startDate !== CONFIG.TBD_DATE_SENTINEL && task.dueDate !== CONFIG.TBD_DATE_SENTINEL) {
     var calc = calculateStoryPoints(task.startDate, task.dueDate);
     task.storyPoints = calc.storyPoints;
     task.estimatedHrs = calc.estimatedHrs;
+  }
+  var existingRow = findRowWithCache(sheet, 'Tasks', task.id, 0);
+  if (existingRow) {
+    task.id = taskData.projectId + '-' + Date.now();
+    var retryRow = findRowWithCache(sheet, 'Tasks', task.id, 0);
+    if (retryRow) throw new Error('Duplicate task ID after retry: ' + task.id);
   }
   sheet.appendRow(objectToRow(task, CONFIG.TASK_COLUMNS));
   const newRowIndex = sheet.getLastRow();
@@ -840,7 +847,7 @@ function updateTask(taskId, updates) {
     });
     Object.assign(task, updates);
     if (updates.startDate !== undefined || updates.dueDate !== undefined) {
-      if (task.startDate && task.dueDate) {
+      if (task.startDate && task.dueDate && task.startDate !== CONFIG.TBD_DATE_SENTINEL && task.dueDate !== CONFIG.TBD_DATE_SENTINEL) {
         var calc = calculateStoryPoints(task.startDate, task.dueDate);
         task.storyPoints = calc.storyPoints;
         task.estimatedHrs = calc.estimatedHrs;
@@ -871,6 +878,30 @@ function updateTask(taskId, updates) {
         console.error('Failed to send assignment notification:', e);
       }
     }
+    if (Object.keys(changes).length > 0 && task.watchers && typeof NotificationEngine !== 'undefined') {
+      try {
+        var watcherList = typeof task.watchers === 'string'
+          ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+          : (Array.isArray(task.watchers) ? task.watchers : []);
+        watcherList.forEach(function(watcherEmail) {
+          if (watcherEmail !== currentUser && watcherEmail !== updates.assignee) {
+            var changedFields = Object.keys(changes).join(', ');
+            NotificationEngine.createNotification({
+              userId: watcherEmail,
+              type: 'task_updated',
+              title: 'Task Updated',
+              message: taskId + ': ' + task.title + ' — updated: ' + changedFields,
+              entityType: 'task',
+              entityId: taskId,
+              channels: ['in_app'],
+              reason: 'You are watching this task'
+            });
+          }
+        });
+      } catch (e) {
+        console.error('Failed to send watcher notifications:', e);
+      }
+    }
     return task;
   } finally {
     lock.releaseLock();
@@ -891,8 +922,7 @@ function deleteTask(taskId) {
   try {
     const sheet = getTasksSheet();
     const columns = CONFIG.TASK_COLUMNS;
-    const idIndex = 0;
-    const rowIndex = findRowWithCache(sheet, 'Tasks', taskId, idIndex);
+    const rowIndex = findRowWithCache(sheet, 'Tasks', taskId, 0);
     if (!rowIndex) {
       return false;
     }
@@ -901,10 +931,12 @@ function deleteTask(taskId) {
     if (!PermissionGuard.canDeleteTask(task)) {
       throw new Error('Permission denied: You cannot delete this task');
     }
-    sheet.deleteRow(rowIndex);
+    task.isDeleted = true;
+    task.deletedAt = now();
+    task.updatedAt = now();
+    var newRow = objectToRow(task, columns);
+    sheet.getRange(rowIndex, 1, 1, columns.length).setValues([newRow]);
     SpreadsheetApp.flush();
-    RowIndexCache.invalidate('Tasks', taskId);
-    RowIndexCache.invalidateSheet('Tasks');
     logActivity(getCurrentUserEmail(), 'deleted', 'task', taskId, {});
     return true;
   } finally {
@@ -912,76 +944,51 @@ function deleteTask(taskId) {
   }
 }
 
+function restoreTask(taskId) {
+  return updateTask(taskId, { isDeleted: false, deletedAt: '' });
+}
+
+function purgeDeletedTasks(daysOld) {
+  daysOld = daysOld || 90;
+  var cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysOld);
+  var sheet = getTasksSheet();
+  var data = sheet.getDataRange().getValues();
+  var columns = CONFIG.TASK_COLUMNS;
+  var isDeletedIdx = columns.indexOf('isDeleted');
+  var deletedAtIdx = columns.indexOf('deletedAt');
+  if (isDeletedIdx === -1) return 0;
+  var rowsToDelete = [];
+  for (var i = 1; i < data.length; i++) {
+    if ((data[i][isDeletedIdx] === true || data[i][isDeletedIdx] === 'true' || data[i][isDeletedIdx] === 'TRUE') &&
+        data[i][deletedAtIdx] && new Date(data[i][deletedAtIdx]) < cutoff) {
+      rowsToDelete.push(i + 1);
+    }
+  }
+  for (var j = rowsToDelete.length - 1; j >= 0; j--) {
+    sheet.deleteRow(rowsToDelete[j]);
+  }
+  if (rowsToDelete.length > 0) {
+    SpreadsheetApp.flush();
+    RowIndexCache.invalidateSheet('Tasks');
+  }
+  return rowsToDelete.length;
+}
+
 function getCurrentUserEmail() {
   try {
-    const manualEmail = getManualUserEmail();
-    if (manualEmail) {
-      return manualEmail;
-    }
     return Session.getActiveUser().getEmail() || 'anonymous@example.com';
   } catch (e) {
     return 'anonymous@example.com';
   }
 }
 
-function setCurrentUserEmail(email) {
-  try {
-    // Use per-user keyed cache instead of shared ScriptProperties
-    const userKey = Session.getTemporaryActiveUserKey();
-    if (userKey) {
-      const cache = CacheService.getScriptCache();
-      cache.put('ACTIVE_SESSION_EMAIL_' + userKey, email.toLowerCase().trim(), 86400);
-    }
-    return true;
-  } catch (e) {
-    console.error('Failed to set current user email:', e);
-    return false;
-  }
-}
-
-function getManualUserEmail() {
-  try {
-    // Use per-user keyed cache instead of shared ScriptProperties
-    const userKey = Session.getTemporaryActiveUserKey();
-    if (userKey) {
-      const cache = CacheService.getScriptCache();
-      return cache.get('ACTIVE_SESSION_EMAIL_' + userKey);
-    }
-    return null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function clearCurrentUserEmail() {
-  try {
-    const userKey = Session.getTemporaryActiveUserKey();
-    if (userKey) {
-      const cache = CacheService.getScriptCache();
-      cache.remove('ACTIVE_SESSION_EMAIL_' + userKey);
-    }
-    return true;
-  } catch (e) {
-    console.error('Failed to clear current user email:', e);
-    return false;
-  }
-}
-
 function getCurrentUser() {
-  const email = getCurrentUserEmail();
+  var email = getCurrentUserEmail();
   if (email === 'anonymous@example.com') {
-    throw new Error('No authenticated user found. Please login manually.');
+    return null;
   }
-  let user = getUserByEmail(email);
-  if (!user) {
-    // Auto-create as 'member' role (not admin) for new domain users
-    user = createUser({
-      email: email,
-      name: email.split('@')[0],
-      role: 'member'
-    });
-  }
-  return user;
+  return getUserByEmail(email);
 }
 
 function getAllUsers() {
@@ -1059,8 +1066,6 @@ function updateUser(email, updates) {
       throw new Error('Permission denied: only admins can change roles');
     }
   }
-  delete updates.passwordHash;
-  delete updates.passwordSalt;
   const allowedFields = ['name', 'role', 'active', 'workbookId', 'avatar', 'department', 'title'];
   var safeUpdates = {};
   allowedFields.forEach(function(key) {
@@ -1138,6 +1143,13 @@ function createProject(projectData) {
     settings: projectData.settings || '{}',
     lastUpdatedBy: currentUser
   };
+  try {
+    var pSettings = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {});
+    if (pSettings.linkedProjectId) {
+      var linked = getProjectById(pSettings.linkedProjectId);
+      if (!linked) console.error('createProject: linkedProjectId references non-existent project: ' + pSettings.linkedProjectId);
+    }
+  } catch (e) {}
   sheet.appendRow(objectToRow(project, CONFIG.PROJECT_COLUMNS));
   SpreadsheetApp.flush();
   logActivity(currentUser, 'created', 'project', project.id, { name: project.name });
@@ -1157,6 +1169,13 @@ function updateProject(projectId, updates) {
       if (data[i][idIndex] === projectId) {
         const project = rowToObject(data[i], columns);
         Object.assign(project, updates);
+        try {
+          var uSettings = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {});
+          if (uSettings.linkedProjectId) {
+            var uLinked = getProjectById(uSettings.linkedProjectId);
+            if (!uLinked) console.error('updateProject: linkedProjectId references non-existent project: ' + uSettings.linkedProjectId);
+          }
+        } catch (e) {}
         project.updatedAt = now();
         project.lastUpdatedBy = getCurrentUserEmail();
         const newRow = objectToRow(project, columns);
@@ -1273,15 +1292,16 @@ function getJsonCacheSheet() {
 
 function writeJsonCache(key, data) {
   try {
+    var version = getGlobalVersion();
     const sheet = getJsonCacheSheet();
     const allData = sheet.getDataRange().getValues();
     for (let i = 1; i < allData.length; i++) {
       if (allData[i][0] === key) {
-        sheet.getRange(i + 1, 2, 1, 2).setValues([[JSON.stringify(data), now()]]);
+        sheet.getRange(i + 1, 2, 1, 3).setValues([[JSON.stringify(data), now(), version]]);
         return;
       }
     }
-    sheet.appendRow([key, JSON.stringify(data), now()]);
+    sheet.appendRow([key, JSON.stringify(data), now(), version]);
   } catch (e) {
     console.error('writeJsonCache failed:', e);
   }
@@ -1292,8 +1312,11 @@ function readJsonCache(key, maxAgeMinutes) {
   try {
     const sheet = getJsonCacheSheet();
     const allData = sheet.getDataRange().getValues();
+    var currentVersion = getGlobalVersion();
     for (let i = 1; i < allData.length; i++) {
       if (allData[i][0] === key) {
+        var storedVersion = allData[i][3];
+        if (storedVersion !== undefined && storedVersion !== '' && storedVersion < currentVersion) return null;
         if (maxAgeMinutes) {
           const updatedAt = new Date(allData[i][2]);
           const age = (Date.now() - updatedAt.getTime()) / 60000;
@@ -1399,6 +1422,39 @@ function addComment(taskId, content) {
   };
   sheet.appendRow(objectToRow(comment, CONFIG.COMMENT_COLUMNS));
   logActivity(currentUser, 'commented', 'task', taskId, { preview: content.substring(0, 50) });
+  if (typeof NotificationEngine !== 'undefined') {
+    try {
+      var commentTask = getTaskById(taskId);
+      if (commentTask) {
+        var recipients = {};
+        if (commentTask.assignee && commentTask.assignee !== currentUser) {
+          recipients[commentTask.assignee] = 'You are assigned to this task';
+        }
+        if (commentTask.watchers) {
+          var wList = typeof commentTask.watchers === 'string'
+            ? commentTask.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+            : (Array.isArray(commentTask.watchers) ? commentTask.watchers : []);
+          wList.forEach(function(w) {
+            if (w !== currentUser && !recipients[w]) recipients[w] = 'You are watching this task';
+          });
+        }
+        Object.keys(recipients).forEach(function(email) {
+          NotificationEngine.createNotification({
+            userId: email,
+            type: 'comment_added',
+            title: 'New Comment',
+            message: 'New comment on ' + taskId + ': ' + commentTask.title,
+            entityType: 'task',
+            entityId: taskId,
+            channels: ['in_app'],
+            reason: recipients[email]
+          });
+        });
+      }
+    } catch (e) {
+      console.error('Failed to send comment notifications:', e);
+    }
+  }
   return comment;
 }
 
@@ -1713,6 +1769,67 @@ function batchUpdatePositions(updates) {
     batchStart = batchEnd + 1;
   }
   SpreadsheetApp.flush();
+}
+
+function batchUpdateTasks(updatesList) {
+  if (!updatesList || updatesList.length === 0) return [];
+  var sheet = getTasksSheet();
+  var columns = CONFIG.TASK_COLUMNS;
+  var data = sheet.getDataRange().getValues();
+  var timestamp = now();
+  var results = [];
+  var rangesToWrite = [];
+  var updateMap = {};
+  updatesList.forEach(function(u) { updateMap[u.taskId] = u.changes; });
+
+  for (var i = 1; i < data.length; i++) {
+    var rowId = data[i][0];
+    if (!updateMap.hasOwnProperty(rowId)) continue;
+    var task = rowToObject(data[i], columns);
+    var changes = updateMap[rowId];
+    Object.keys(changes).forEach(function(key) {
+      if (columns.indexOf(key) !== -1) task[key] = changes[key];
+    });
+    task.updatedAt = timestamp;
+    if (changes.status === 'Done' && !task.completedAt) task.completedAt = timestamp;
+    rangesToWrite.push({ rowIndex: i + 1, rowData: objectToRow(task, columns) });
+    results.push(task);
+    RowIndexCache.set('Tasks', rowId, i + 1);
+  }
+
+  if (rangesToWrite.length === 0) return results;
+  rangesToWrite.sort(function(a, b) { return a.rowIndex - b.rowIndex; });
+  var batchStart = 0;
+  while (batchStart < rangesToWrite.length) {
+    var batchEnd = batchStart;
+    while (batchEnd + 1 < rangesToWrite.length &&
+           rangesToWrite[batchEnd + 1].rowIndex === rangesToWrite[batchEnd].rowIndex + 1) {
+      batchEnd++;
+    }
+    var startRow = rangesToWrite[batchStart].rowIndex;
+    var numRows = batchEnd - batchStart + 1;
+    var batchData = [];
+    for (var b = batchStart; b <= batchEnd; b++) {
+      batchData.push(rangesToWrite[b].rowData);
+    }
+    sheet.getRange(startRow, 1, numRows, columns.length).setValues(batchData);
+    batchStart = batchEnd + 1;
+  }
+  SpreadsheetApp.flush();
+  return results;
+}
+
+function batchCreateTasks(taskDataList) {
+  if (!taskDataList || taskDataList.length === 0) return [];
+  var sheet = getTasksSheet();
+  var columns = CONFIG.TASK_COLUMNS;
+  var lastRow = sheet.getLastRow();
+  var rows = taskDataList.map(function(taskData) {
+    return objectToRow(taskData, columns);
+  });
+  sheet.getRange(lastRow + 1, 1, rows.length, columns.length).setValues(rows);
+  SpreadsheetApp.flush();
+  return taskDataList;
 }
 
 function deleteTaskDependency(dependencyId) {

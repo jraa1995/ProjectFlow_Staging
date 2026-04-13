@@ -197,6 +197,12 @@
     hasPendingOps() {
       return this.pendingOps.size > 0;
     },
+    hasPendingForTask(taskId) {
+      for (var [, op] of this.pendingOps) {
+        if (op.data && (op.data.taskId === taskId || op.data.id === taskId)) return true;
+      }
+      return false;
+    },
     getPendingCount() {
       return this.pendingOps.size;
     }
@@ -489,7 +495,7 @@
           var needsRerender = false;
           var returnedIds = new Set(tasks.map(t => t.id));
           taskIds.forEach(id => {
-            if (!returnedIds.has(id) && State.tasks) {
+            if (!returnedIds.has(id) && State.tasks && !OptimisticUI.hasPendingForTask(id)) {
               State.tasks = State.tasks.filter(t => t.id !== id);
               needsRerender = true;
               var card = document.querySelector('[data-task-id="' + id + '"]');
@@ -498,6 +504,7 @@
           });
           tasks.forEach(task => {
             if (State.editingTask && State.editingTask === task.id) return;
+            if (OptimisticUI.hasPendingForTask(task.id)) return;
             if (State.tasks) {
               var index = State.tasks.findIndex(t => t.id === task.id);
               if (index >= 0) {

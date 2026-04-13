@@ -121,52 +121,48 @@ function searchAllTasks(query, projectId) {
 }
 
 function executeBatchOperations(operations) {
-  const results = [];
-  const errors = [];
-
   if (!Array.isArray(operations) || operations.length === 0) {
     return { results: [], errors: [] };
   }
 
   const lock = LockService.getScriptLock();
-
   try {
     lock.waitLock(10000);
-
-    operations.forEach((op, index) => {
-      try {
-        let result;
-        switch (op.type) {
-          case 'moveTask':
-            result = moveTask(op.params.taskId, op.params.status, op.params.position || 0);
-            break;
-          case 'updateTask':
-            result = updateTask(op.params.taskId, op.params.changes);
-            break;
-          case 'updatePriority':
-            result = updateTask(op.params.taskId, { priority: op.params.priority });
-            break;
-          case 'updateAssignee':
-            result = updateTask(op.params.taskId, { assignee: op.params.assignee });
-            break;
-          default:
-            throw new Error('Unknown operation type: ' + op.type);
-        }
-        results.push({ index, success: true, result });
-      } catch (e) {
-        console.error('Batch operation', index, 'failed:', e.message);
-        errors.push({ index, success: false, error: e.message });
+    var updatesList = [];
+    operations.forEach(function(op) {
+      var changes = {};
+      switch (op.type) {
+        case 'moveTask':
+          changes = { status: op.params.status, position: op.params.position || 0 };
+          break;
+        case 'updateTask':
+          changes = op.params.changes;
+          break;
+        case 'updatePriority':
+          changes = { priority: op.params.priority };
+          break;
+        case 'updateAssignee':
+          changes = { assignee: op.params.assignee };
+          break;
+        default:
+          break;
+      }
+      if (op.params.taskId) {
+        updatesList.push({ taskId: op.params.taskId, changes: changes });
       }
     });
-
-    if (results.length > 0) {
-      invalidateTaskCache(null, 'update');
-    }
+    var results = batchUpdateTasks(updatesList);
+    invalidateTaskCache(null, 'update');
+    return {
+      results: results.map(function(r, i) { return { index: i, success: true, result: r }; }),
+      errors: []
+    };
+  } catch (e) {
+    console.error('executeBatchOperations failed:', e.message);
+    return { results: [], errors: [{ index: 0, success: false, error: e.message }] };
   } finally {
     lock.releaseLock();
   }
-
-  return { results, errors };
 }
 
 function updateTaskWithVersion(taskId, updates, expectedVersion) {
@@ -214,6 +210,71 @@ function acquireTaskEditLock(taskId) {
     console.error('acquireTaskEditLock failed:', error);
     return { success: false, error: error.message };
   }
+}
+
+function auditTaskIntegrity() {
+  var columns = CONFIG.TASK_COLUMNS;
+  var idCol = columns.indexOf('id');
+  var depsCol = columns.indexOf('dependencies');
+  var sheet = getTasksSheet();
+  var data = sheet.getDataRange().getValues();
+  var totalRows = data.length - 1;
+  var idMap = {};
+  var duplicates = [];
+  var allIds = new Set();
+  for (var i = 1; i < data.length; i++) {
+    var id = data[i][idCol];
+    if (!id) continue;
+    allIds.add(id);
+    if (idMap[id]) {
+      duplicates.push({ id: id, rows: [idMap[id], i + 1] });
+    } else {
+      idMap[id] = i + 1;
+    }
+  }
+  var invalidDeps = [];
+  if (depsCol !== -1) {
+    for (var i = 1; i < data.length; i++) {
+      var deps = data[i][depsCol];
+      if (!deps) continue;
+      var depList = String(deps).split(',').map(function(d) { return d.trim(); }).filter(Boolean);
+      depList.forEach(function(depId) {
+        if (!allIds.has(depId)) {
+          invalidDeps.push({ taskId: data[i][idCol], invalidDep: depId, row: i + 1 });
+        }
+      });
+    }
+  }
+  var orphanComments = [];
+  try {
+    var commentsSheet = getCommentsSheet();
+    var commentData = commentsSheet.getDataRange().getValues();
+    var commentColumns = CONFIG.COMMENT_COLUMNS;
+    var commentTaskCol = commentColumns.indexOf('taskId');
+    if (commentTaskCol !== -1) {
+      for (var i = 1; i < commentData.length; i++) {
+        var commentTaskId = commentData[i][commentTaskCol];
+        if (commentTaskId && !allIds.has(commentTaskId)) {
+          orphanComments.push({ commentRow: i + 1, taskId: commentTaskId });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('auditTaskIntegrity: comments scan failed:', e);
+  }
+  console.log('=== TASK INTEGRITY AUDIT ===');
+  console.log('Tasks scanned: ' + totalRows);
+  console.log('Unique IDs: ' + allIds.size);
+  console.log('Duplicate IDs: ' + duplicates.length);
+  console.log('Invalid dependencies: ' + invalidDeps.length);
+  console.log('Orphan comments: ' + orphanComments.length);
+  if (duplicates.length > 0) console.log('Duplicates: ' + JSON.stringify(duplicates));
+  if (invalidDeps.length > 0) console.log('Invalid deps: ' + JSON.stringify(invalidDeps));
+  if (orphanComments.length > 0) console.log('Orphan comments: ' + JSON.stringify(orphanComments));
+  if (duplicates.length === 0 && invalidDeps.length === 0 && orphanComments.length === 0) {
+    console.log('ALL CLEAR — no integrity issues found');
+  }
+  return { duplicates: duplicates, invalidDeps: invalidDeps, orphanComments: orphanComments };
 }
 
 function releaseTaskEditLock(taskId) {

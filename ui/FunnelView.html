@@ -878,15 +878,9 @@ var FunnelPage = {
     const count = selectedIds.length;
     const unassigned = this.tickets.filter(t => selectedIds.includes(t.id) && !t.mappedData?.assignee);
 
-    if (unassigned.length > 0) {
-      this.showAssignmentModal(unassigned.length, count, (options) => {
-        this.executeImport(selectedIds, options);
-      });
-      return;
-    }
-
-    if (!await ConfirmModal(`Import ${count} selected ticket(s) to Tasks?`)) return;
-    this.executeImport(selectedIds, {});
+    this.showAssignmentModal(unassigned.length, count, (options) => {
+      this.executeImport(selectedIds, options);
+    });
   },
 
   executeImport(selectedIds, options) {
@@ -922,10 +916,15 @@ var FunnelPage = {
     const modal = document.createElement('div');
     modal.id = 'assignmentModal';
     modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
+    const headerText = unassignedCount > 0 ? 'Import Tickets' : 'Import Tickets';
+    const subText = unassignedCount > 0
+      ? `${unassignedCount} of ${totalCount} ticket(s) have no assignee. Choose how to handle them:`
+      : `Import ${totalCount} ticket(s). Assign to a user or push to Surge:`;
+
     modal.innerHTML = `
       <div class="bg-white rounded-lg shadow-xl p-6 w-96 max-w-full mx-4">
-        <h3 class="text-lg font-semibold text-gray-900 mb-2">Unassigned Tickets</h3>
-        <p class="text-sm text-gray-600 mb-4">${unassignedCount} of ${totalCount} ticket(s) have no assignee.</p>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">${headerText}</h3>
+        <p class="text-sm text-gray-600 mb-4">${subText}</p>
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">Assign to</label>
           <select id="assignmentModalUser" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
@@ -941,6 +940,9 @@ var FunnelPage = {
             Push to Surge
           </button>
         </div>
+        <button id="assignmentModalImportOnly" class="w-full mt-2 px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">
+          Import Without Changes
+        </button>
         <button id="assignmentModalCancel" class="w-full mt-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900">
           Cancel
         </button>
@@ -957,6 +959,10 @@ var FunnelPage = {
     document.getElementById('assignmentModalSurge').onclick = () => {
       modal.remove();
       callback({ surgeUnassigned: true });
+    };
+    document.getElementById('assignmentModalImportOnly').onclick = () => {
+      modal.remove();
+      callback({});
     };
     document.getElementById('assignmentModalCancel').onclick = () => {
       modal.remove();

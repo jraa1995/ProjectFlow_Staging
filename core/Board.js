@@ -59,9 +59,42 @@ function buildBoardData(allTasks, projectId, options = {}) {
     });
   }
 
+  var nowDate = new Date();
+  var weekFromNow = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+  var byStatus = {};
+  CONFIG.STATUSES.forEach(function(s) { byStatus[s] = 0; });
+  var byPriority = {};
+  CONFIG.PRIORITIES.forEach(function(p) { byPriority[p] = 0; });
+  var byAssignee = {};
+  var byType = {};
+  CONFIG.TYPES.forEach(function(t) { byType[t] = 0; });
+  var completed = 0, dueSoon = 0, overdue = 0;
+  var totalPoints = 0, completedPoints = 0, totalEstimatedHrs = 0, totalActualHrs = 0;
+
+  var tasksByStatus = {};
+  tasks.forEach(function(task) {
+    var s = task.status || 'Backlog';
+    if (!tasksByStatus[s]) tasksByStatus[s] = [];
+    tasksByStatus[s].push(task);
+
+    byStatus[s] = (byStatus[s] || 0) + 1;
+    if (s === 'Done') { completed++; completedPoints += task.storyPoints || 0; }
+    byPriority[task.priority] = (byPriority[task.priority] || 0) + 1;
+    var assignee = task.assignee || 'Unassigned';
+    byAssignee[assignee] = (byAssignee[assignee] || 0) + 1;
+    byType[task.type] = (byType[task.type] || 0) + 1;
+    totalPoints += task.storyPoints || 0;
+    totalEstimatedHrs += task.estimatedHrs || 0;
+    totalActualHrs += task.actualHrs || 0;
+    if (task.dueDate && s !== 'Done') {
+      var dueDate = new Date(task.dueDate);
+      if (dueDate < nowDate) overdue++;
+      else if (dueDate <= weekFromNow) dueSoon++;
+    }
+  });
+
   const columns = CONFIG.STATUSES.map((status, index) => {
-    const columnTasks = tasks
-      .filter((t) => t.status === status)
+    const columnTasks = (tasksByStatus[status] || [])
       .sort((a, b) => (a.position || 0) - (b.position || 0));
     return {
       id: normalizeStatusId(status),
@@ -73,7 +106,13 @@ function buildBoardData(allTasks, projectId, options = {}) {
     };
   });
 
-  const stats = calculateBoardStats(tasks);
+  var progress = tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 0;
+  const stats = {
+    total: tasks.length, completed, progress, dueSoon, overdue,
+    totalPoints, completedPoints, totalEstimatedHrs, totalActualHrs,
+    byStatus, byPriority, byAssignee, byType
+  };
+
   const projects = RequestCache.getProjects();
   const users = RequestCache.getUsers();
 

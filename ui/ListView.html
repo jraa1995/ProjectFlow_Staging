@@ -872,6 +872,10 @@ var ListViewPage = {
       this.users = users;
       this.projects = projects;
       this.populateFilterDropdowns();
+      if (typeof State !== 'undefined' && State.projectFilter) {
+        var pf = document.getElementById('filterProject');
+        if (pf) pf.value = State.projectFilter;
+      }
       this.applyFilters();
       this.showLoading(false);
       return true;
@@ -921,6 +925,10 @@ var ListViewPage = {
         this.users = State.cache.users?.data || [];
         this.projects = State.cache.projects?.data || [];
         this.populateFilterDropdowns();
+        if (typeof State !== 'undefined' && State.projectFilter) {
+          var pf = document.getElementById('filterProject');
+          if (pf) pf.value = State.projectFilter;
+        }
         this.applyFilters();
         this.showLoading(false);
         return;
@@ -932,6 +940,10 @@ var ListViewPage = {
         this.users = data.users || [];
         this.projects = data.projects || [];
         this.populateFilterDropdowns();
+        if (typeof State !== 'undefined' && State.projectFilter) {
+          var pf = document.getElementById('filterProject');
+          if (pf) pf.value = State.projectFilter;
+        }
         this.applyFilters();
         this.showLoading(false);
       } else {
@@ -941,6 +953,10 @@ var ListViewPage = {
             this.users = data.users || [];
             this.projects = data.projects || [];
             this.populateFilterDropdowns();
+            if (typeof State !== 'undefined' && State.projectFilter) {
+              var pf = document.getElementById('filterProject');
+              if (pf) pf.value = State.projectFilter;
+            }
             this.applyFilters();
             this.showLoading(false);
           })

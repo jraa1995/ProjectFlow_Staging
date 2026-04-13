@@ -140,12 +140,34 @@ const RequestCache = {
   _users: null,
   _activity: null,
   _dependencies: null,
+  _taskIndex: null,
 
   getTasks() {
     if (this._tasks === null) {
       this._tasks = getAllTasks();
     }
     return this._tasks;
+  },
+
+  getTaskIndex() {
+    if (this._taskIndex) return this._taskIndex;
+    var tasks = this.getTasks();
+    var idx = { byProject: {}, byAssignee: {}, byStatus: {}, byId: {} };
+    for (var i = 0; i < tasks.length; i++) {
+      var t = tasks[i];
+      idx.byId[t.id] = t;
+      var p = t.projectId || '__none__';
+      if (!idx.byProject[p]) idx.byProject[p] = [];
+      idx.byProject[p].push(t);
+      var a = (t.assignee || 'Unassigned').toLowerCase();
+      if (!idx.byAssignee[a]) idx.byAssignee[a] = [];
+      idx.byAssignee[a].push(t);
+      var s = t.status || 'Backlog';
+      if (!idx.byStatus[s]) idx.byStatus[s] = [];
+      idx.byStatus[s].push(t);
+    }
+    this._taskIndex = idx;
+    return idx;
   },
 
   getProjects() {
@@ -182,6 +204,7 @@ const RequestCache = {
     this._users = null;
     this._activity = null;
     this._dependencies = null;
+    this._taskIndex = null;
   }
 };
 
@@ -437,6 +460,22 @@ function getListViewData() {
   }
 }
 
+function getRefreshData() {
+  try {
+    var batchData = getBatchDataFast();
+    return {
+      success: true,
+      tasks: batchData.tasks,
+      projects: batchData.projects,
+      users: batchData.users,
+      config: batchData.config
+    };
+  } catch (error) {
+    console.error('getRefreshData failed:', error);
+    return { success: false, error: error.message, tasks: [], projects: [], users: [] };
+  }
+}
+
 function getUserSuggestions(query, excludeUsers) {
   try {
     return MentionEngine.getUserSuggestions(query, excludeUsers || []);
@@ -474,21 +513,248 @@ function getBasicUserSuggestions(query, excludeUsers) {
   return suggestions;
 }
 
-function registerNewUser(data) {
+function registerNewUser() {
+  return { success: false, error: 'Self-registration is no longer available. Please request access through the application.' };
+}
+
+function getSessionUser() {
   try {
-    if (!data || !data.name || !data.email || !data.password) {
-      return { success: false, error: 'Name, email, and password are required' };
+    var activeUser = Session.getActiveUser();
+    if (!activeUser) {
+      return { authenticated: false, reason: 'no_session' };
     }
-    const existing = getUserByEmail(data.email);
+    var email = activeUser.getEmail();
+    if (!email) {
+      return { authenticated: false, reason: 'no_session' };
+    }
+    email = email.toLowerCase().trim();
+
+    var user = getUserByEmailOptimized(email);
+
+    if (!user) {
+      return { authenticated: false, reason: 'no_account', email: email };
+    }
+
+    var isActive = user.active === true || user.active === 'true' || user.active === 'TRUE'
+      || user.active === 'yes' || user.active === 1 || user.active === '1' || user.active === 'active';
+    if (!isActive && user.active !== '' && user.active !== undefined) {
+      return { authenticated: false, reason: 'disabled' };
+    }
+
+    try {
+      var sheet = getUsersSheet();
+      var data = sheet.getDataRange().getValues();
+      var columns = CONFIG.USER_COLUMNS;
+      var emailIndex = 0;
+      var lastLoginIndex = columns.indexOf('lastLogin');
+      if (lastLoginIndex !== -1) {
+        for (var i = 1; i < data.length; i++) {
+          if (data[i][emailIndex] && data[i][emailIndex].toString().toLowerCase() === email) {
+            sheet.getRange(i + 1, lastLoginIndex + 1).setValue(new Date().toISOString());
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to update lastLogin:', e);
+    }
+
+    var payload = buildLoginPayload_(user, email);
+    payload.authenticated = true;
+    return payload;
+  } catch (error) {
+    console.error('getSessionUser failed:', error);
+    return { authenticated: false, reason: 'error', error: error.message };
+  }
+}
+
+function requestAccess() {
+  try {
+    var activeUser = Session.getActiveUser();
+    if (!activeUser) {
+      return { success: false, error: 'Could not identify your Google account' };
+    }
+    var email = activeUser.getEmail();
+    if (!email) {
+      return { success: false, error: 'Could not identify your Google account' };
+    }
+    email = email.toLowerCase().trim();
+
+    var existing = getUserByEmailOptimized(email);
     if (existing) {
-      return { success: false, error: 'An account with this email already exists' };
+      return { success: false, error: 'Account already exists' };
     }
-    createUser({ email: data.email, name: data.name, role: 'member' });
-    const hash = PasswordService.createPasswordHash(data.password);
-    updateUser(data.email, { passwordHash: hash.hash, passwordSalt: hash.salt });
+
+    var sheet = getAccessRequestsSheet();
+    var data = sheet.getDataRange().getValues();
+    var columns = CONFIG.ACCESS_REQUEST_COLUMNS;
+    for (var i = 1; i < data.length; i++) {
+      var row = rowToObject(data[i], columns);
+      if (row.email && row.email.toString().toLowerCase() === email && row.status === 'pending') {
+        return { success: false, error: 'Request already pending. Please wait for admin approval.' };
+      }
+    }
+
+    var request = {
+      id: generateId('AR'),
+      email: email,
+      name: email.split('@')[0],
+      requestedAt: now(),
+      status: 'pending',
+      reviewedBy: '',
+      reviewedAt: '',
+      reason: ''
+    };
+    sheet.appendRow(objectToRow(request, columns));
+
+    try {
+      var admins = getActiveUsers().filter(function(u) { return u.role === 'admin'; });
+      admins.forEach(function(admin) {
+        GmailApp.sendEmail(admin.email, 'COLONY — New Access Request', '', {
+          htmlBody: '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">' +
+            '<div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">' +
+            '<h2 style="color: #525252; margin: 0;">COLONY</h2></div>' +
+            '<div style="padding: 20px;">' +
+            '<p><strong>' + email + '</strong> is requesting access to COLONY.</p>' +
+            '<p style="color: #6b7280; font-size: 14px;">Requested: ' + new Date().toLocaleString() + '</p>' +
+            '<p>Open COLONY and navigate to <strong>Settings → Access Requests</strong> to approve or reject this request.</p>' +
+            '</div></div>',
+          name: 'COLONY'
+        });
+      });
+    } catch (e) {
+      console.error('Failed to notify admins of access request:', e);
+    }
+
+    return { success: true, message: 'Access request submitted. You will receive an email when approved.' };
+  } catch (error) {
+    console.error('requestAccess failed:', error);
+    return { success: false, error: error.message || 'Failed to submit access request' };
+  }
+}
+
+function getPendingAccessRequests() {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    var sheet = getAccessRequestsSheet();
+    var data = sheet.getDataRange().getValues();
+    var columns = CONFIG.ACCESS_REQUEST_COLUMNS;
+    var requests = [];
+    for (var i = 1; i < data.length; i++) {
+      var row = rowToObject(data[i], columns);
+      if (row.email && row.status === 'pending') {
+        requests.push(row);
+      }
+    }
+    return { success: true, requests: requests };
+  } catch (error) {
+    console.error('getPendingAccessRequests failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function approveAccessRequest(email) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    if (!email) {
+      return { success: false, error: 'Email is required' };
+    }
+    email = email.toLowerCase().trim();
+    var adminEmail = getCurrentUserEmailOptimized();
+
+    var sheet = getAccessRequestsSheet();
+    var data = sheet.getDataRange().getValues();
+    var columns = CONFIG.ACCESS_REQUEST_COLUMNS;
+    var found = false;
+    for (var i = 1; i < data.length; i++) {
+      var row = rowToObject(data[i], columns);
+      if (row.email && row.email.toString().toLowerCase() === email && row.status === 'pending') {
+        row.status = 'approved';
+        row.reviewedBy = adminEmail;
+        row.reviewedAt = now();
+        var newRow = objectToRow(row, columns);
+        sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return { success: false, error: 'No pending request found for this email' };
+    }
+
+    createUser({ email: email, name: email.split('@')[0], role: 'member' });
+
+    try {
+      GmailApp.sendEmail(email, 'COLONY — Access Granted', '', {
+        htmlBody: '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">' +
+          '<div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">' +
+          '<h2 style="color: #525252; margin: 0;">COLONY</h2></div>' +
+          '<div style="padding: 20px;">' +
+          '<p>Your access to COLONY has been approved.</p>' +
+          '<p>You can now open the application and start using it.</p>' +
+          '</div></div>',
+        name: 'COLONY'
+      });
+    } catch (e) {
+      console.error('Failed to send approval email:', e);
+    }
+
     return { success: true };
   } catch (error) {
-    console.error('registerNewUser failed:', error);
-    return { success: false, error: error.message || 'Registration failed' };
+    console.error('approveAccessRequest failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function rejectAccessRequest(email, reason) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    if (!email) {
+      return { success: false, error: 'Email is required' };
+    }
+    email = email.toLowerCase().trim();
+    var adminEmail = getCurrentUserEmailOptimized();
+
+    var sheet = getAccessRequestsSheet();
+    var data = sheet.getDataRange().getValues();
+    var columns = CONFIG.ACCESS_REQUEST_COLUMNS;
+    var found = false;
+    for (var i = 1; i < data.length; i++) {
+      var row = rowToObject(data[i], columns);
+      if (row.email && row.email.toString().toLowerCase() === email && row.status === 'pending') {
+        row.status = 'rejected';
+        row.reviewedBy = adminEmail;
+        row.reviewedAt = now();
+        row.reason = reason || '';
+        var newRow = objectToRow(row, columns);
+        sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return { success: false, error: 'No pending request found for this email' };
+    }
+
+    try {
+      GmailApp.sendEmail(email, 'COLONY — Access Request Update', '', {
+        htmlBody: '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">' +
+          '<div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">' +
+          '<h2 style="color: #525252; margin: 0;">COLONY</h2></div>' +
+          '<div style="padding: 20px;">' +
+          '<p>We need additional verification for your access request.</p>' +
+          (reason ? '<p><strong>Details:</strong> ' + reason + '</p>' : '') +
+          '<p>Please reach out to your administrator if you believe this is an error.</p>' +
+          '</div></div>',
+        name: 'COLONY'
+      });
+    } catch (e) {
+      console.error('Failed to send rejection email:', e);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('rejectAccessRequest failed:', error);
+    return { success: false, error: error.message };
   }
 }

@@ -1,9 +1,6 @@
 function saveNewProject(projectData) {
   const result = createProject(projectData);
   invalidateProjectCache();
-  try {
-    CacheService.getScriptCache().remove('BATCH_DATA_CACHE');
-  } catch (e) { /* best effort */ }
   return result;
 }
 
@@ -68,6 +65,70 @@ function updateProjectDetails(payload) {
   }
 }
 
+function getProjectTaxonomyValues() {
+  try {
+    var projects = getAllProjectsOptimized();
+    var fields = CONFIG.TAXONOMY_FIELDS;
+    var result = {};
+    fields.forEach(function(f) { result[f] = {}; });
+    projects.forEach(function(p) {
+      var settings = {};
+      try { settings = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {}); } catch(e) {}
+      fields.forEach(function(f) {
+        var val = settings[f];
+        if (val && String(val).trim() && val !== 'N/A' && val !== 'FALSE') {
+          result[f][String(val).trim()] = true;
+        }
+      });
+    });
+    var sorted = {};
+    fields.forEach(function(f) { sorted[f] = Object.keys(result[f]).sort(); });
+    return sorted;
+  } catch (error) {
+    console.error('getProjectTaxonomyValues failed:', error);
+    return {};
+  }
+}
+
+function getProjectHierarchy(projectId) {
+  try {
+    var projects = getAllProjectsOptimized();
+    var project = null;
+    for (var i = 0; i < projects.length; i++) {
+      if (projects[i].id === projectId) { project = projects[i]; break; }
+    }
+    if (!project) return null;
+    var parentId = null;
+    try {
+      var s = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {});
+      parentId = s.linkedProjectId || null;
+    } catch (e) {}
+    var children = [];
+    projects.forEach(function(p) {
+      if (p.id === projectId) return;
+      try {
+        var ps = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {});
+        if (ps.linkedProjectId === projectId) {
+          children.push({ id: p.id, name: p.name, status: p.status });
+        }
+      } catch (e) {}
+    });
+    var parent = null;
+    if (parentId) {
+      for (var i = 0; i < projects.length; i++) {
+        if (projects[i].id === parentId) {
+          parent = { id: projects[i].id, name: projects[i].name, status: projects[i].status };
+          break;
+        }
+      }
+    }
+    return { project: { id: project.id, name: project.name, status: project.status }, parentId: parentId, parent: parent, children: children };
+  } catch (error) {
+    console.error('getProjectHierarchy failed:', error);
+    return null;
+  }
+}
+
 function addProjectReleaseNote(projectId, releaseData) {
   try {
     const project = addReleaseNote(projectId, releaseData);
@@ -116,7 +177,6 @@ function deleteExistingProject(projectId) {
   try {
     deleteProject(projectId);
     invalidateProjectCache();
-    try { CacheService.getScriptCache().remove('BATCH_DATA_CACHE'); } catch (e) {}
     return { success: true };
   } catch (error) {
     console.error('deleteExistingProject failed:', error);

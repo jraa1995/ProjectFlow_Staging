@@ -10,8 +10,6 @@ const CONFIG = {
     ANALYTICS_CACHE: 'Analytics_Cache',
     TASK_DEPENDENCIES: 'Task_Dependencies',
     FUNNEL_STAGING: 'Funnel_Staging',
-    SESSION_TOKENS: 'Session_Tokens',
-    MFA_CODES: 'MFA_Codes',
     ROLES: 'Roles',
     PROJECT_MEMBERS: 'Project_Members',
     ORGANIZATIONS: 'Organizations',
@@ -25,10 +23,11 @@ const CONFIG = {
     SLA_CONFIG: 'SLA_Config',
     TRIAGE_QUEUE: 'Triage_Queue',
     JSON_CACHE: 'JSON_Cache',
-    DATA_ASSETS: 'Data_Assets'
+    DATA_ASSETS: 'Data_Assets',
+    ACCESS_REQUESTS: 'Access_Requests'
   },
 
-  JSON_CACHE_COLUMNS: ['key', 'data', 'updatedAt'],
+  JSON_CACHE_COLUMNS: ['key', 'data', 'updatedAt', 'version'],
 
   STATUSES: ['Backlog', 'To Do', 'In Progress', 'Review', 'Testing', 'Done'],
 
@@ -78,6 +77,8 @@ const CONFIG = {
     'milestoneType',
     'version',
     'lastModifiedBy',
+    'isDeleted',
+    'deletedAt',
     'jsonData'
   ],
 
@@ -199,26 +200,6 @@ const CONFIG = {
     'importedAt'
   ],
 
-  SESSION_TOKEN_COLUMNS: [
-    'id',
-    'userId',
-    'token',
-    'createdAt',
-    'expiresAt',
-    'lastActivityAt',
-    'ipFingerprint',
-    'isValid'
-  ],
-
-  MFA_CODE_COLUMNS: [
-    'id',
-    'userId',
-    'code',
-    'createdAt',
-    'expiresAt',
-    'used',
-    'channel'
-  ],
 
   ROLE_COLUMNS: [
     'id',
@@ -380,7 +361,17 @@ const CONFIG = {
     'createdAt', 'updatedAt', 'lastUpdatedBy', 'jsonData', 'updateFrequency'
   ],
 
-  DATA_ASSET_STATUSES: ['Active', 'Inactive', 'Deprecated', 'In Development']
+  DATA_ASSET_STATUSES: ['Active', 'Inactive', 'Deprecated', 'In Development'],
+
+  ACCESS_REQUEST_COLUMNS: [
+    'id', 'email', 'name', 'requestedAt', 'status', 'reviewedBy', 'reviewedAt', 'reason'
+  ],
+
+  TAXONOMY_FIELDS: ['workstream', 'projectCategory', 'projectType', 'developmentPriority', 'developmentPhase', 'techStack'],
+
+  DEPRECATED_SETTINGS_KEYS: ['futureOwner', 'futureContractHome', 'transitionPriority', 'transitionMeetingDate', 'transitionComplete'],
+
+  TBD_DATE_SENTINEL: 'TBD'
 
 };
 
@@ -411,7 +402,7 @@ function generateTaskId(projectId) {
   }
 }
 
-function generateProjectAcronym(name, existingProjects) {
+function generateProjectAcronym(name, existingProjects, parentAcronym) {
   if (!name) return 'PROJ';
 
   const words = name.replace(/[^a-zA-Z0-9\s]/g, '').trim().split(/\s+/);
@@ -421,6 +412,10 @@ function generateProjectAcronym(name, existingProjects) {
     acronym = words.slice(0, 4).map(w => w[0]).join('').toUpperCase();
   } else {
     acronym = words[0].substring(0, 4).toUpperCase();
+  }
+
+  if (parentAcronym) {
+    acronym = parentAcronym + '-' + acronym;
   }
 
   let finalAcronym = acronym;

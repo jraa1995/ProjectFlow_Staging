@@ -26,6 +26,23 @@ var WORKLOG_STATUS_MAP = {
   '08-Stopped': 'archived'
 };
 
+var WORKLOG_PHASE_MAP = {
+  '02-': 'Development',
+  '03-': 'Deployed',
+  '04-': 'Maintenance',
+  '05-': 'Pre-Deploy',
+  '06-': 'Retired',
+  '07-': 'Backlog',
+  '08-': 'Stopped'
+};
+
+function normalizeImportField(value) {
+  if (!value) return '';
+  var trimmed = String(value).trim();
+  if (trimmed === 'N/A' || trimmed === 'FALSE' || trimmed === 'false') return '';
+  return trimmed;
+}
+
 var WORKLOG_COL = {
   docCompleteness: 0,
   projectStatus: 1,
@@ -110,7 +127,14 @@ function buildWorklogTags(row) {
   if (row[C.developmentPriority]) tags.push(String(row[C.developmentPriority]).trim());
   if (row[C.contractCurrent]) tags.push(String(row[C.contractCurrent]).trim());
   if (row[C.developmentPhase]) tags.push(String(row[C.developmentPhase]).trim());
-  return tags.filter(function(t) { return t && t !== 'N/A' && t !== 'FALSE'; });
+  var seen = {};
+  return tags.filter(function(t) {
+    if (!t || t === 'N/A' || t === 'FALSE') return false;
+    var key = t.toLowerCase().trim();
+    if (seen[key]) return false;
+    seen[key] = true;
+    return true;
+  });
 }
 
 function buildWorklogSettings(row) {
@@ -175,7 +199,11 @@ function buildWorklogSettings(row) {
   s.transitionComplete = transComplete === 'TRUE' || transComplete === 'true';
   if (row[C.dataTaskOwnership]) s.dataTaskOwnership = String(row[C.dataTaskOwnership]).trim();
   if (row[C.additionalFiles]) s.additionalFiles = String(row[C.additionalFiles]).trim();
-  if (row[C.githubLinks]) s.githubLinks = String(row[C.githubLinks]).trim();
+  if (row[C.githubLinks]) {
+    var ghVal = String(row[C.githubLinks]).trim();
+    var ghLinks = ghVal.split(/[,;\n]/).map(function(l) { return l.trim(); }).filter(Boolean);
+    if (ghLinks.length > 1) s.githubLinks = ghVal;
+  }
   return s;
 }
 
@@ -217,6 +245,10 @@ function importProjectsFromWorkLog(workbookId) {
     var statusStr = String(row[C.projectStatus] || '').trim();
     var tags = buildWorklogTags(row);
     var settings = buildWorklogSettings(row);
+    if (!settings.developmentPhase && statusStr) {
+      var phasePrefix = statusStr.substring(0, 3);
+      if (WORKLOG_PHASE_MAP[phasePrefix]) settings.developmentPhase = WORKLOG_PHASE_MAP[phasePrefix];
+    }
 
     var project = {
       id: projectId,
@@ -250,7 +282,6 @@ function importProjectsFromWorkLog(workbookId) {
   }
 
   invalidateProjectCache();
-  try { CacheService.getScriptCache().remove('BATCH_DATA_CACHE'); } catch (e) {}
 
   return {
     success: true,
@@ -297,6 +328,10 @@ function syncWorklogSettings(workbookId) {
 
     var newTags = buildWorklogTags(row);
     var statusStr = String(row[C.projectStatus] || '').trim();
+    if (!currentSettings.developmentPhase && statusStr) {
+      var phasePrefix = statusStr.substring(0, 3);
+      if (WORKLOG_PHASE_MAP[phasePrefix]) currentSettings.developmentPhase = WORKLOG_PHASE_MAP[phasePrefix];
+    }
     var updates = {
       settings: JSON.stringify(currentSettings),
       tags: JSON.stringify(newTags),
@@ -313,7 +348,6 @@ function syncWorklogSettings(workbookId) {
   }
 
   invalidateProjectCache();
-  try { CacheService.getScriptCache().remove('BATCH_DATA_CACHE'); } catch (e) {}
 
   return { success: true, updated: updated.length, skipped: skipped.length, updatedNames: updated, skippedNames: skipped };
 }
@@ -412,4 +446,55 @@ function importDataAssetsFromWorkLog(workbookId) {
     importedNames: imported,
     skippedNames: skipped
   };
+}
+
+function previewImportFromWorkLog(workbookId) {
+  var storedId = workbookId || getProjectsWorkbookId();
+  if (!storedId) return { success: false, error: 'No workbook ID provided' };
+  try {
+    var sourceSpreadsheet = SpreadsheetApp.openById(storedId);
+    var sourceSheet = sourceSpreadsheet.getSheets()[0];
+    var sourceData = sourceSheet.getDataRange().getValues();
+    var C = WORKLOG_COL;
+    var existingProjects = getAllProjects();
+    var existingNames = {};
+    existingProjects.forEach(function(p) { existingNames[p.name.toLowerCase().trim()] = true; });
+    var projects = [];
+    var duplicates = [];
+    var warnings = [];
+    for (var i = 1; i < sourceData.length; i++) {
+      var row = sourceData[i];
+      var name = String(row[C.name] || '').trim();
+      if (!name) continue;
+      if (existingNames[name.toLowerCase()]) {
+        duplicates.push(name);
+        continue;
+      }
+      var statusStr = String(row[C.projectStatus] || '').trim();
+      var settings = buildWorklogSettings(row);
+      if (!settings.developmentPhase && statusStr) {
+        var phasePrefix = statusStr.substring(0, 3);
+        if (WORKLOG_PHASE_MAP[phasePrefix]) settings.developmentPhase = WORKLOG_PHASE_MAP[phasePrefix];
+      }
+      var ghVal = String(row[C.githubLinks] || '').trim();
+      var repoUrl = ghVal;
+      if (ghVal && ghVal.split(/[,;\n]/).filter(Boolean).length > 1) {
+        repoUrl = ghVal.split(/[,;\n]/)[0].trim();
+      }
+      if (!statusStr) warnings.push(name + ': missing status');
+      if (!row[C.projectOwner]) warnings.push(name + ': missing owner');
+      projects.push({
+        name: name,
+        status: WORKLOG_STATUS_MAP[statusStr] || 'active',
+        phase: settings.developmentPhase || '',
+        owner: String(row[C.projectOwner] || '').trim(),
+        repoUrl: repoUrl,
+        settingsKeys: Object.keys(settings).length
+      });
+    }
+    return { success: true, projects: projects, duplicates: duplicates, warnings: warnings };
+  } catch (error) {
+    console.error('previewImportFromWorkLog failed:', error);
+    return { success: false, error: error.message };
+  }
 }
