@@ -809,17 +809,17 @@ var TaskEditModal = {
     if (State.board && State.board.columns) {
       for (const col of State.board.columns) {
         if (col.tasks) {
-          const task = col.tasks.find(t => t.id === taskId);
+          const task = col.tasks.find(function(t) { return t.taskUid === taskId || t.id === taskId; });
           if (task) return task;
         }
       }
     }
     if (State.cache && State.cache.tasks && State.cache.tasks.data) {
-      const task = State.cache.tasks.data.find(t => t.id === taskId);
+      const task = State.cache.tasks.data.find(function(t) { return t.taskUid === taskId || t.id === taskId; });
       if (task) return task;
     }
     if (State.tasks && Array.isArray(State.tasks)) {
-      const task = State.tasks.find(t => t.id === taskId);
+      const task = State.tasks.find(function(t) { return t.taskUid === taskId || t.id === taskId; });
       if (task) return task;
     }
     return null;

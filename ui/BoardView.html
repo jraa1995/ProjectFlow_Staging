@@ -28,6 +28,23 @@
     }
   }
 
+  function runIntegrityRepair() {
+    if (!confirm('Run task identity repair? This will reassign duplicate IDs and create a backup.')) return;
+    toast('Running repair...', 'info');
+    google.script.run
+      .withSuccessHandler(function(result) {
+        toast('Repaired ' + result.duplicatesRepaired + ' duplicates, backfilled ' + result.uidsBackfilled + ' UIDs', 'success');
+        State.integrityBlocked = false;
+        var banner = document.getElementById('integrityWarning');
+        if (banner) banner.remove();
+        loadBoard();
+      })
+      .withFailureHandler(function(err) {
+        toast('Repair failed: ' + (err.message || err), 'error');
+      })
+      .repairTaskIdentity();
+  }
+
   function handleBoardData(data) {
     State.board = data;
     State.projects = data.projects || State.projects;
@@ -52,6 +69,17 @@
     updateStats();
     updateProjectNav();
     showLoading(false);
+    google.script.run.withSuccessHandler(function(result) {
+      if (!result.healthy) {
+        State.integrityBlocked = true;
+        var banner = document.createElement('div');
+        banner.id = 'integrityWarning';
+        banner.style.cssText = 'background:#dc2626;color:white;padding:12px 20px;text-align:center;font-weight:600;position:fixed;top:0;left:0;right:0;z-index:9999;';
+        banner.innerHTML = 'Task integrity issues: ' + result.duplicateCount + ' duplicate IDs, ' + result.missingUidCount + ' missing UIDs. Board moves disabled. ' +
+          '<button onclick="runIntegrityRepair()" style="margin-left:8px;padding:4px 12px;background:white;color:#dc2626;border:none;border-radius:4px;font-weight:700;cursor:pointer;">Run Repair</button>';
+        document.body.prepend(banner);
+      }
+    }).checkTaskIntegrity();
   }
 
   function updateTaskInDOM(taskId, changes) {
@@ -98,7 +126,7 @@
     if (changes.isMilestone !== undefined || changes.recurringConfig !== undefined) {
       var fullTask = null;
       if (State.tasks) {
-        fullTask = State.tasks.find(function(t) { return t.id === taskId; });
+        fullTask = (findTaskByIdentifier(taskId) || State.tasks.find(function(t) { return t.id === taskId; }));
       }
       if (fullTask) {
         var merged = Object.assign({}, fullTask, changes);
@@ -114,13 +142,13 @@
       return true;
     }
     if (State.tasks) {
-      const task = State.tasks.find(t => t.id === taskId);
+      const task = findTaskByIdentifier(taskId) || State.tasks.find(t => t.id === taskId);
       if (task) {
         Object.assign(task, changes);
       }
     }
     if (State.cache?.tasks?.data) {
-      const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
+      const cachedTask = State.cache.tasks.data.find(function(t) { return t.taskUid === taskId || t.id === taskId; });
       if (cachedTask) {
         Object.assign(cachedTask, changes);
       }
@@ -264,9 +292,9 @@
     return `
   <div class="task-card ${milestoneClass} ${milestoneState} ${blockedClass} ${recurringClass} bg-white rounded-lg p-3 shadow-sm border ${cardBorderStyle || 'border-gray-200'} cursor-pointer hover:shadow-md transition-shadow"
   draggable="true"
-  data-task-id="${task.id}"
+  data-task-id="${task.taskUid || task.id}"
   data-status="${columnId || ''}"
-  onclick="openTaskDetailPanel('${task.id}')"
+  onclick="openTaskDetailPanel('${task.taskUid || task.id}')"
   ${dependencyTooltip ? `title="${escapeHtml(dependencyTooltip)}"` : ''}>
   <div class="flex items-start justify-between mb-2">
   <div class="flex items-center gap-1">
@@ -962,56 +990,7 @@
   }
 
   function handleDropOnColumn(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const column = e.currentTarget;
-    column.classList.remove('drag-over');
-    const taskList = column.querySelector('.task-list');
-    if (taskList) taskList.classList.remove('drag-over');
-    const taskId = e.dataTransfer.getData("text/plain");
-    const newStatus = column.dataset.status;
-    if (!taskId || !newStatus) {
-      console.error('handleDropOnColumn: Missing taskId or newStatus', {
-        taskId,
-        newStatus
-      });
-      toast('Could not determine drop target', 'error');
-      return;
-    }
-    const previousStatus = State.draggedTask?.dataset.status;
-    const statusName = getStatusName(newStatus);
-    OptimisticUI.apply(
-      'moveTask', {
-        taskId,
-        newStatus,
-        previousStatus
-      },
-      () => {
-        if (State.draggedTask && taskList) {
-          taskList.appendChild(State.draggedTask);
-          State.draggedTask.dataset.status = newStatus;
-        }
-        updateColumnCounts();
-      },
-      () => {
-        if (State.tasks) {
-          const task = State.tasks.find(t => t.id === taskId);
-          if (task) task.status = statusName;
-        }
-        if (State.cache?.tasks?.data) {
-          const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
-          if (cachedTask) cachedTask.status = statusName;
-        }
-        LocalCache.set('tasks', State.tasks);
-      },
-      () => new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .moveTaskToStatus(taskId, statusName, 0);
-      })
-    );
-    currentDropTarget = null;
+    handleTaskDrop(e);
   }
 
   function handleDragEnterList(e) {
@@ -1045,59 +1024,7 @@
   }
 
   function handleDropOnCard(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const boardColumn = e.currentTarget.closest('.board-column[data-status]');
-    const taskList = e.currentTarget.closest('.task-list[data-status]');
-    if (taskList) taskList.classList.remove("drag-over");
-    if (boardColumn) boardColumn.classList.remove("drag-over");
-    const taskId = e.dataTransfer.getData("text/plain");
-    let newStatus = boardColumn?.dataset.status || taskList?.dataset.status || e.currentTarget.dataset.status;
-    if (!taskId || !newStatus) {
-      console.error('handleDropOnCard: Missing taskId or newStatus', {
-        taskId,
-        newStatus
-      });
-      toast('Could not determine drop target', 'error');
-      return;
-    }
-    if (taskId === e.currentTarget.dataset.taskId) {
-      return;
-    }
-    const previousStatus = State.draggedTask?.dataset.status;
-    const targetList = taskList || boardColumn?.querySelector('.task-list');
-    const statusName = getStatusName(newStatus);
-    OptimisticUI.apply(
-      'moveTask', {
-        taskId,
-        newStatus,
-        previousStatus
-      },
-      () => {
-        if (State.draggedTask && targetList) {
-          targetList.appendChild(State.draggedTask);
-          State.draggedTask.dataset.status = newStatus;
-        }
-        updateColumnCounts();
-      },
-      () => {
-        if (State.tasks) {
-          const task = State.tasks.find(t => t.id === taskId);
-          if (task) task.status = statusName;
-        }
-        if (State.cache?.tasks?.data) {
-          const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
-          if (cachedTask) cachedTask.status = statusName;
-        }
-        LocalCache.set('tasks', State.tasks);
-      },
-      () => new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .moveTaskToStatus(taskId, statusName, 0);
-      })
-    );
+    handleTaskDrop(e);
   }
 
   function handleDragLeaveCard(e) {
@@ -1132,73 +1059,78 @@
   }
 
   function handleDrop(e) {
+    handleTaskDrop(e);
+  }
+
+  function findTaskByIdentifier(identifier) {
+    if (!identifier || !State.tasks) return null;
+    return State.tasks.find(function(t) { return t.taskUid === identifier; })
+      || State.tasks.find(function(t) { return t.id === identifier; })
+      || null;
+  }
+
+  function handleTaskDrop(e) {
     e.preventDefault();
     e.stopPropagation();
-    e.currentTarget.classList.remove("drag-over");
-    const taskId = e.dataTransfer.getData("text/plain");
-    let newStatus = e.currentTarget.dataset.status
-      || e.target.closest('.task-list[data-status]')?.dataset.status
-      || e.target.closest('.board-column[data-status]')?.dataset.status
-      || e.target.closest('.task-card[data-status]')?.dataset.status;
-    if (!taskId || !newStatus) {
-      console.error('handleDrop: Missing taskId or newStatus', {
-        taskId,
-        newStatus
-      });
+    if (State.integrityBlocked) {
+      toast('Board moves disabled: task integrity issues detected. Contact admin.', 'error');
+      return;
+    }
+    var boardColumn = e.target.closest('.board-column');
+    var taskList = e.target.closest('.task-list');
+    if (boardColumn) boardColumn.classList.remove('drag-over');
+    if (taskList) taskList.classList.remove('drag-over');
+    var taskIdentifier = e.dataTransfer.getData('text/plain');
+    var newStatus = (taskList && taskList.dataset.status)
+      || (boardColumn && boardColumn.dataset.status);
+    if (!taskIdentifier || !newStatus) {
+      console.error('handleTaskDrop: missing taskIdentifier or newStatus', { taskIdentifier: taskIdentifier, newStatus: newStatus });
       toast('Could not determine drop target', 'error');
       return;
     }
-    let targetList = e.currentTarget;
-    if (!targetList.classList.contains('task-list')) {
-      targetList = e.target.closest('.task-list[data-status]');
-      if (!targetList) {
-        const boardColumn = e.target.closest('.board-column[data-status]');
-        if (boardColumn) {
-          targetList = boardColumn.querySelector('.task-list');
-        }
-      }
+    var targetCard = e.target.closest('.task-card');
+    if (targetCard && targetCard.dataset.taskId === taskIdentifier) return;
+    var resolvedTask = findTaskByIdentifier(taskIdentifier);
+    if (!resolvedTask) {
+      console.error('handleTaskDrop: task not found in State:', taskIdentifier);
+      toast('Task not found', 'error');
+      return;
     }
-    const previousStatus = State.draggedTask?.dataset.status;
-    const statusName = getStatusName(newStatus);
-    if (State.tasks) {
-      var taskExists = State.tasks.some(t => t.id === taskId);
-      if (!taskExists) {
-        console.error('handleDrop: task not found in State:', taskId);
-        toast('Task not found', 'error');
-        return;
-      }
-    }
+    var taskId = resolvedTask.id;
+    var previousStatus = State.draggedTask ? State.draggedTask.dataset.status : null;
+    var targetList = taskList || (boardColumn ? boardColumn.querySelector('.task-list') : null);
+    var statusName = getStatusName(newStatus);
     OptimisticUI.apply(
-      'moveTask', {
-        taskId,
-        newStatus,
-        previousStatus
-      },
-      () => {
+      'moveTask',
+      { taskId: taskIdentifier, newStatus: newStatus, previousStatus: previousStatus },
+      function() {
         if (State.draggedTask && targetList) {
           targetList.appendChild(State.draggedTask);
           State.draggedTask.dataset.status = newStatus;
         }
         updateColumnCounts();
       },
-      () => {
+      function() {
         if (State.tasks) {
-          const task = State.tasks.find(t => t.id === taskId);
-          if (task) task.status = statusName;
+          var t = findTaskByIdentifier(taskIdentifier);
+          if (t) t.status = statusName;
         }
-        if (State.cache?.tasks?.data) {
-          const cachedTask = State.cache.tasks.data.find(t => t.id === taskId);
-          if (cachedTask) cachedTask.status = statusName;
+        if (State.cache && State.cache.tasks && State.cache.tasks.data) {
+          var ct = State.cache.tasks.data.find(function(t) { return t.taskUid === taskIdentifier || t.id === taskIdentifier; });
+          if (ct) ct.status = statusName;
         }
         LocalCache.set('tasks', State.tasks);
       },
-      () => new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .moveTaskToStatus(taskId, statusName, 0);
-      })
+      function() {
+        return new Promise(function(resolve, reject) {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(reject)
+            .moveTaskToStatus(taskId, statusName, 0);
+        });
+      }
     );
+    currentDropTarget = null;
   }
 
   function getStatusName(statusId) {

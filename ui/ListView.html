@@ -1229,20 +1229,20 @@ var ListViewPage = {
             onchange="ListViewPage.toggleTaskSelection('${escapeHtml(task.id)}')">
         </td>
         <td>${escapeHtml(task.id || '')}</td>
-        <td class="editable-cell" data-field="title" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
+        <td class="editable-cell" data-field="title" data-task-id="${escapeHtml(task.taskUid || task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           ${escapeHtml(task.title || '')}
         </td>
-        <td class="editable-cell" data-field="status" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
+        <td class="editable-cell" data-field="status" data-task-id="${escapeHtml(task.taskUid || task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           <span class="status-badge status-${(task.status || '').toLowerCase().replace(/\s+/g, '-')}">${this.formatStatus(task.status || '')}</span>
         </td>
-        <td class="editable-cell" data-field="priority" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
+        <td class="editable-cell" data-field="priority" data-task-id="${escapeHtml(task.taskUid || task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           <span class="priority-badge priority-${(task.priority || '').toLowerCase()}">${this.formatPriority(task.priority || '')}</span>
         </td>
         <td>${escapeHtml(task.type || '')}</td>
-        <td class="editable-cell" data-field="assignee" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
+        <td class="editable-cell" data-field="assignee" data-task-id="${escapeHtml(task.taskUid || task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           ${escapeHtml(assigneeName)}
         </td>
-        <td class="editable-cell" data-field="dueDate" data-task-id="${escapeHtml(task.id)}" onclick="ListViewPage.startInlineEdit(this)">
+        <td class="editable-cell" data-field="dueDate" data-task-id="${escapeHtml(task.taskUid || task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           ${task.dueDate ? this.formatDate(task.dueDate) : ''}
         </td>
         <td>${task.createdDate ? this.formatDate(task.createdDate) : ''}</td>

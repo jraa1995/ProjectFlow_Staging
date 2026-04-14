@@ -275,11 +275,11 @@ function patchTaskCache(taskId, updatedTask, changeType) {
   try {
     var tasks = VersionedCache.get('ALL_TASKS_CACHE');
     if (tasks) {
-      var index = tasks.findIndex(function(t) { return t.id === taskId; });
+      var index = tasks.findIndex(function(t) { return t.id === taskId || t.taskUid === taskId; });
       if (changeType === 'delete') {
         if (index >= 0) tasks.splice(index, 1);
       } else if (changeType === 'create' && updatedTask) {
-        var dupeIdx = tasks.findIndex(function(t) { return t.id === updatedTask.id; });
+        var dupeIdx = tasks.findIndex(function(t) { return t.id === updatedTask.id || (updatedTask.taskUid && t.taskUid === updatedTask.taskUid); });
         if (dupeIdx >= 0) { tasks[dupeIdx] = updatedTask; } else { tasks.push(updatedTask); }
       } else if (updatedTask && index >= 0) {
         tasks[index] = updatedTask;
@@ -289,11 +289,11 @@ function patchTaskCache(taskId, updatedTask, changeType) {
 
     var batchData = VersionedCache.get('BATCH_DATA_CACHE');
     if (batchData && batchData.tasks) {
-      var batchIndex = batchData.tasks.findIndex(function(t) { return t.id === taskId; });
+      var batchIndex = batchData.tasks.findIndex(function(t) { return t.id === taskId || t.taskUid === taskId; });
       if (changeType === 'delete') {
         if (batchIndex >= 0) batchData.tasks.splice(batchIndex, 1);
       } else if (changeType === 'create' && updatedTask) {
-        var batchDupeIdx = batchData.tasks.findIndex(function(t) { return t.id === updatedTask.id; });
+        var batchDupeIdx = batchData.tasks.findIndex(function(t) { return t.id === updatedTask.id || (updatedTask.taskUid && t.taskUid === updatedTask.taskUid); });
         if (batchDupeIdx >= 0) { batchData.tasks[batchDupeIdx] = updatedTask; } else { batchData.tasks.push(updatedTask); }
       } else if (updatedTask && batchIndex >= 0) {
         batchData.tasks[batchIndex] = updatedTask;
@@ -303,12 +303,12 @@ function patchTaskCache(taskId, updatedTask, changeType) {
 
     if (RequestCache && RequestCache._tasks) {
       if (changeType === 'delete') {
-        RequestCache._tasks = RequestCache._tasks.filter(function(t) { return t.id !== taskId; });
+        RequestCache._tasks = RequestCache._tasks.filter(function(t) { return t.id !== taskId && t.taskUid !== taskId; });
       } else if (changeType === 'create' && updatedTask) {
-        var reqDupeIdx = RequestCache._tasks.findIndex(function(t) { return t.id === updatedTask.id; });
+        var reqDupeIdx = RequestCache._tasks.findIndex(function(t) { return t.id === updatedTask.id || (updatedTask.taskUid && t.taskUid === updatedTask.taskUid); });
         if (reqDupeIdx >= 0) { RequestCache._tasks[reqDupeIdx] = updatedTask; } else { RequestCache._tasks.push(updatedTask); }
       } else if (updatedTask) {
-        var idx = RequestCache._tasks.findIndex(function(t) { return t.id === taskId; });
+        var idx = RequestCache._tasks.findIndex(function(t) { return t.id === taskId || t.taskUid === taskId; });
         if (idx >= 0) RequestCache._tasks[idx] = updatedTask;
       }
     }

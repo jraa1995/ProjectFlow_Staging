@@ -716,6 +716,33 @@ function getTaskById(taskId) {
   return task;
 }
 
+function getTaskByUid(taskUid) {
+  if (!taskUid) return null;
+  var sheet = getTasksSheet();
+  var columns = CONFIG.TASK_COLUMNS;
+  var uidCol = columns.indexOf('taskUid');
+  if (uidCol === -1) return null;
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][uidCol] === taskUid) {
+      var task = rowToObject(data[i], columns);
+      task.labels = typeof task.labels === 'string' && task.labels
+        ? task.labels.split(',').map(function(l) { return l.trim(); }).filter(Boolean)
+        : (Array.isArray(task.labels) ? task.labels : []);
+      return task;
+    }
+  }
+  return null;
+}
+
+function resolveTaskIdentifier(identifier) {
+  if (!identifier) return null;
+  if (isValidTaskUid(identifier)) {
+    return getTaskByUid(identifier);
+  }
+  return getTaskById(identifier);
+}
+
 function getTasksForUser(email) {
   return getAllTasks({ assignee: email });
 }
@@ -738,80 +765,85 @@ function calculateStoryPoints(startDate, dueDate) {
 }
 
 function createTask(taskData) {
+  if (!taskData.projectId) throw new Error('createTask: projectId is required');
   PermissionGuard.requirePermission('task:create', { projectId: taskData.projectId });
-  const sheet = getTasksSheet();
-  const currentUser = getCurrentUserEmail();
-  const timestamp = now();
-  const taskId = generateTaskId(taskData.projectId);
-  const maxPosition = Date.now();
-  const isMilestone = taskData.isMilestone === true || taskData.isMilestone === 'true';
-  if (isMilestone && !taskData.milestoneDate) {
-    throw new Error('Milestone date is required for milestone tasks');
-  }
-  const task = {
-    id: taskId,
-    projectId: taskData.projectId || '',
-    title: sanitize(taskData.title || 'New Task'),
-    description: sanitize(taskData.description || ''),
-    status: taskData.status || 'To Do',
-    priority: taskData.priority || 'Medium',
-    type: taskData.type || 'Task',
-    assignee: taskData.assignee !== undefined ? (taskData.assignee || '') : currentUser,
-    watchers: Array.isArray(taskData.watchers) ? taskData.watchers.join(',') : (taskData.watchers || ''),
-    reporter: taskData.reporter || currentUser,
-    dueDate: taskData.dueDate || '',
-    startDate: taskData.startDate || '',
-    sprint: taskData.sprint || '',
-    storyPoints: parseInt(taskData.storyPoints) || 0,
-    estimatedHrs: parseFloat(taskData.estimatedHrs) || 0,
-    actualHrs: 0,
-    labels: Array.isArray(taskData.labels) ? taskData.labels :
-      (taskData.labels ? taskData.labels.split(',').map(l => l.trim()) : []),
-    parentId: taskData.parentId || '',
-    position: maxPosition + 1,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    completedAt: '',
-    dependencies: taskData.dependencies || '',
-    timeEntries: taskData.timeEntries || '',
-    customFields: taskData.customFields || '',
-    templateId: taskData.templateId || '',
-    recurringConfig: taskData.recurringConfig || '',
-    isMilestone: isMilestone,
-    milestoneDate: taskData.milestoneDate || '',
-    milestoneType: taskData.milestoneType || ''
-  };
-  if (task.startDate && task.dueDate && task.startDate !== CONFIG.TBD_DATE_SENTINEL && task.dueDate !== CONFIG.TBD_DATE_SENTINEL) {
-    var calc = calculateStoryPoints(task.startDate, task.dueDate);
-    task.storyPoints = calc.storyPoints;
-    task.estimatedHrs = calc.estimatedHrs;
-  }
-  var existingRow = findRowWithCache(sheet, 'Tasks', task.id, 0);
-  if (existingRow) {
-    task.id = taskData.projectId + '-' + Date.now();
-    var retryRow = findRowWithCache(sheet, 'Tasks', task.id, 0);
-    if (retryRow) throw new Error('Duplicate task ID after retry: ' + task.id);
-  }
-  sheet.appendRow(objectToRow(task, CONFIG.TASK_COLUMNS));
-  const newRowIndex = sheet.getLastRow();
-  RowIndexCache.set('Tasks', task.id, newRowIndex);
-  logActivity(currentUser, 'created', 'task', task.id, { title: task.title });
-  if (task.assignee && task.assignee !== currentUser && typeof NotificationEngine !== 'undefined') {
-    try {
-      NotificationEngine.createNotification({
-        userId: task.assignee,
-        type: 'task_assigned',
-        title: 'Task Assigned',
-        message: 'You have been assigned to ' + task.id + ': ' + task.title,
-        entityType: 'task',
-        entityId: task.id,
-        channels: ['in_app', 'email']
-      });
-    } catch (e) {
-      console.error('Failed to send assignment notification:', e);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = getTasksSheet();
+    const currentUser = getCurrentUserEmail();
+    const timestamp = now();
+    const taskId = generateTaskIdUnderLock_(taskData.projectId);
+    if (!isValidTaskId(taskId)) throw new Error('createTask: generated ID is invalid: ' + taskId);
+    const maxPosition = Date.now();
+    const isMilestone = taskData.isMilestone === true || taskData.isMilestone === 'true';
+    if (isMilestone && !taskData.milestoneDate) {
+      throw new Error('Milestone date is required for milestone tasks');
     }
+    const task = {
+      id: taskId,
+      projectId: taskData.projectId || '',
+      title: sanitize(taskData.title || 'New Task'),
+      description: sanitize(taskData.description || ''),
+      status: taskData.status || 'To Do',
+      priority: taskData.priority || 'Medium',
+      type: taskData.type || 'Task',
+      assignee: taskData.assignee !== undefined ? (taskData.assignee || '') : currentUser,
+      watchers: Array.isArray(taskData.watchers) ? taskData.watchers.join(',') : (taskData.watchers || ''),
+      reporter: taskData.reporter || currentUser,
+      dueDate: taskData.dueDate || '',
+      startDate: taskData.startDate || '',
+      sprint: taskData.sprint || '',
+      storyPoints: parseInt(taskData.storyPoints) || 0,
+      estimatedHrs: parseFloat(taskData.estimatedHrs) || 0,
+      actualHrs: 0,
+      labels: Array.isArray(taskData.labels) ? taskData.labels :
+        (taskData.labels ? taskData.labels.split(',').map(l => l.trim()) : []),
+      parentId: taskData.parentId || '',
+      position: maxPosition + 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: '',
+      dependencies: taskData.dependencies || '',
+      timeEntries: taskData.timeEntries || '',
+      customFields: taskData.customFields || '',
+      templateId: taskData.templateId || '',
+      recurringConfig: taskData.recurringConfig || '',
+      isMilestone: isMilestone,
+      milestoneDate: taskData.milestoneDate || '',
+      milestoneType: taskData.milestoneType || '',
+      taskUid: generateTaskUid()
+    };
+    if (task.startDate && task.dueDate && task.startDate !== CONFIG.TBD_DATE_SENTINEL && task.dueDate !== CONFIG.TBD_DATE_SENTINEL) {
+      var calc = calculateStoryPoints(task.startDate, task.dueDate);
+      task.storyPoints = calc.storyPoints;
+      task.estimatedHrs = calc.estimatedHrs;
+    }
+    var existingRow = findRowWithCache(sheet, 'Tasks', task.id, 0);
+    if (existingRow) throw new Error('createTask: duplicate task ID: ' + task.id);
+    sheet.appendRow(objectToRow(task, CONFIG.TASK_COLUMNS));
+    const newRowIndex = sheet.getLastRow();
+    RowIndexCache.set('Tasks', task.id, newRowIndex);
+    logActivity(currentUser, 'created', 'task', task.id, { title: task.title });
+    if (task.assignee && task.assignee !== currentUser && typeof NotificationEngine !== 'undefined') {
+      try {
+        NotificationEngine.createNotification({
+          userId: task.assignee,
+          type: 'task_assigned',
+          title: 'Task Assigned',
+          message: 'You have been assigned to ' + task.id + ': ' + task.title,
+          entityType: 'task',
+          entityId: task.id,
+          channels: ['in_app', 'email']
+        });
+      } catch (e) {
+        console.error('Failed to send assignment notification:', e);
+      }
+    }
+    return task;
+  } finally {
+    lock.releaseLock();
   }
-  return task;
 }
 
 function updateTask(taskId, updates) {

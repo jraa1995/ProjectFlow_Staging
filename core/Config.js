@@ -79,6 +79,7 @@ const CONFIG = {
     'lastModifiedBy',
     'isDeleted',
     'deletedAt',
+    'taskUid',
     'jsonData'
   ],
 
@@ -400,6 +401,27 @@ function generateTaskId(projectId) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function generateTaskUid() {
+  return Utilities.getUuid();
+}
+
+function isValidTaskUid(uid) {
+  return typeof uid === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uid);
+}
+
+function isValidTaskId(taskId) {
+  return typeof taskId === 'string' && /^[A-Z0-9]{1,10}-\d+$/.test(taskId);
+}
+
+function generateTaskIdUnderLock_(projectId) {
+  var prefix = projectId || 'TASK';
+  var key = 'TASK_SEQ_' + prefix;
+  var props = PropertiesService.getScriptProperties();
+  var next = parseInt(props.getProperty(key) || '0') + 1;
+  props.setProperty(key, String(next));
+  return prefix + '-' + next;
 }
 
 function generateProjectAcronym(name, existingProjects, parentAcronym) {

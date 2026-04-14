@@ -101,12 +101,12 @@
     createSnapshot(opType, data) {
       switch (opType) {
         case 'moveTask':
-          const task = State.tasks?.find(t => t.id === data.taskId);
+          const task = State.tasks?.find(function(t) { return t.taskUid === data.taskId || t.id === data.taskId; });
           return {
             status: task?.status, position: task?.position
           };
         case 'updateTask':
-          const taskToUpdate = State.tasks?.find(t => t.id === data.taskId);
+          const taskToUpdate = State.tasks?.find(function(t) { return t.taskUid === data.taskId || t.id === data.taskId; });
           return taskToUpdate ? {
             ...taskToUpdate
           } : null;
@@ -148,14 +148,14 @@
         }
       }
       if (State.tasks) {
-        const task = State.tasks.find(t => t.id === taskId);
+        const task = State.tasks.find(function(t) { return t.taskUid === taskId || t.id === taskId; });
         if (task) task.status = previousStatus;
       }
       updateColumnCounts();
     },
     revertUpdateTask(taskId, snapshot) {
       if (State.tasks) {
-        const idx = State.tasks.findIndex(t => t.id === taskId);
+        const idx = State.tasks.findIndex(function(t) { return t.taskUid === taskId || t.id === taskId; });
         if (idx >= 0) State.tasks[idx] = snapshot;
       }
       updateTaskInDOM(taskId, snapshot);
@@ -506,7 +506,7 @@
             if (State.editingTask && State.editingTask === task.id) return;
             if (OptimisticUI.hasPendingForTask(task.id)) return;
             if (State.tasks) {
-              var index = State.tasks.findIndex(t => t.id === task.id);
+              var index = State.tasks.findIndex(function(t) { return (t.taskUid && t.taskUid === task.taskUid) || t.id === task.id; });
               if (index >= 0) {
                 State.tasks[index] = task;
               } else {
