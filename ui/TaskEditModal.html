@@ -794,15 +794,23 @@ var TaskEditModal = {
     }
     showLoading(true);
     google.script.run
-      .withSuccessHandler((task) => {
+      .withSuccessHandler((result) => {
         showLoading(false);
-        this.handleTaskLoaded(task);
+        if (!result) {
+          this.handleLoadError('Task not found');
+          return;
+        }
+        if (result.task) {
+          this.handleTaskDetailLoaded(result);
+        } else {
+          this.handleTaskLoaded(result);
+        }
       })
       .withFailureHandler((error) => {
         showLoading(false);
         this.handleLoadError(error);
       })
-      .loadTask(taskId);
+      .loadTaskDetail(taskId);
   },
 
   getTaskFromCache(taskId) {
@@ -840,6 +848,50 @@ var TaskEditModal = {
     this.attachChangeListeners();
     this.initCommentSection();
     this.loadComments();
+  },
+
+  handleTaskDetailLoaded(result) {
+    this.task = result.task;
+    this.originalTask = JSON.parse(JSON.stringify(result.task));
+    this.populateForm();
+    this.attachChangeListeners();
+    if (result.mentionUsers && result.mentionUsers.length > 0) {
+      this.cachedUsers = result.mentionUsers.map(function(u) {
+        return {
+          email: u.email,
+          name: u.name || u.email.split('@')[0],
+          displayText: (u.name || u.email.split('@')[0]) + ' (' + u.email + ')'
+        };
+      });
+      this.usersCacheLoaded = true;
+    }
+    this.initCommentSection();
+    if (result.comments) {
+      var taskId = this.task.id;
+      var validComments = (result.comments || []).filter(function(c) { return c.taskId === taskId; });
+      this.comments = validComments;
+      var loadingEl = document.getElementById('taskEditCommentsLoading');
+      if (loadingEl) loadingEl.classList.add('hidden');
+      this.renderComments();
+    } else {
+      this.loadComments();
+    }
+    if (result.dependencies) {
+      var loadingEl = document.getElementById('taskEditDependenciesLoading');
+      var listEl = document.getElementById('taskEditDependenciesList');
+      var emptyEl = document.getElementById('taskEditDependenciesEmpty');
+      if (loadingEl) loadingEl.classList.add('hidden');
+      var predecessors = result.dependencies.predecessors || [];
+      var successors = result.dependencies.successors || [];
+      if (predecessors.length === 0 && successors.length === 0) {
+        if (emptyEl) emptyEl.classList.remove('hidden');
+      } else if (listEl) {
+        listEl.classList.remove('hidden');
+        listEl.innerHTML = this.renderDependenciesList(result.dependencies);
+      }
+    } else {
+      this.loadDependencies();
+    }
   },
 
   handleLoadError(error) {
@@ -1499,7 +1551,9 @@ var TaskEditModal = {
     const input = document.getElementById('taskEditCommentInput');
     if (!input) return;
 
-    this.prefetchUsers();
+    if (!this.usersCacheLoaded || this.cachedUsers.length === 0) {
+      this.prefetchUsers();
+    }
 
     input.addEventListener('input', () => {
       this.updateCommentCharCount();

@@ -16,11 +16,14 @@ function loadMasterBoard(projectId) {
 
     var board = buildBoardData(filteredTasks, projectId, { view: 'master' });
 
+    var integrityResult = null;
+    try { integrityResult = checkTaskIntegrity(); } catch (e) {}
     return {
       ...board,
       projects: batchData.projects,
       users: batchData.users,
-      taskCount: filteredTasks.length
+      taskCount: filteredTasks.length,
+      integrityResult: integrityResult
     };
   } catch (error) {
     console.error('loadMasterBoard failed:', error);
@@ -50,11 +53,14 @@ function getMyBoardOptimized(projectId, userEmail) {
       userEmail: currentUser
     });
 
+    var integrityResult = null;
+    try { integrityResult = checkTaskIntegrity(); } catch (e) {}
     return {
       ...board,
       projects: batchData.projects,
       users: batchData.users,
-      taskCount: filteredTasks.length
+      taskCount: filteredTasks.length,
+      integrityResult: integrityResult
     };
   } catch (error) {
     console.error('getMyBoardOptimized failed:', error);
@@ -128,6 +134,35 @@ function loadTask(taskId) {
     return task || null;
   } catch (error) {
     console.error('loadTask error for taskId ' + taskId + ':', error);
+    return null;
+  }
+}
+
+function loadTaskDetail(taskId) {
+  try {
+    if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') return null;
+    var id = taskId.trim();
+    var task;
+    if (isValidTaskUid(id)) {
+      task = getTaskByUid(id);
+    } else {
+      task = getTaskById(id);
+    }
+    if (!task) return null;
+    var comments = [];
+    try { comments = loadComments(task.id); } catch (e) { console.error('loadTaskDetail comments error:', e); }
+    var dependencies = [];
+    try { dependencies = getTaskDependenciesWithDetails(task.id); } catch (e) { console.error('loadTaskDetail dependencies error:', e); }
+    var mentionUsers = [];
+    try { mentionUsers = getAllUsersForMentions(false); } catch (e) { console.error('loadTaskDetail mentionUsers error:', e); }
+    return {
+      task: task,
+      comments: comments,
+      dependencies: dependencies,
+      mentionUsers: mentionUsers
+    };
+  } catch (error) {
+    console.error('loadTaskDetail failed for ' + taskId + ':', error);
     return null;
   }
 }

@@ -266,7 +266,14 @@ function importProjectsFromWorkLog(workbookId) {
       changelog: '[]',
       tags: JSON.stringify(tags),
       settings: JSON.stringify(settings),
-      lastUpdatedBy: currentUser
+      lastUpdatedBy: currentUser,
+      workstream: settings.workstream || '',
+      projectCategory: settings.projectCategory || '',
+      projectType: settings.projectType || '',
+      developmentPriority: settings.developmentPriority || '',
+      developmentPhase: settings.developmentPhase || '',
+      techStack: settings.techStack || '',
+      linkedProjectId: settings.linkedProjectId || ''
     };
 
     generatedIds.push(project);

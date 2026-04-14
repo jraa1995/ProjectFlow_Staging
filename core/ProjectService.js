@@ -72,10 +72,14 @@ function getProjectTaxonomyValues() {
     var result = {};
     fields.forEach(function(f) { result[f] = {}; });
     projects.forEach(function(p) {
-      var settings = {};
-      try { settings = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {}); } catch(e) {}
       fields.forEach(function(f) {
-        var val = settings[f];
+        var val = p[f];
+        if (!val) {
+          try {
+            var s = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {});
+            val = s[f];
+          } catch (e) {}
+        }
         if (val && String(val).trim() && val !== 'N/A' && val !== 'FALSE') {
           result[f][String(val).trim()] = true;
         }
@@ -98,20 +102,26 @@ function getProjectHierarchy(projectId) {
       if (projects[i].id === projectId) { project = projects[i]; break; }
     }
     if (!project) return null;
-    var parentId = null;
-    try {
-      var s = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {});
-      parentId = s.linkedProjectId || null;
-    } catch (e) {}
+    var parentId = project.linkedProjectId || null;
+    if (!parentId) {
+      try {
+        var s = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {});
+        parentId = s.linkedProjectId || null;
+      } catch (e) {}
+    }
     var children = [];
     projects.forEach(function(p) {
       if (p.id === projectId) return;
-      try {
-        var ps = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {});
-        if (ps.linkedProjectId === projectId) {
-          children.push({ id: p.id, name: p.name, status: p.status });
-        }
-      } catch (e) {}
+      var pLinked = p.linkedProjectId || null;
+      if (!pLinked) {
+        try {
+          var ps = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {});
+          pLinked = ps.linkedProjectId || null;
+        } catch (e) {}
+      }
+      if (pLinked === projectId) {
+        children.push({ id: p.id, name: p.name, status: p.status });
+      }
     });
     var parent = null;
     if (parentId) {
@@ -239,6 +249,44 @@ function saveProjectsWorkbookId(workbookId) {
   } catch (error) {
     console.error('saveProjectsWorkbookId failed:', error);
     return { success: false, error: error.message };
+  }
+}
+
+function migrateProjectTaxonomyToColumns() {
+  PermissionGuard.requirePermission('admin:settings');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = getProjectsSheet();
+    var columns = CONFIG.PROJECT_COLUMNS;
+    var data = sheet.getDataRange().getValues();
+    var settingsIdx = columns.indexOf('settings');
+    var fields = CONFIG.TAXONOMY_FIELDS.concat(['linkedProjectId']);
+    var fieldIndices = {};
+    fields.forEach(function(f) { fieldIndices[f] = columns.indexOf(f); });
+    var updated = 0;
+    for (var i = 1; i < data.length; i++) {
+      var raw = data[i][settingsIdx];
+      if (!raw) continue;
+      var settings;
+      try { settings = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (e) { continue; }
+      var changed = false;
+      fields.forEach(function(f) {
+        var idx = fieldIndices[f];
+        if (idx !== -1 && settings[f] && !data[i][idx]) {
+          data[i][idx] = String(settings[f]);
+          changed = true;
+        }
+      });
+      if (changed) updated++;
+    }
+    if (updated > 0) {
+      sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+      SpreadsheetApp.flush();
+    }
+    return { migrated: updated, total: data.length - 1 };
+  } finally {
+    lock.releaseLock();
   }
 }
 

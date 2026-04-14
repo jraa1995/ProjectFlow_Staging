@@ -665,24 +665,29 @@ function approveAccessRequest(email) {
     var sheet = getAccessRequestsSheet();
     var data = sheet.getDataRange().getValues();
     var columns = CONFIG.ACCESS_REQUEST_COLUMNS;
-    var found = false;
+    var foundRow = -1;
     for (var i = 1; i < data.length; i++) {
       var row = rowToObject(data[i], columns);
       if (row.email && row.email.toString().toLowerCase() === email && row.status === 'pending') {
-        row.status = 'approved';
-        row.reviewedBy = adminEmail;
-        row.reviewedAt = now();
-        var newRow = objectToRow(row, columns);
-        sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
-        found = true;
+        foundRow = i;
         break;
       }
     }
-    if (!found) {
+    if (foundRow === -1) {
       return { success: false, error: 'No pending request found for this email' };
     }
 
-    createUser({ email: email, name: email.split('@')[0], role: 'member' });
+    var newUser = createUser({ email: email, name: email.split('@')[0], role: 'member' });
+    if (!newUser || !newUser.email) {
+      return { success: false, error: 'Failed to create user account for ' + email };
+    }
+
+    var approvedRow = rowToObject(data[foundRow], columns);
+    approvedRow.status = 'approved';
+    approvedRow.reviewedBy = adminEmail;
+    approvedRow.reviewedAt = now();
+    var newRowData = objectToRow(approvedRow, columns);
+    sheet.getRange(foundRow + 1, 1, 1, columns.length).setValues([newRowData]);
 
     try {
       GmailApp.sendEmail(email, 'COLONY — Access Granted', '', {

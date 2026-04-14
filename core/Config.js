@@ -120,6 +120,13 @@ const CONFIG = {
     'tags',
     'settings',
     'lastUpdatedBy',
+    'workstream',
+    'projectCategory',
+    'projectType',
+    'developmentPriority',
+    'developmentPhase',
+    'techStack',
+    'linkedProjectId',
     'jsonData'
   ],
 

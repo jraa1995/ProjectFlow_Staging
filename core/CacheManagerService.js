@@ -126,6 +126,7 @@ function rebuildBatchCache() {
         task.actualHrs = parseFloat(task.actualHrs) || 0;
         task.position = parseInt(task.position) || 0;
         task.isMilestone = task.isMilestone === true || task.isMilestone === 'true' || task.isMilestone === 'TRUE' || task.isMilestone === 1;
+        if (task.taskUid && task.id) UidIndexCache.set(task.taskUid, task.id);
         tasks.push(task);
       }
     }
@@ -451,5 +452,24 @@ function getTasksByIds(taskIds) {
   } catch (error) {
     console.error('getTasksByIds failed:', error);
     return [];
+  }
+}
+
+function getSyncUpdate(sinceVersion) {
+  try {
+    var changeResult = getChangesSince(sinceVersion);
+    if (changeResult.changedIds.length === 0) {
+      return { version: changeResult.version, changedIds: [], changedTasks: [], changes: changeResult.changes };
+    }
+    var tasks = getTasksByIds(changeResult.changedIds);
+    return {
+      version: changeResult.version,
+      changedIds: changeResult.changedIds,
+      changedTasks: tasks,
+      changes: changeResult.changes
+    };
+  } catch (error) {
+    console.error('getSyncUpdate failed:', error);
+    return { version: 0, changedIds: [], changedTasks: [], changes: [] };
   }
 }

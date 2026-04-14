@@ -467,7 +467,9 @@
         .withSuccessHandler((result) => {
           const hasChanges = result.version > this.lastSyncVersion;
           if (hasChanges) {
-            if (result.changedIds.length > 0) {
+            if (result.changedTasks && result.changedTasks.length > 0) {
+              this._applySyncedTasks(result.changedIds, result.changedTasks);
+            } else if (result.changedIds && result.changedIds.length > 0) {
               this.fetchChangedItems(result.changedIds);
             }
             this.lastSyncVersion = result.version;
@@ -486,7 +488,47 @@
         .withFailureHandler((error) => {
           console.error('SyncManager checkForUpdates failed:', error);
         })
-        .getChangesSince(this.lastSyncVersion);
+        .getSyncUpdate(this.lastSyncVersion);
+    },
+    _applySyncedTasks(taskIds, tasks) {
+      var needsRerender = false;
+      var returnedIds = new Set(tasks.map(function(t) { return t.id; }));
+      taskIds.forEach(function(id) {
+        if (!returnedIds.has(id) && State.tasks && !OptimisticUI.hasPendingForTask(id)) {
+          State.tasks = State.tasks.filter(function(t) { return t.id !== id; });
+          needsRerender = true;
+          var card = document.querySelector('[data-task-id="' + id + '"]');
+          if (card) card.remove();
+        }
+      });
+      tasks.forEach(function(task) {
+        if (State.editingTask && State.editingTask === task.id) return;
+        if (OptimisticUI.hasPendingForTask(task.id)) return;
+        if (State.tasks) {
+          var index = State.tasks.findIndex(function(t) { return (t.taskUid && t.taskUid === task.taskUid) || t.id === task.id; });
+          if (index >= 0) {
+            State.tasks[index] = task;
+          } else {
+            State.tasks.push(task);
+            needsRerender = true;
+          }
+        }
+        if (!needsRerender) {
+          updateTaskInDOM(task.id, task);
+        }
+      });
+      LocalCache.set('tasks', State.tasks);
+      if (typeof CacheService !== 'undefined') {
+        CacheService.set('tasks', State.tasks).catch(function() {});
+      }
+      if (needsRerender && (State.currentView === 'my' || State.currentView === 'master')) {
+        var projectId = State.projectFilter || null;
+        State.board = buildBoardFromTasks(State.tasks, projectId);
+        renderBoard();
+        updateStats();
+      } else {
+        updateColumnCounts();
+      }
     },
     fetchChangedItems(taskIds) {
       if (!taskIds || taskIds.length === 0) return;

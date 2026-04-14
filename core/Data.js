@@ -245,6 +245,43 @@ const RowIndexCache = {
   }
 };
 
+const UidIndexCache = {
+  CACHE_TTL: 600,
+  get: function(taskUid) {
+    try {
+      var cache = CacheService.getScriptCache();
+      var key = 'uid_' + taskUid;
+      var cached = cache.get(key);
+      if (cached) {
+        var parsed = JSON.parse(cached);
+        if (parsed.gen === String(getGlobalVersion())) {
+          return parsed.taskId;
+        }
+        cache.remove(key);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  },
+  set: function(taskUid, taskId) {
+    try {
+      var cache = CacheService.getScriptCache();
+      var key = 'uid_' + taskUid;
+      var gen = String(getGlobalVersion());
+      cache.put(key, JSON.stringify({ taskId: taskId, gen: gen }), this.CACHE_TTL);
+    } catch (e) {
+    }
+  },
+  invalidate: function(taskUid) {
+    try {
+      var cache = CacheService.getScriptCache();
+      cache.remove('uid_' + taskUid);
+    } catch (e) {
+    }
+  }
+};
+
 const UserCache = {
   CACHE_KEY: 'USER_MAP_CACHE',
   CACHE_TTL: 300,
@@ -674,6 +711,7 @@ function getAllTasks(filters = {}, options = {}) {
     task.actualHrs = parseFloat(task.actualHrs) || 0;
     task.position = parseInt(task.position) || 0;
     task.isMilestone = task.isMilestone === true || task.isMilestone === 'true' || task.isMilestone === 'TRUE' || task.isMilestone === 1;
+    if (task.taskUid && task.id) UidIndexCache.set(task.taskUid, task.id);
     tasks.push(task);
   }
   if (filters.assignee) {
@@ -718,6 +756,12 @@ function getTaskById(taskId) {
 
 function getTaskByUid(taskUid) {
   if (!taskUid) return null;
+  var cachedId = UidIndexCache.get(taskUid);
+  if (cachedId) {
+    var cached = getTaskById(cachedId);
+    if (cached && cached.taskUid === taskUid) return cached;
+    UidIndexCache.invalidate(taskUid);
+  }
   var sheet = getTasksSheet();
   var columns = CONFIG.TASK_COLUMNS;
   var uidCol = columns.indexOf('taskUid');
@@ -729,6 +773,8 @@ function getTaskByUid(taskUid) {
       task.labels = typeof task.labels === 'string' && task.labels
         ? task.labels.split(',').map(function(l) { return l.trim(); }).filter(Boolean)
         : (Array.isArray(task.labels) ? task.labels : []);
+      UidIndexCache.set(taskUid, task.id);
+      RowIndexCache.set('Tasks', task.id, i + 1);
       return task;
     }
   }
@@ -1181,6 +1227,9 @@ function createProject(projectData) {
       var linked = getProjectById(pSettings.linkedProjectId);
       if (!linked) console.error('createProject: linkedProjectId references non-existent project: ' + pSettings.linkedProjectId);
     }
+    CONFIG.TAXONOMY_FIELDS.concat(['linkedProjectId']).forEach(function(f) {
+      if (pSettings[f] && !project[f]) project[f] = String(pSettings[f]);
+    });
   } catch (e) {}
   sheet.appendRow(objectToRow(project, CONFIG.PROJECT_COLUMNS));
   SpreadsheetApp.flush();
@@ -1207,6 +1256,9 @@ function updateProject(projectId, updates) {
             var uLinked = getProjectById(uSettings.linkedProjectId);
             if (!uLinked) console.error('updateProject: linkedProjectId references non-existent project: ' + uSettings.linkedProjectId);
           }
+          CONFIG.TAXONOMY_FIELDS.concat(['linkedProjectId']).forEach(function(f) {
+            if (uSettings[f]) project[f] = String(uSettings[f]);
+          });
         } catch (e) {}
         project.updatedAt = now();
         project.lastUpdatedBy = getCurrentUserEmail();

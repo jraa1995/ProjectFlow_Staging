@@ -86,18 +86,32 @@
     showLoading(false);
     if (!State._integrityChecked) {
       State._integrityChecked = true;
-      google.script.run.withSuccessHandler(function(result) {
-        State._integrityResult = result;
-        if (!result.healthy) {
+      var ir = data.integrityResult;
+      if (ir) {
+        State._integrityResult = ir;
+        if (!ir.healthy) {
           State.integrityBlocked = true;
           var banner = document.createElement('div');
           banner.id = 'integrityWarning';
           banner.style.cssText = 'background:#dc2626;color:white;padding:12px 20px;text-align:center;font-weight:600;position:fixed;top:0;left:0;right:0;z-index:9999;';
-          banner.innerHTML = 'Task integrity issues: ' + result.duplicateCount + ' duplicate IDs, ' + result.missingUidCount + ' missing UIDs. Board moves disabled. ' +
+          banner.innerHTML = 'Task integrity issues: ' + ir.duplicateCount + ' duplicate IDs, ' + ir.missingUidCount + ' missing UIDs. Board moves disabled. ' +
             '<button onclick="runIntegrityRepair()" style="margin-left:8px;padding:4px 12px;background:white;color:#dc2626;border:none;border-radius:4px;font-weight:700;cursor:pointer;">Run Repair</button>';
           document.body.prepend(banner);
         }
-      }).checkTaskIntegrity();
+      } else {
+        google.script.run.withSuccessHandler(function(result) {
+          State._integrityResult = result;
+          if (!result.healthy) {
+            State.integrityBlocked = true;
+            var banner = document.createElement('div');
+            banner.id = 'integrityWarning';
+            banner.style.cssText = 'background:#dc2626;color:white;padding:12px 20px;text-align:center;font-weight:600;position:fixed;top:0;left:0;right:0;z-index:9999;';
+            banner.innerHTML = 'Task integrity issues: ' + result.duplicateCount + ' duplicate IDs, ' + result.missingUidCount + ' missing UIDs. Board moves disabled. ' +
+              '<button onclick="runIntegrityRepair()" style="margin-left:8px;padding:4px 12px;background:white;color:#dc2626;border:none;border-radius:4px;font-weight:700;cursor:pointer;">Run Repair</button>';
+            document.body.prepend(banner);
+          }
+        }).checkTaskIntegrity();
+      }
     }
   }
 
