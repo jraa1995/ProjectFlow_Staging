@@ -275,7 +275,7 @@ function testSystem() {
     },
     {
       name: 'Create Task', fn: () => {
-        const task = createTask({ title: 'Test Task ' + Date.now(), status: 'To Do' });
+        const task = createTask({ title: 'Test Task ' + Date.now(), status: 'To Do', projectId: 'TEST' });
         const success = task && task.id;
         if (success) deleteTask(task.id);
         return success;

@@ -765,7 +765,7 @@ function calculateStoryPoints(startDate, dueDate) {
 }
 
 function createTask(taskData) {
-  if (!taskData.projectId) throw new Error('createTask: projectId is required');
+  if (!taskData.projectId) taskData.projectId = 'TASK';
   PermissionGuard.requirePermission('task:create', { projectId: taskData.projectId });
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);

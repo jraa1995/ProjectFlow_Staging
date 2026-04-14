@@ -383,6 +383,8 @@ function repairTaskIdentity() {
     remaps.forEach(function(remap) {
       logActivity(currentUser, 'repair_identity', 'task', remap.newId, { oldId: remap.oldId, reason: 'duplicate_id_repair' });
     });
+    try { clearAllCaches(); } catch (e) { console.error('repairTaskIdentity: cache clear failed:', e); }
+    try { RowIndexCache.invalidateSheet('Tasks'); } catch (e) {}
     console.log('repairTaskIdentity: repaired ' + remaps.length + ' duplicates, backfilled ' + uidBackfillCount + ' UIDs');
     return { duplicatesRepaired: remaps.length, uidsBackfilled: uidBackfillCount, remaps: remaps };
   } finally {
@@ -468,6 +470,11 @@ function cascadeColumnValue_(sheet, colIndex, oldValue, newValue) {
 }
 
 function checkTaskIntegrity() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var cached = cache.get('INTEGRITY_CHECK_RESULT');
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
   var sheet = getTasksSheet();
   var columns = CONFIG.TASK_COLUMNS;
   var idCol = columns.indexOf('id');
@@ -483,7 +490,9 @@ function checkTaskIntegrity() {
     else ids[id] = true;
     if (!data[i][uidCol]) missingUidCount++;
   }
-  return { healthy: duplicateCount === 0 && missingUidCount === 0, duplicateCount: duplicateCount, missingUidCount: missingUidCount };
+  var result = { healthy: duplicateCount === 0 && missingUidCount === 0, duplicateCount: duplicateCount, missingUidCount: missingUidCount };
+  try { CacheService.getScriptCache().put('INTEGRITY_CHECK_RESULT', JSON.stringify(result), 300); } catch (e) {}
+  return result;
 }
 
 function resetTaskSystem() {

@@ -29,20 +29,35 @@
   }
 
   function runIntegrityRepair() {
-    if (!confirm('Run task identity repair? This will reassign duplicate IDs and create a backup.')) return;
-    toast('Running repair...', 'info');
+    if (!confirm('Run task identity repair? This will create a backup, repair duplicates, reset sequences, and clear all caches.')) return;
+    toast('Creating backup...', 'info');
     google.script.run
-      .withSuccessHandler(function(result) {
-        toast('Repaired ' + result.duplicatesRepaired + ' duplicates, backfilled ' + result.uidsBackfilled + ' UIDs', 'success');
-        State.integrityBlocked = false;
-        var banner = document.getElementById('integrityWarning');
-        if (banner) banner.remove();
-        loadBoard();
+      .withSuccessHandler(function(snapshot) {
+        toast('Backup created: ' + (snapshot.backupSheet || 'in-memory') + '. Repairing...', 'info');
+        google.script.run
+          .withSuccessHandler(function(repairResult) {
+            google.script.run
+              .withSuccessHandler(function(resetResult) {
+                google.script.run
+                  .withSuccessHandler(function() {
+                    toast('Repair complete: ' + repairResult.duplicatesRepaired + ' duplicates fixed, ' + repairResult.uidsBackfilled + ' UIDs backfilled, ' + resetResult.sequencesReset.length + ' sequences reset, caches cleared.', 'success');
+                    State.integrityBlocked = false;
+                    var banner = document.getElementById('integrityWarning');
+                    if (banner) banner.remove();
+                    try { localStorage.removeItem('colony_session'); } catch(e) {}
+                    loadBoard();
+                  })
+                  .withFailureHandler(function(err) { toast('Cache clear failed: ' + (err.message || err), 'error'); })
+                  .clearAllCaches();
+              })
+              .withFailureHandler(function(err) { toast('Sequence reset failed: ' + (err.message || err), 'error'); })
+              .resetTaskSequences();
+          })
+          .withFailureHandler(function(err) { toast('Repair failed: ' + (err.message || err), 'error'); })
+          .repairTaskIdentity();
       })
-      .withFailureHandler(function(err) {
-        toast('Repair failed: ' + (err.message || err), 'error');
-      })
-      .repairTaskIdentity();
+      .withFailureHandler(function(err) { toast('Backup failed: ' + (err.message || err), 'error'); })
+      .exportTaskSnapshot();
   }
 
   function handleBoardData(data) {
@@ -69,17 +84,21 @@
     updateStats();
     updateProjectNav();
     showLoading(false);
-    google.script.run.withSuccessHandler(function(result) {
-      if (!result.healthy) {
-        State.integrityBlocked = true;
-        var banner = document.createElement('div');
-        banner.id = 'integrityWarning';
-        banner.style.cssText = 'background:#dc2626;color:white;padding:12px 20px;text-align:center;font-weight:600;position:fixed;top:0;left:0;right:0;z-index:9999;';
-        banner.innerHTML = 'Task integrity issues: ' + result.duplicateCount + ' duplicate IDs, ' + result.missingUidCount + ' missing UIDs. Board moves disabled. ' +
-          '<button onclick="runIntegrityRepair()" style="margin-left:8px;padding:4px 12px;background:white;color:#dc2626;border:none;border-radius:4px;font-weight:700;cursor:pointer;">Run Repair</button>';
-        document.body.prepend(banner);
-      }
-    }).checkTaskIntegrity();
+    if (!State._integrityChecked) {
+      State._integrityChecked = true;
+      google.script.run.withSuccessHandler(function(result) {
+        State._integrityResult = result;
+        if (!result.healthy) {
+          State.integrityBlocked = true;
+          var banner = document.createElement('div');
+          banner.id = 'integrityWarning';
+          banner.style.cssText = 'background:#dc2626;color:white;padding:12px 20px;text-align:center;font-weight:600;position:fixed;top:0;left:0;right:0;z-index:9999;';
+          banner.innerHTML = 'Task integrity issues: ' + result.duplicateCount + ' duplicate IDs, ' + result.missingUidCount + ' missing UIDs. Board moves disabled. ' +
+            '<button onclick="runIntegrityRepair()" style="margin-left:8px;padding:4px 12px;background:white;color:#dc2626;border:none;border-radius:4px;font-weight:700;cursor:pointer;">Run Repair</button>';
+          document.body.prepend(banner);
+        }
+      }).checkTaskIntegrity();
+    }
   }
 
   function updateTaskInDOM(taskId, changes) {
@@ -945,16 +964,7 @@
 
     board.addEventListener("drop", (e) => {
       e.preventDefault();
-      const card = e.target.closest(".task-card");
-      const list = e.target.closest(".task-list");
-      const column = e.target.closest(".board-column");
-      if (card) {
-        handleDropOnCard(e);
-      } else if (list) {
-        handleDrop(e);
-      } else if (column) {
-        handleDropOnColumn(e);
-      }
+      handleTaskDrop(e);
       $$(".task-list").forEach(l => l.classList.remove("drag-over"));
       $$(".board-column").forEach(c => c.classList.remove("drag-over"));
     });
