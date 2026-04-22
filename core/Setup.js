@@ -1,3 +1,223 @@
+const WORKBOOK_SHEET_SPEC = [
+  { name: 'Tasks',                 columnsKey: 'TASK_COLUMNS' },
+  { name: 'Users',                 columnsKey: 'USER_COLUMNS' },
+  { name: 'Projects',              columnsKey: 'PROJECT_COLUMNS' },
+  { name: 'Comments',              columnsKey: 'COMMENT_COLUMNS' },
+  { name: 'Activity',              columnsKey: 'ACTIVITY_COLUMNS' },
+  { name: 'Mentions',              columnsKey: 'MENTION_COLUMNS' },
+  { name: 'Notifications',         columnsKey: 'NOTIFICATION_COLUMNS' },
+  { name: 'Analytics_Cache',       columnsKey: 'ANALYTICS_CACHE_COLUMNS' },
+  { name: 'Task_Dependencies',     columnsKey: 'TASK_DEPENDENCY_COLUMNS' },
+  { name: 'Funnel_Staging',        columnsKey: 'FUNNEL_STAGING_COLUMNS' },
+  { name: 'Roles',                 columnsKey: 'ROLE_COLUMNS',              seed: 'defaultRoles' },
+  { name: 'Project_Members',       columnsKey: 'PROJECT_MEMBER_COLUMNS' },
+  { name: 'Organizations',         columnsKey: 'ORGANIZATION_COLUMNS' },
+  { name: 'Organization_Members',  columnsKey: 'ORGANIZATION_MEMBER_COLUMNS' },
+  { name: 'Teams',                 columnsKey: 'TEAM_COLUMNS' },
+  { name: 'Team_Members',          columnsKey: 'TEAM_MEMBER_COLUMNS' },
+  { name: 'User_Preferences',      columnsKey: 'USER_PREFERENCE_COLUMNS' },
+  { name: 'Automation_Rules',      columnsKey: 'AUTOMATION_RULE_COLUMNS' },
+  { name: 'Team_Capacity',         columnsKey: 'TEAM_CAPACITY_COLUMNS' },
+  { name: 'SLA_Config',            columnsKey: 'SLA_CONFIG_COLUMNS' },
+  { name: 'Triage_Queue',          columnsKey: 'TRIAGE_QUEUE_COLUMNS' },
+  { name: 'JSON_Cache',            columnsKey: 'JSON_CACHE_COLUMNS' },
+  { name: 'Data_Assets',           columnsKey: 'DATA_ASSET_COLUMNS' },
+  { name: 'Access_Requests',       columnsKey: 'ACCESS_REQUEST_COLUMNS' },
+  { name: 'User_Badges',           columnsKey: 'USER_BADGE_COLUMNS' },
+  { name: 'User_Metrics',          columnsKey: 'USER_METRIC_COLUMNS',       seed: 'userMetrics' }
+];
+
+const WORKBOOK_DEPRECATED_SHEETS = ['Webhook_Subscriptions'];
+
+function normalizeWorkbook(options) {
+  PermissionGuard.requirePermission('admin:settings');
+  options = options || {};
+  const dryRun = options.dryRun === true;
+  const archiveOrphans = options.archiveOrphans === true;
+
+  const ss = getColonySpreadsheet_();
+  const report = {
+    dryRun: dryRun,
+    timestamp: now(),
+    createdSheets: [],
+    columnsAdded: [],
+    columnOrderWarnings: [],
+    seeded: [],
+    orphanSheets: [],
+    archivedSheets: [],
+    deprecatedFound: [],
+    unchanged: [],
+    errors: []
+  };
+
+  const expectedNames = {};
+  WORKBOOK_SHEET_SPEC.forEach(s => { expectedNames[s.name] = true; });
+  WORKBOOK_DEPRECATED_SHEETS.forEach(n => { expectedNames[n] = true; });
+
+  WORKBOOK_SHEET_SPEC.forEach(spec => {
+    try {
+      const columns = CONFIG[spec.columnsKey];
+      if (!Array.isArray(columns)) {
+        report.errors.push({ sheet: spec.name, error: 'Missing CONFIG.' + spec.columnsKey });
+        return;
+      }
+
+      let sheet = ss.getSheetByName(spec.name);
+      if (!sheet) {
+        if (!dryRun) {
+          sheet = ss.insertSheet(spec.name);
+          sheet.getRange(1, 1, 1, columns.length)
+            .setValues([columns])
+            .setFontWeight('bold')
+            .setBackground('#1e293b')
+            .setFontColor('white');
+          sheet.setFrozenRows(1);
+        }
+        report.createdSheets.push(spec.name);
+      } else {
+        const lastCol = Math.max(1, sheet.getLastColumn());
+        const headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+          .map(h => String(h).trim());
+
+        const missing = columns.filter(c => headerRow.indexOf(c) === -1);
+        if (missing.length > 0) {
+          if (!dryRun) {
+            let startCol = headerRow.length + 1;
+            if (headerRow.length === 1 && !headerRow[0]) startCol = 1;
+            sheet.getRange(1, startCol, 1, missing.length)
+              .setValues([missing])
+              .setFontWeight('bold')
+              .setBackground('#1e293b')
+              .setFontColor('white');
+          }
+          report.columnsAdded.push({ sheet: spec.name, columns: missing });
+        }
+
+        const presentExpected = columns.filter(c => headerRow.indexOf(c) !== -1);
+        const orderInSheet = presentExpected.map(c => headerRow.indexOf(c));
+        const isSorted = orderInSheet.every((v, i, a) => i === 0 || a[i - 1] <= v);
+        if (!isSorted) {
+          report.columnOrderWarnings.push({
+            sheet: spec.name,
+            message: 'Column order in sheet differs from CONFIG — rowToObject may misalign. Manual reorder required.',
+            expected: columns,
+            actual: headerRow
+          });
+        }
+
+        if (missing.length === 0 && isSorted) {
+          report.unchanged.push(spec.name);
+        }
+      }
+
+      if (spec.seed === 'defaultRoles') {
+        try {
+          const rolesSheet = ss.getSheetByName(spec.name);
+          const rowCount = rolesSheet ? Math.max(0, rolesSheet.getLastRow() - 1) : 0;
+          const defaultRoleNames = Object.keys(PermissionGuard.DEFAULT_ROLES);
+          if (dryRun) {
+            report.seeded.push({ sheet: spec.name, wouldAdd: defaultRoleNames.length - rowCount });
+          } else {
+            const added = PermissionGuard.initializeDefaultRoles();
+            if (added > 0) report.seeded.push({ sheet: spec.name, rowsAdded: added });
+          }
+        } catch (e) {
+          console.error('Role seeding failed:', e);
+          report.errors.push({ sheet: spec.name, error: 'Role seed: ' + e.message });
+        }
+      }
+
+      if (spec.seed === 'userMetrics' && options.rebuildMetrics) {
+        try {
+          if (dryRun) {
+            report.seeded.push({ sheet: spec.name, wouldRebuild: 'all users' });
+          } else {
+            const res = UserMetricsService.rebuildAllMetrics();
+            report.seeded.push({ sheet: spec.name, rebuilt: res.rebuilt, errors: res.errors.length });
+          }
+        } catch (e) {
+          console.error('Metrics rebuild failed:', e);
+          report.errors.push({ sheet: spec.name, error: 'Metrics rebuild: ' + e.message });
+        }
+      }
+    } catch (e) {
+      console.error('normalizeWorkbook failed for ' + spec.name + ':', e);
+      report.errors.push({ sheet: spec.name, error: e.message });
+    }
+  });
+
+  ss.getSheets().forEach(s => {
+    const name = s.getName();
+    if (expectedNames[name]) return;
+    if (name.indexOf('_ARCHIVED_') === 0) return;
+
+    const rowCount = Math.max(0, s.getLastRow() - 1);
+
+    if (WORKBOOK_DEPRECATED_SHEETS.indexOf(name) !== -1) {
+      report.deprecatedFound.push({ sheet: name, rowCount: rowCount });
+      return;
+    }
+
+    report.orphanSheets.push({ sheet: name, rowCount: rowCount });
+
+    if (archiveOrphans && !dryRun && rowCount === 0) {
+      const archivedName = '_ARCHIVED_' + name + '_' + Date.now();
+      try {
+        s.setName(archivedName);
+        report.archivedSheets.push({ oldName: name, newName: archivedName });
+      } catch (e) {
+        report.errors.push({ sheet: name, error: 'Archive rename failed: ' + e.message });
+      }
+    }
+  });
+
+  if (options.migrateBadges) {
+    try {
+      if (dryRun) {
+        report.seeded.push({ sheet: 'User_Badges', wouldMigrate: 'user.jsonData badges' });
+      } else {
+        const migRes = BadgeEngine.migrateBadgesFromJsonData();
+        report.seeded.push({ sheet: 'User_Badges', migrated: migRes.migrated });
+      }
+    } catch (e) {
+      console.error('Badge migration failed:', e);
+      report.errors.push({ sheet: 'User_Badges', error: 'Badge migration: ' + e.message });
+    }
+  }
+
+  if (!dryRun) {
+    invalidateSystemInitCache_();
+  }
+
+  return report;
+}
+
+function normalizeWorkbookDryRun() {
+  return normalizeWorkbook({ dryRun: true });
+}
+
+function normalizeWorkbookFull() {
+  return normalizeWorkbook({ migrateBadges: true, rebuildMetrics: true });
+}
+
+function migrateBadgesFromJsonData() {
+  PermissionGuard.requirePermission('admin:settings');
+  return BadgeEngine.migrateBadgesFromJsonData();
+}
+
+function rebuildAllUserMetrics() {
+  PermissionGuard.requirePermission('admin:settings');
+  return UserMetricsService.rebuildAllMetrics();
+}
+
+function invalidateSystemInitCache_() {
+  try {
+    CacheService.getScriptCache().remove('SYSTEM_INITIALIZED');
+  } catch (e) {
+    console.error('invalidateSystemInitCache_ failed:', e);
+  }
+}
+
 function quickSetup() {
   try {
     PermissionGuard.requirePermission('admin:settings');
@@ -352,12 +572,19 @@ function runQuickTests() {
 function diagnose() {
   const ss = getColonySpreadsheet_();
   const issues = [];
-  const requiredSheets = ['Tasks', 'Users', 'Projects', 'Comments', 'Activity', 'Mentions', 'Notifications', 'Analytics_Cache', 'Task_Dependencies'];
 
-  requiredSheets.forEach(name => {
-    const sheet = ss.getSheetByName(name);
+  WORKBOOK_SHEET_SPEC.forEach(spec => {
+    const sheet = ss.getSheetByName(spec.name);
     if (!sheet) {
-      issues.push(`Missing sheet: ${name}`);
+      issues.push(`Missing sheet: ${spec.name}`);
+      return;
+    }
+    const columns = CONFIG[spec.columnsKey] || [];
+    const lastCol = Math.max(1, sheet.getLastColumn());
+    const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+    const missingCols = columns.filter(c => header.indexOf(c) === -1);
+    if (missingCols.length > 0) {
+      issues.push(`Sheet ${spec.name} missing columns: ${missingCols.join(', ')}`);
     }
   });
 

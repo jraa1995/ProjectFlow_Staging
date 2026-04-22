@@ -16,6 +16,57 @@ function setDataAssetsWorkbookId(workbookId) {
   return true;
 }
 
+var CPMD_DEFAULT_WORKBOOK_ID = '1hOnry0rHLp3-fQq2gMqaVbPzEJmmCjQdkrjfufCIBRI';
+
+function getCpmdWorkbookId() {
+  return PropertiesService.getScriptProperties().getProperty('CPMD_WORKBOOK_ID') || CPMD_DEFAULT_WORKBOOK_ID;
+}
+
+function setCpmdWorkbookId(workbookId) {
+  var prev = PropertiesService.getScriptProperties().getProperty('CPMD_WORKBOOK_ID');
+  PropertiesService.getScriptProperties().setProperty('CPMD_WORKBOOK_ID', workbookId);
+  try {
+    var cache = CacheService.getScriptCache();
+    if (prev) cache.remove('CPMD_PERSONNEL_CACHE_' + prev);
+    if (workbookId) cache.remove('CPMD_PERSONNEL_CACHE_' + workbookId);
+  } catch (e) {}
+  return true;
+}
+
+function getCpmdPersonnel() {
+  var wbId = getCpmdWorkbookId();
+  if (!wbId) return [];
+  var cacheKey = 'CPMD_PERSONNEL_CACHE_' + wbId;
+  try {
+    var cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+  try {
+    var ss = SpreadsheetApp.openById(wbId);
+    var sheet = ss.getSheetByName('Personnel');
+    if (!sheet) return [];
+    var data = sheet.getDataRange().getValues();
+    var results = [];
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var status = String(row[7] || '').trim();
+      if (status.toLowerCase() !== 'active') continue;
+      var first = String(row[2] || '').trim();
+      var last = String(row[3] || '').trim();
+      var email = String(row[5] || '').trim();
+      if (!first && !last) continue;
+      var name = (first + ' ' + last).trim();
+      results.push({ name: name, email: email });
+    }
+    results.sort(function(a, b) { return a.name.localeCompare(b.name); });
+    try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(results), 1800); } catch (e) {}
+    return results;
+  } catch (error) {
+    console.error('getCpmdPersonnel failed:', error);
+    return [];
+  }
+}
+
 var WORKLOG_STATUS_MAP = {
   '02-In Development': 'active',
   '03-Deployed (Actively Maintained)': 'active',
@@ -177,7 +228,13 @@ function buildWorklogSettings(row) {
   if (row[C.dataDictionaries]) s.dataDictionaries = String(row[C.dataDictionaries]).trim();
   if (row[C.notes]) s.notes = String(row[C.notes]).trim();
   var isAi = String(row[C.isAiInvolved] || '').trim();
-  s.isAiInvolved = isAi === 'AI-Assisted' || isAi === 'TRUE' || isAi === 'true';
+  if (isAi === 'AI-Assisted' || isAi === 'TRUE' || isAi === 'true') {
+    s.isAiInvolved = 'Yes - AI used in Development';
+  } else if (isAi && isAi !== 'FALSE' && isAi !== 'false') {
+    s.isAiInvolved = isAi;
+  } else {
+    s.isAiInvolved = 'No - AI Not Involved in Solution';
+  }
   var isHive = String(row[C.isInternalHive] || '').trim();
   s.isInternalHive = isHive === 'TRUE' || isHive === 'true';
   var isPublic = String(row[C.deployedPublicly] || '').trim();
@@ -222,7 +279,8 @@ function importProjectsFromWorkLog(workbookId) {
   var generatedIds = existingProjects.slice();
 
   var projectSheet = getProjectsSheet();
-  var columns = CONFIG.PROJECT_COLUMNS;
+  var sheetHeaders = projectSheet.getRange(1, 1, 1, projectSheet.getLastColumn()).getValues()[0].map(function(h) { return String(h).trim(); });
+  var columns = sheetHeaders;
   var currentUser = getCurrentUserEmail();
   var timestamp = now();
 

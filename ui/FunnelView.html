@@ -1,106 +1,85 @@
 <div class="funnel-container">
-  <div class="co-card mb-6">
-    <div class="co-card-body">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-900">
-          <i class="fas fa-filter text-primary-500 mr-2"></i>
-          Ticket Funnel
-        </h2>
-        <div class="flex items-center gap-2">
-          <button
-            onclick="FunnelPage.syncRequests()"
-            class="co-btn co-btn-primary"
-          >
-            <i class="fas fa-sync"></i> Sync Requests
-          </button>
-          <button
-            onclick="FunnelPage.openImportDialog()"
-            class="co-btn co-btn-secondary"
-          >
-            <i class="fas fa-file-import"></i> Import Tickets
-          </button>
-        </div>
+  <div class="rounded-xl mb-5 px-6 py-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-[16px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);letter-spacing:-0.01em;">
+        <i class="fas fa-filter" style="color:var(--co-accent-500);font-size:14px;"></i>
+        Ticket Funnel
+      </h2>
+      <div class="flex items-center gap-2">
+        <button onclick="FunnelPage.syncRequests()" class="co-btn-solid">
+          <i class="fas fa-sync text-[11px]"></i> Sync Requests
+        </button>
+        <button onclick="FunnelPage.openImportDialog()" class="co-btn-outline">
+          <i class="fas fa-file-import text-[11px]"></i> Import Tickets
+        </button>
       </div>
-      <div class="grid grid-cols-4 gap-4">
-        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <div class="text-2xl font-bold text-gray-900" id="funnelStatPending">0</div>
-          <div class="text-gray-600 text-sm">Pending Review</div>
-        </div>
-        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <div class="text-2xl font-bold text-blue-600" id="funnelStatReviewed">0</div>
-          <div class="text-blue-800 text-sm">Reviewed</div>
-        </div>
-        <div class="bg-green-50 p-4 rounded-lg border border-green-200">
-          <div class="text-2xl font-bold text-green-600" id="funnelStatImported">0</div>
-          <div class="text-green-800 text-sm">Imported</div>
-        </div>
-        <div class="bg-red-50 p-4 rounded-lg border border-red-200">
-          <div class="text-2xl font-bold text-red-600" id="funnelStatRejected">0</div>
-          <div class="text-red-800 text-sm">Rejected</div>
-        </div>
+    </div>
+    <div class="grid grid-cols-4 gap-3">
+      <div class="rounded-lg p-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+        <div class="text-[28px] font-semibold leading-none tracking-tight" style="color:var(--co-ink);" id="funnelStatPending">0</div>
+        <div class="text-[11px] mt-2 uppercase tracking-wider" style="color:var(--co-gray-400);">Pending Review</div>
+      </div>
+      <div class="rounded-lg p-4" style="background:#f0f7ff;border:1px solid #dbe8f8;">
+        <div class="text-[28px] font-semibold leading-none tracking-tight" style="color:#1e4a8a;" id="funnelStatReviewed">0</div>
+        <div class="text-[11px] mt-2 uppercase tracking-wider" style="color:#5a7aa8;">Reviewed</div>
+      </div>
+      <div class="rounded-lg p-4" style="background:#f2faf4;border:1px solid #d4ecda;">
+        <div class="text-[28px] font-semibold leading-none tracking-tight" style="color:#1b6e3b;" id="funnelStatImported">0</div>
+        <div class="text-[11px] mt-2 uppercase tracking-wider" style="color:#4f8a65;">Imported</div>
+      </div>
+      <div class="rounded-lg p-4" style="background:#fdf4f4;border:1px solid #f2dada;">
+        <div class="text-[28px] font-semibold leading-none tracking-tight" style="color:#a42828;" id="funnelStatRejected">0</div>
+        <div class="text-[11px] mt-2 uppercase tracking-wider" style="color:#8a5555;">Rejected</div>
       </div>
     </div>
   </div>
 
-  <div class="co-card mb-6">
-    <div class="co-card-body">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <select
-            id="funnelStatusFilter"
-            onchange="FunnelPage.filterTickets()"
-            class="co-input w-48"
-          >
-            <option value="">All Statuses</option>
-            <option value="pending">Pending Review</option>
-            <option value="reviewed">Reviewed</option>
-            <option value="imported">Imported</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <input
-            type="text"
-            id="funnelSearchInput"
-            placeholder="Search tickets..."
-            class="co-input w-64"
-            oninput="FunnelPage.searchTickets()"
-          />
-        </div>
-        <div class="flex items-center gap-2">
-          <span id="funnelSelectedCount" class="text-sm text-gray-600 hidden">
-            <span id="funnelSelectedCountNum">0</span> selected
-          </span>
-          <button
-            id="funnelBulkAssignBtn"
-            onclick="FunnelPage.openBulkAssignDialog()"
-            class="co-btn co-btn-secondary hidden"
-          >
-            <i class="fas fa-user-plus"></i> Assign
-          </button>
-          <button
-            id="funnelBulkImportBtn"
-            onclick="FunnelPage.bulkImport()"
-            class="co-btn co-btn-primary hidden"
-          >
-            <i class="fas fa-check"></i> Import Selected
-          </button>
-          <button
-            id="funnelBulkDeleteBtn"
-            onclick="FunnelPage.bulkDelete()"
-            class="co-btn co-btn-secondary hidden"
-          >
-            <i class="fas fa-trash"></i> Delete
-          </button>
-        </div>
+  <div class="rounded-xl mb-5 px-6 py-4" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div class="flex items-center gap-1" role="tablist" id="funnelTabBar">
+        <button data-funnel-tab="unassigned" onclick="FunnelPage.switchTab('unassigned')"
+          class="co-tab co-tab-active">
+          Unassigned <span class="ml-1 text-[11px] font-normal" style="color:var(--co-gray-400);" id="funnelTabCountUnassigned">0</span>
+        </button>
+        <button data-funnel-tab="assigned" onclick="FunnelPage.switchTab('assigned')"
+          class="co-tab">
+          Assigned <span class="ml-1 text-[11px] font-normal" style="color:var(--co-gray-400);" id="funnelTabCountAssigned">0</span>
+        </button>
+        <button data-funnel-tab="imported" onclick="FunnelPage.switchTab('imported')"
+          class="co-tab">
+          Imported <span class="ml-1 text-[11px] font-normal" style="color:var(--co-gray-400);" id="funnelTabCountImported">0</span>
+        </button>
+      </div>
+      <div class="flex items-center gap-2.5">
+        <input
+          type="text"
+          id="funnelSearchInput"
+          placeholder="Search tickets..."
+          class="co-search-input w-64"
+          oninput="FunnelPage.searchTickets()"
+        />
+        <span id="funnelSelectedCount" class="text-[12px] font-medium hidden" style="color:var(--co-ink-soft);">
+          <span id="funnelSelectedCountNum">0</span> selected
+        </span>
+        <button id="funnelBulkAssignBtn" onclick="FunnelPage.openBulkAssignDialog()" class="co-btn-outline hidden">
+          <i class="fas fa-user-plus text-[11px]"></i> Assign
+        </button>
+        <button id="funnelBulkImportBtn" onclick="FunnelPage.bulkImport()" class="co-btn-solid hidden">
+          <i class="fas fa-check text-[11px]"></i> Import Selected
+        </button>
+        <button id="funnelBulkDeleteBtn" onclick="FunnelPage.bulkDelete()" class="co-btn-outline hidden">
+          <i class="fas fa-trash text-[11px]"></i> Delete
+        </button>
       </div>
     </div>
   </div>
 
-  <div class="co-card">
+  <div class="rounded-xl overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
     <div class="overflow-x-auto">
       <table class="w-full">
         <thead>
-          <tr class="bg-gray-50 border-b border-gray-200">
-            <th class="px-4 py-3 text-left">
+          <tr style="background:var(--co-surface-sunken);border-bottom:1px solid var(--co-border-subtle);">
+            <th class="px-4 py-2.5 text-left">
               <input
                 type="checkbox"
                 id="funnelSelectAll"
@@ -108,25 +87,25 @@
                 class="rounded"
               />
             </th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Req ID</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Title</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Requestor</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Priority</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Team</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Assignee</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Import Status</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Imported</th>
-            <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Req ID</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Title</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Type</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Requestor</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Status</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Priority</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Team</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Assignee</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Import Status</th>
+            <th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Imported</th>
+            <th class="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Actions</th>
           </tr>
         </thead>
         <tbody id="funnelTableBody">
           <tr>
             <td colspan="12" class="px-4 py-12 text-center text-gray-500">
               <i class="fas fa-inbox text-4xl mb-3 text-gray-300"></i>
-              <p>No tickets in funnel</p>
-              <p class="text-sm mt-1">Click "Import Tickets" to get started</p>
+              <p>No tickets in this view</p>
+              <p class="text-sm mt-1">Click "Sync Requests" or "Import Tickets" to get started</p>
             </td>
           </tr>
         </tbody>
@@ -135,13 +114,13 @@
   </div>
 </div>
 
-<div id="funnelImportDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-  <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden co-animate-scale-in">
+<div id="funnelImportDialog" class="fixed inset-0 flex items-center justify-center z-50 hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+  <div class="rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden co-animate-scale-in" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">
     <div id="funnelImportDialogContent">
       <div id="funnelImportStep1" class="funnel-import-step">
-        <div class="flex items-center justify-between px-6 py-4 border-b">
-          <h2 class="text-lg font-semibold">Import Tickets - Step 1 of 3</h2>
-          <button onclick="FunnelPage.closeImportDialog()" class="text-gray-400 hover:text-gray-600">
+        <div class="flex items-center justify-between px-6 py-4" style="border-bottom:1px solid var(--co-border-subtle);">
+          <h2 class="text-[16px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.01em;">Import Tickets <span class="text-[12px] font-normal ml-2" style="color:var(--co-ink-muted);">Step 1 of 3</span></h2>
+          <button onclick="FunnelPage.closeImportDialog()" class="p-2 rounded-lg transition-all" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';" onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';">
             <i class="fas fa-times text-xl"></i>
           </button>
         </div>
@@ -169,10 +148,10 @@
             />
           </div>
         </div>
-        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
-          <button onclick="FunnelPage.closeImportDialog()" class="co-btn co-btn-secondary">Cancel</button>
-          <button onclick="FunnelPage.loadWorkbookData()" class="co-btn co-btn-primary">
-            Next <i class="fas fa-arrow-right ml-1"></i>
+        <div class="flex items-center justify-end gap-2 px-6 py-4" style="border-top:1px solid var(--co-border-subtle);background:var(--co-surface-sunken);">
+          <button onclick="FunnelPage.closeImportDialog()" class="co-btn-outline">Cancel</button>
+          <button onclick="FunnelPage.loadWorkbookData()" class="co-btn-solid">
+            Next <i class="fas fa-arrow-right text-[10px] ml-1"></i>
           </button>
         </div>
       </div>
@@ -186,16 +165,17 @@
 
 <style>
 .funnel-ticket-row {
-  border-bottom: 1px solid var(--co-gray-200);
+  border-bottom: 1px solid var(--co-border-subtle);
   transition: background-color var(--co-transition-fast);
 }
 
 .funnel-ticket-row:hover {
-  background-color: var(--co-gray-50);
+  background-color: var(--co-surface-sunken);
 }
 
 .funnel-ticket-row.selected {
-  background-color: var(--co-primary-50);
+  background-color: var(--co-accent-50);
+  box-shadow: inset 3px 0 0 var(--co-accent-500);
 }
 </style>
 
@@ -207,6 +187,7 @@ var FunnelPage = {
   columnMapping: null,
   importData: null,
   currentStep: 1,
+  currentTab: 'unassigned',
   hasInitialized: false,
 
   init() {
@@ -218,6 +199,50 @@ var FunnelPage = {
     }
     this.hasInitialized = true;
     this.loadTickets();
+  },
+
+  computeBucket(ticket) {
+    var status = ticket.importStatus || 'pending';
+    if (status === 'imported' || status === 'rejected') return 'imported';
+    if (ticket.assignedTo || status === 'assigned') return 'assigned';
+    return 'unassigned';
+  },
+
+  switchTab(tab) {
+    if (this.currentTab === tab) return;
+    this.currentTab = tab;
+    this.selectedTickets.clear();
+    this._renderTabBar();
+    this.filterTickets();
+  },
+
+  _renderTabBar() {
+    var buttons = document.querySelectorAll('#funnelTabBar button[data-funnel-tab]');
+    var current = this.currentTab;
+    buttons.forEach(function(btn) {
+      var isActive = btn.getAttribute('data-funnel-tab') === current;
+      btn.className = 'co-tab' + (isActive ? ' co-tab-active' : '');
+    });
+  },
+
+  _requestTypeBadgeClass(type) {
+    var map = {
+      'Ad Hoc Request': 'bg-gray-100 text-gray-700',
+      'New Project': 'bg-purple-100 text-purple-700',
+      'Bug fix for existing project': 'bg-red-100 text-red-700',
+      'Enhancement to existing project': 'bg-blue-100 text-blue-700'
+    };
+    return map[type] || 'bg-gray-100 text-gray-600';
+  },
+
+  _requestTypeShortLabel(type) {
+    var map = {
+      'Ad Hoc Request': 'Ad Hoc',
+      'New Project': 'New Project',
+      'Bug fix for existing project': 'Bug',
+      'Enhancement to existing project': 'Enhancement'
+    };
+    return map[type] || (type || 'Unknown');
   },
 
   syncRequests() {
@@ -283,10 +308,9 @@ var FunnelPage = {
     showLoading(true);
     google.script.run
       .withSuccessHandler((tickets) => {
-        this.tickets = tickets;
-        this.filteredTickets = tickets;
-        this.renderTickets();
+        this.tickets = tickets || [];
         this.updateStats();
+        this.filterTickets();
         showLoading(false);
       })
       .withFailureHandler((error) => {
@@ -321,6 +345,10 @@ var FunnelPage = {
     const isSelected = this.selectedTickets.has(ticket.id);
     const mappedData = ticket.mappedData || {};
     const rawData = ticket.rawData || {};
+    const requestType = mappedData.type || rawData['Request Type Category'] || '';
+    const typeBadgeClass = this._requestTypeBadgeClass(requestType);
+    const typeLabel = this._requestTypeShortLabel(requestType);
+    const canAssignImport = ticket.importStatus !== 'imported' && ticket.importStatus !== 'rejected';
     return `
       <tr class="funnel-ticket-row ${isSelected ? 'selected' : ''}" data-ticket-id="${ticket.id}">
         <td class="px-4 py-3">
@@ -340,6 +368,9 @@ var FunnelPage = {
           ${mappedData.description ? `<div class="text-xs text-gray-500 mt-1 line-clamp-2" style="max-width: 320px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(mappedData.description)}</div>` : ''}
         </td>
         <td class="px-4 py-3">
+          <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${typeBadgeClass}">${escapeHtml(typeLabel)}</span>
+        </td>
+        <td class="px-4 py-3">
           <span class="text-sm text-gray-600">${escapeHtml(rawData['Requestor'] || '-')}</span>
         </td>
         <td class="px-4 py-3">
@@ -352,9 +383,6 @@ var FunnelPage = {
           <span class="text-sm text-gray-600">${escapeHtml(rawData['Assigned Team'] || '-')}</span>
         </td>
         <td class="px-4 py-3">
-          <span class="text-sm text-gray-600">${escapeHtml(rawData['Topic'] || '-')}</span>
-        </td>
-        <td class="px-4 py-3">
           <span class="text-sm text-gray-600">${escapeHtml(ticket.assignedTo || 'Unassigned')}</span>
         </td>
         <td class="px-4 py-3">
@@ -365,13 +393,7 @@ var FunnelPage = {
         </td>
         <td class="px-4 py-3 text-center">
           <div class="flex items-center justify-center gap-2">
-            <button
-              onclick="FunnelPage.editTicket('${ticket.id}')"
-              class="p-1 text-gray-500 hover:text-primary-600"
-              title="Edit"
-            >
-              <i class="fas fa-edit"></i>
-            </button>
+            ${canAssignImport ? `<button onclick="FunnelPage.openSingleImport('${ticket.id}')" class="px-2 py-1 text-xs font-medium rounded bg-gray-900 text-white hover:bg-gray-700" title="Assign & Import"><i class="fas fa-share"></i> Assign &amp; Import</button>` : ''}
             <button
               onclick="FunnelPage.viewTicket('${ticket.id}')"
               class="p-1 text-gray-500 hover:text-blue-600"
@@ -409,10 +431,13 @@ var FunnelPage = {
       imported: 0,
       rejected: 0
     };
+    const tabCounts = { unassigned: 0, assigned: 0, imported: 0 };
 
     this.tickets.forEach(ticket => {
       const status = ticket.importStatus || 'pending';
       stats[status] = (stats[status] || 0) + 1;
+      const bucket = this.computeBucket(ticket);
+      tabCounts[bucket] = (tabCounts[bucket] || 0) + 1;
     });
 
     const pendingEl = document.getElementById('funnelStatPending');
@@ -424,30 +449,36 @@ var FunnelPage = {
     if (reviewedEl) reviewedEl.textContent = stats.reviewed;
     if (importedEl) importedEl.textContent = stats.imported;
     if (rejectedEl) rejectedEl.textContent = stats.rejected;
+
+    var mapping = { unassigned: 'funnelTabCountUnassigned', assigned: 'funnelTabCountAssigned', imported: 'funnelTabCountImported' };
+    Object.keys(mapping).forEach(function(k) {
+      var el = document.getElementById(mapping[k]);
+      if (el) el.textContent = tabCounts[k];
+    });
   },
 
   filterTickets() {
-    const statusFilter = document.getElementById('funnelStatusFilter').value;
-    const searchQuery = document.getElementById('funnelSearchInput').value.toLowerCase();
+    const searchQuery = (document.getElementById('funnelSearchInput') || {}).value || '';
+    const query = searchQuery.toLowerCase();
+    const currentTab = this.currentTab;
 
     this.filteredTickets = this.tickets.filter(ticket => {
-      if (statusFilter && ticket.importStatus !== statusFilter) {
-        return false;
-      }
-      if (searchQuery) {
+      if (this.computeBucket(ticket) !== currentTab) return false;
+      if (query) {
         const mappedData = ticket.mappedData || {};
         const rawData = ticket.rawData || {};
         const searchFields = [
           ticket.id,
           mappedData.title,
           mappedData.description,
+          mappedData.type,
           ticket.assignedTo,
           rawData['Request ID'],
           rawData['Requestor'],
           rawData['Assigned Team'],
           rawData['Topic']
         ].filter(Boolean).map(f => String(f).toLowerCase());
-        if (!searchFields.some(field => field.includes(searchQuery))) {
+        if (!searchFields.some(field => field.includes(query))) {
           return false;
         }
       }
@@ -875,12 +906,58 @@ var FunnelPage = {
     }
 
     const selectedIds = Array.from(this.selectedTickets);
-    const count = selectedIds.length;
-    const unassigned = this.tickets.filter(t => selectedIds.includes(t.id) && !t.mappedData?.assignee);
+    const selectedTickets = this.tickets.filter(t => selectedIds.includes(t.id));
+    const newProjectTickets = selectedTickets.filter(t => {
+      var type = (t.mappedData && t.mappedData.type) || (t.rawData && t.rawData['Request Type Category']) || '';
+      return type === 'New Project';
+    });
 
+    if (newProjectTickets.length > 0) {
+      if (selectedTickets.length === 1) {
+        this.openSingleImport(selectedIds[0]);
+        return;
+      }
+      var taskKindIds = selectedTickets
+        .filter(t => {
+          var type = (t.mappedData && t.mappedData.type) || (t.rawData && t.rawData['Request Type Category']) || '';
+          return type !== 'New Project';
+        })
+        .map(t => t.id);
+      if (taskKindIds.length === 0) {
+        toast('Select exactly one "New Project" row to use Assign & Import.', 'warning');
+        return;
+      }
+      if (!await ConfirmModal(
+        newProjectTickets.length + ' "New Project" row(s) were skipped — import those individually. Continue with ' + taskKindIds.length + ' task-kind row(s)?',
+        {}
+      )) return;
+      this._continueBulkImport(taskKindIds);
+      return;
+    }
+
+    this._continueBulkImport(selectedIds);
+  },
+
+  _continueBulkImport(selectedIds) {
+    const count = selectedIds.length;
+    const unassigned = this.tickets.filter(t => selectedIds.includes(t.id) && !(t.mappedData && t.mappedData.assignee) && !t.assignedTo);
     this.showAssignmentModal(unassigned.length, count, (options) => {
       this.executeImport(selectedIds, options);
     });
+  },
+
+  openSingleImport(ticketId) {
+    var ticket = this.tickets.find(function(t) { return t.id === ticketId; });
+    if (!ticket) { toast('Ticket not found', 'error'); return; }
+    var type = (ticket.mappedData && ticket.mappedData.type) || (ticket.rawData && ticket.rawData['Request Type Category']) || '';
+    if (type === 'New Project') {
+      this.showNewProjectImportModal(ticket);
+      return;
+    }
+    this.selectedTickets.clear();
+    this.selectedTickets.add(ticketId);
+    this.updateSelectionUI();
+    this._continueBulkImport([ticketId]);
   },
 
   executeImport(selectedIds, options) {
@@ -969,6 +1046,155 @@ var FunnelPage = {
     };
   },
 
+  showNewProjectImportModal(ticket) {
+    var self = this;
+    var existing = document.getElementById('newProjectImportModal');
+    if (existing) existing.remove();
+
+    var mapped = ticket.mappedData || {};
+    var raw = ticket.rawData || {};
+    var users = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var userOptions = '<option value="">Select owner...</option>' + users.map(function(u) {
+      var selected = (u.email === ticket.assignedTo) ? ' selected' : '';
+      return '<option value="' + escapeHtml(u.email) + '"' + selected + '>' + escapeHtml(u.name || u.email) + '</option>';
+    }).join('');
+
+    var detailKeys = [
+      { key: 'workstream', label: 'Workstream' },
+      { key: 'projectCategory', label: 'Project Category' },
+      { key: 'projectType', label: 'Project Type' },
+      { key: 'developmentPriority', label: 'Development Priority' },
+      { key: 'developmentPhase', label: 'Development Phase' },
+      { key: 'deploymentLocation', label: 'Deployment Location' },
+      { key: 'contractInitial', label: 'Contract of Initial Development' },
+      { key: 'techStack', label: 'Tech Stack' }
+    ];
+    var docKeys = [
+      { key: 'googleDriveFolder', label: 'Google Drive Folder', hint: 'Auto-created if blank' },
+      { key: 'githubLinks', label: 'Git Repository' },
+      { key: 'devDocs', label: 'Development Documentation' },
+      { key: 'designDocs', label: 'Design Documentation' },
+      { key: 'sops', label: 'SOPs (Internal)' },
+      { key: 'userGuides', label: 'User Guides' },
+      { key: 'dataDictionaries', label: 'Data Dictionaries' }
+    ];
+
+    var prefillDetail = detailKeys.map(function(f) {
+      return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' +
+        escapeHtml(f.label) +
+        '</label><input id="npim_' + f.key + '" type="text" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"></div>';
+    }).join('');
+    var prefillDocs = docKeys.map(function(f) {
+      return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' +
+        escapeHtml(f.label) + (f.hint ? ' <span class="text-gray-400 normal-case font-normal">(' + escapeHtml(f.hint) + ')</span>' : '') +
+        '</label><input id="npim_' + f.key + '" type="url" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"></div>';
+    }).join('');
+
+    var modal = document.createElement('div');
+    modal.id = 'newProjectImportModal';
+    modal.className = 'fixed inset-0 z-50 flex items-start justify-center bg-black/50 overflow-y-auto py-8';
+    modal.innerHTML =
+      '<div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[90vh]">' +
+        '<div class="flex items-center justify-between px-6 py-4 border-b">' +
+          '<div>' +
+            '<h2 class="text-lg font-semibold text-gray-900">Create Project from Funnel</h2>' +
+            '<p class="text-xs text-gray-500 mt-0.5">Request ID: ' + escapeHtml(raw['Request ID'] || ticket.id) + '</p>' +
+          '</div>' +
+          '<button id="npimClose" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>' +
+        '</div>' +
+        '<div class="overflow-y-auto px-6 py-4 flex-1 space-y-4">' +
+          '<div class="grid grid-cols-2 gap-4">' +
+            '<div class="col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Name</label>' +
+              '<input id="npimName" type="text" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" value="' + escapeHtml(mapped.title || '') + '"></div>' +
+            '<div class="col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Description</label>' +
+              '<textarea id="npimDescription" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400">' + escapeHtml(mapped.description || '') + '</textarea></div>' +
+            '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Owner</label>' +
+              '<select id="npimOwner" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400">' + userOptions + '</select></div>' +
+            '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Start Date</label>' +
+              '<input id="npimStartDate" type="date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" value="' + escapeHtml((mapped.startDate || '').toString().substring(0, 10)) + '"></div>' +
+            '<div class="col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Tags (comma-separated)</label>' +
+              '<input id="npimTags" type="text" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
+          '</div>' +
+          '<details class="border border-gray-200 rounded-lg">' +
+            '<summary class="cursor-pointer px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Details pre-fill (optional)</summary>' +
+            '<div class="p-4 grid grid-cols-2 gap-3">' + prefillDetail + '</div>' +
+          '</details>' +
+          '<details class="border border-gray-200 rounded-lg">' +
+            '<summary class="cursor-pointer px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Documentation &amp; Links pre-fill (optional)</summary>' +
+            '<div class="p-4 grid grid-cols-1 gap-3">' + prefillDocs + '</div>' +
+          '</details>' +
+          '<label class="flex items-center gap-2 text-sm text-gray-700">' +
+            '<input id="npimNotify" type="checkbox" class="rounded" checked>' +
+            'Notify assignee via email that a new project has been assigned' +
+          '</label>' +
+        '</div>' +
+        '<div class="flex items-center justify-end gap-2 px-6 py-3 border-t bg-gray-50">' +
+          '<button id="npimCancel" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>' +
+          '<button id="npimSkip" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Skip pre-fill &amp; create</button>' +
+          '<button id="npimCreate" class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">Create project</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+
+    var close = function() { modal.remove(); };
+    document.getElementById('npimClose').onclick = close;
+    document.getElementById('npimCancel').onclick = close;
+
+    var collectOverrides = function(includePrefills) {
+      var name = (document.getElementById('npimName').value || '').trim();
+      if (!name) { toast('Project name is required', 'warning'); return null; }
+      var owner = document.getElementById('npimOwner').value || '';
+      var overrides = {
+        name: name,
+        description: document.getElementById('npimDescription').value || '',
+        ownerId: owner,
+        startDate: document.getElementById('npimStartDate').value || '',
+        tags: document.getElementById('npimTags').value || ''
+      };
+      if (includePrefills) {
+        detailKeys.forEach(function(f) {
+          var v = (document.getElementById('npim_' + f.key) || {}).value;
+          if (v && v.trim()) overrides[f.key] = v.trim();
+        });
+        var settings = {};
+        docKeys.forEach(function(f) {
+          var v = (document.getElementById('npim_' + f.key) || {}).value;
+          if (v && v.trim()) settings[f.key] = v.trim();
+        });
+        overrides.settings = settings;
+      }
+      return overrides;
+    };
+
+    var submit = function(includePrefills) {
+      var overrides = collectOverrides(includePrefills);
+      if (!overrides) return;
+      var notify = document.getElementById('npimNotify').checked;
+      close();
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (result && result.success) {
+            toast('Project "' + (result.project && result.project.name) + '" created', 'success');
+            self.selectedTickets.clear();
+            self.loadTickets();
+          } else {
+            toast((result && result.error) || 'Failed to create project', 'error');
+          }
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          console.error('importFunnelRowAsProject failed:', err);
+          toast('Failed to create project', 'error');
+        })
+        .importFunnelRowAsProjectWrapped(ticket.id, overrides, { notifyAssignee: notify });
+    };
+
+    document.getElementById('npimCreate').onclick = function() { submit(true); };
+    document.getElementById('npimSkip').onclick = function() { submit(false); };
+  },
+
   async bulkDelete() {
     if (this.selectedTickets.size === 0) {
       toast('No tickets selected', 'warning');
@@ -1011,7 +1237,7 @@ var FunnelPage = {
   bulkAssign(assignee) {
     var selectedIds = Array.from(this.selectedTickets);
     var updates = selectedIds.map(function(id) {
-      return { id: id, changes: { assignedTo: assignee } };
+      return { id: id, changes: { assignedTo: assignee, importStatus: 'assigned' } };
     });
     var self = this;
     showLoading(true);

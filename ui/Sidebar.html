@@ -19,18 +19,32 @@
     if (!list) return;
     var query = (input ? input.value : '').toLowerCase().trim();
     var projects = State.projects || [];
-    var filtered = query ? projects.filter(function(p) { return (p.name || '').toLowerCase().includes(query); }) : projects;
-    var html = '<div class="px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer rounded mx-1 flex items-center gap-2' +
-      (!State.projectFilter ? ' bg-gray-700' : '') + '" onclick="selectProjectFromDropdown(null)">' +
-      '<i class="fas fa-folder-open text-gray-500 w-4"></i> All Projects</div>';
-    filtered.forEach(function(p) {
-      var isActive = State.projectFilter === p.id;
-      html += '<div class="px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer rounded mx-1 flex items-center gap-2' +
-        (isActive ? ' bg-gray-700' : '') + '" onclick="selectProjectFromDropdown(\'' + p.id + '\')">' +
-        '<i class="fas fa-folder text-gray-500 w-4"></i> ' + escapeHtml(p.name) + '</div>';
-    });
-    if (filtered.length === 0 && query) {
-      html += '<div class="px-2 py-3 text-sm text-gray-500 text-center">No projects match</div>';
+    var dataAssets = State.dataAssets || [];
+    var filteredProjects = query ? projects.filter(function(p) { return (p.name || '').toLowerCase().includes(query); }) : projects;
+    var filteredAssets = query ? dataAssets.filter(function(da) { return (da.assetName || '').toLowerCase().includes(query); }) : dataAssets;
+    var html = '<div class="px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer rounded mx-1 flex items-center gap-2' +
+      (!State.projectFilter ? ' bg-gray-100 font-medium' : '') + '" onclick="selectProjectFromDropdown(null)">' +
+      '<i class="fas fa-folder-open text-gray-400 w-4"></i> All Projects</div>';
+    if (filteredProjects.length) {
+      html += '<div class="px-2 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider mt-1">Projects</div>';
+      filteredProjects.forEach(function(p) {
+        var isActive = State.projectFilter === p.id;
+        html += '<div class="px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer rounded mx-1 flex items-center gap-2' +
+          (isActive ? ' bg-gray-100 font-medium' : '') + '" onclick="selectProjectFromDropdown(\'' + p.id + '\')">' +
+          '<i class="fas fa-folder text-gray-400 w-4"></i> ' + escapeHtml(p.name) + '</div>';
+      });
+    }
+    if (filteredAssets.length) {
+      html += '<div class="px-2 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider mt-1 border-t border-gray-200 pt-1">Data Assets</div>';
+      filteredAssets.forEach(function(da) {
+        var isActive = State.projectFilter === da.id;
+        html += '<div class="px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer rounded mx-1 flex items-center gap-2' +
+          (isActive ? ' bg-gray-100 font-medium' : '') + '" onclick="selectProjectFromDropdown(\'' + da.id + '\')">' +
+          '<i class="fas fa-database text-gray-400 w-4"></i> ' + escapeHtml(da.assetName) + '</div>';
+      });
+    }
+    if (filteredProjects.length === 0 && filteredAssets.length === 0 && query) {
+      html += '<div class="px-2 py-3 text-sm text-gray-500 text-center">No matches found</div>';
     }
     list.innerHTML = html;
   }
@@ -44,7 +58,12 @@
         label.textContent = 'All Projects';
       } else {
         var proj = (State.projects || []).find(function(p) { return p.id === projectId; });
-        label.textContent = proj ? proj.name : projectId;
+        if (proj) {
+          label.textContent = proj.name;
+        } else {
+          var da = (State.dataAssets || []).find(function(a) { return a.id === projectId; });
+          label.textContent = da ? da.assetName : projectId;
+        }
       }
     }
     selectProject(projectId);

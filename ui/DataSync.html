@@ -213,6 +213,7 @@
     board: null,
     projects: [],
     users: [],
+    dataAssets: [],
     view: "my",
     projectFilter: null,
     loading: false,
@@ -235,6 +236,11 @@
         isFresh: false
       },
       users: {
+        data: [],
+        lastFetched: null,
+        isFresh: false
+      },
+      dataAssets: {
         data: [],
         lastFetched: null,
         isFresh: false
@@ -298,10 +304,29 @@
       };
       this.users = users;
     },
+    getDataAssets() {
+      const cache = this.cache.dataAssets;
+      if (!cache.isFresh || !cache.lastFetched) return null;
+      const age = Date.now() - cache.lastFetched;
+      if (age > this.cacheConfig.maxAge) {
+        cache.isFresh = false;
+        return null;
+      }
+      return cache.data;
+    },
+    setDataAssets(assets) {
+      this.cache.dataAssets = {
+        data: assets,
+        lastFetched: Date.now(),
+        isFresh: true
+      };
+      this.dataAssets = assets;
+    },
     invalidateCache() {
       this.cache.tasks.isFresh = false;
       this.cache.projects.isFresh = false;
       this.cache.users.isFresh = false;
+      this.cache.dataAssets.isFresh = false;
     },
     hasFreshCache() {
       const tasks = this.getTasks();
@@ -468,7 +493,7 @@
           const hasChanges = result.version > this.lastSyncVersion;
           if (hasChanges) {
             if (result.changedTasks && result.changedTasks.length > 0) {
-              this._applySyncedTasks(result.changedIds, result.changedTasks);
+              this._applySyncedTasks(result.changedIds, result.changedTasks, result.changes);
             } else if (result.changedIds && result.changedIds.length > 0) {
               this.fetchChangedItems(result.changedIds);
             }
@@ -490,11 +515,14 @@
         })
         .getSyncUpdate(this.lastSyncVersion);
     },
-    _applySyncedTasks(taskIds, tasks) {
+    _applySyncedTasks(taskIds, tasks, changes) {
       var needsRerender = false;
       var returnedIds = new Set(tasks.map(function(t) { return t.id; }));
+      var deletedIds = new Set(
+        (changes || []).filter(function(c) { return c.changeType === 'delete'; }).map(function(c) { return c.entityId; })
+      );
       taskIds.forEach(function(id) {
-        if (!returnedIds.has(id) && State.tasks && !OptimisticUI.hasPendingForTask(id)) {
+        if (!returnedIds.has(id) && deletedIds.has(id) && State.tasks && !OptimisticUI.hasPendingForTask(id)) {
           State.tasks = State.tasks.filter(function(t) { return t.id !== id; });
           needsRerender = true;
           var card = document.querySelector('[data-task-id="' + id + '"]');
@@ -538,10 +566,13 @@
           var returnedIds = new Set(tasks.map(t => t.id));
           taskIds.forEach(id => {
             if (!returnedIds.has(id) && State.tasks && !OptimisticUI.hasPendingForTask(id)) {
-              State.tasks = State.tasks.filter(t => t.id !== id);
-              needsRerender = true;
-              var card = document.querySelector('[data-task-id="' + id + '"]');
-              if (card) card.remove();
+              var existsLocally = State.tasks.some(function(t) { return t.id === id; });
+              if (!existsLocally) {
+                State.tasks = State.tasks.filter(t => t.id !== id);
+                needsRerender = true;
+                var card = document.querySelector('[data-task-id="' + id + '"]');
+                if (card) card.remove();
+              }
             }
           });
           tasks.forEach(task => {

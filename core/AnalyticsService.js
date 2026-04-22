@@ -23,6 +23,7 @@ function getAnalyticsData(days) {
     const byStatus = {};
     const byPriority = {};
     const byAssignee = {};
+    const byAssigneeCompleted = {};
     const projectTaskCount = {};
     const projectCompletedCount = {};
     const weeklyData = {};
@@ -49,6 +50,9 @@ function getAnalyticsData(days) {
 
       const assignee = task.assignee || 'Unassigned';
       byAssignee[assignee] = (byAssignee[assignee] || 0) + 1;
+      if (task.status === 'Done') {
+        byAssigneeCompleted[assignee] = (byAssigneeCompleted[assignee] || 0) + 1;
+      }
 
       if (task.projectId) {
         projectTaskCount[task.projectId] = (projectTaskCount[task.projectId] || 0) + 1;
@@ -91,9 +95,7 @@ function getAnalyticsData(days) {
 
     const teamProductivity = allUsers.map(user => {
       const userTasks = byAssignee[user.email] || 0;
-      const userCompleted = allTasks.filter(t =>
-        t.assignee === user.email && t.status === 'Done'
-      ).length;
+      const userCompleted = byAssigneeCompleted[user.email] || 0;
 
       return {
         name: user.name || user.email,
@@ -128,10 +130,14 @@ function getAnalyticsData(days) {
       count: count
     }));
 
+    const userNameByEmail = {};
+    allUsers.forEach(u => {
+      if (u && u.email) userNameByEmail[u.email] = u.name || u.email.split('@')[0];
+    });
     const recentActivity = getRecentActivity(20).map(activity => ({
       type: activity.action || 'update',
       description: activity.description || `${activity.action || 'Updated'} ${activity.entityType} ${activity.entityId}`,
-      user: getNameFromEmail(activity.userId) || activity.userId,
+      user: userNameByEmail[activity.userId] || (activity.userId ? activity.userId.split('@')[0] : activity.userId),
       timestamp: activity.createdAt
     }));
 

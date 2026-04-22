@@ -14,18 +14,30 @@ function getSheet(sheetName, columns) {
       .setFontColor('white');
     sheet.setFrozenRows(1);
   } else {
-    const existingHeaders = sheet.getRange(1, 1, 1, columns.length).getValues()[0];
-    const headersMatch = columns.every((col, index) => existingHeaders[index] === col);
-    if (!headersMatch) {
-      sheet.getRange(1, 1, 1, columns.length)
-        .setValues([columns])
-        .setFontWeight('bold')
-        .setBackground('#1e293b')
-        .setFontColor('white');
-      sheet.setFrozenRows(1);
-    }
+    ensureSheetHeaders_(sheet, columns);
   }
   return sheet;
+}
+
+function ensureSheetHeaders_(sheet, columns) {
+  try {
+    var lastCol = Math.max(1, sheet.getLastColumn());
+    var actual = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h).trim(); });
+    var missing = [];
+    for (var i = 0; i < columns.length; i++) {
+      if (actual.indexOf(columns[i]) === -1) missing.push(columns[i]);
+    }
+    if (missing.length === 0) return;
+    var startCol = actual.length + 1;
+    if (actual.length === 1 && !actual[0]) startCol = 1;
+    sheet.getRange(1, startCol, 1, missing.length)
+      .setValues([missing])
+      .setFontWeight('bold')
+      .setBackground('#1e293b')
+      .setFontColor('white');
+  } catch (e) {
+    console.error('ensureSheetHeaders_ failed for sheet ' + sheet.getName() + ':', e);
+  }
 }
 
 function getTasksSheet() {
@@ -181,6 +193,20 @@ function getAccessRequestsSheet() {
     throw new Error('CONFIG.ACCESS_REQUEST_COLUMNS is undefined. Check Config.gs for syntax errors.');
   }
   return getSheet(CONFIG.SHEETS.ACCESS_REQUESTS, CONFIG.ACCESS_REQUEST_COLUMNS);
+}
+
+function getUserBadgesSheet() {
+  if (!CONFIG || !CONFIG.USER_BADGE_COLUMNS) {
+    throw new Error('CONFIG.USER_BADGE_COLUMNS is undefined. Check Config.gs for syntax errors.');
+  }
+  return getSheet(CONFIG.SHEETS.USER_BADGES, CONFIG.USER_BADGE_COLUMNS);
+}
+
+function getUserMetricsSheet() {
+  if (!CONFIG || !CONFIG.USER_METRIC_COLUMNS) {
+    throw new Error('CONFIG.USER_METRIC_COLUMNS is undefined. Check Config.gs for syntax errors.');
+  }
+  return getSheet(CONFIG.SHEETS.USER_METRICS, CONFIG.USER_METRIC_COLUMNS);
 }
 
 const RowIndexCache = {
@@ -811,7 +837,11 @@ function calculateStoryPoints(startDate, dueDate) {
 }
 
 function createTask(taskData) {
-  if (!taskData.projectId) taskData.projectId = 'TASK';
+  if (!taskData.projectId || String(taskData.projectId).trim() === '') {
+    taskData.projectId = 'ADHOC';
+  } else if (String(taskData.projectId).toUpperCase() === 'TASK') {
+    taskData.projectId = 'ADHOC';
+  }
   PermissionGuard.requirePermission('task:create', { projectId: taskData.projectId });
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -819,7 +849,8 @@ function createTask(taskData) {
     const sheet = getTasksSheet();
     const currentUser = getCurrentUserEmail();
     const timestamp = now();
-    const taskId = generateTaskIdUnderLock_(taskData.projectId);
+    var idPrefix = taskData.projectId.indexOf('DA_') === 0 ? 'DA' : taskData.projectId;
+    const taskId = generateTaskIdUnderLock_(idPrefix);
     if (!isValidTaskId(taskId)) throw new Error('createTask: generated ID is invalid: ' + taskId);
     const maxPosition = Date.now();
     const isMilestone = taskData.isMilestone === true || taskData.isMilestone === 'true';
@@ -858,7 +889,8 @@ function createTask(taskData) {
       isMilestone: isMilestone,
       milestoneDate: taskData.milestoneDate || '',
       milestoneType: taskData.milestoneType || '',
-      taskUid: generateTaskUid()
+      taskUid: generateTaskUid(),
+      requestedBy: taskData.requestedBy || ''
     };
     if (task.startDate && task.dueDate && task.startDate !== CONFIG.TBD_DATE_SENTINEL && task.dueDate !== CONFIG.TBD_DATE_SENTINEL) {
       var calc = calculateStoryPoints(task.startDate, task.dueDate);
@@ -871,19 +903,55 @@ function createTask(taskData) {
     const newRowIndex = sheet.getLastRow();
     RowIndexCache.set('Tasks', task.id, newRowIndex);
     logActivity(currentUser, 'created', 'task', task.id, { title: task.title });
-    if (task.assignee && task.assignee !== currentUser && typeof NotificationEngine !== 'undefined') {
+    if (typeof UserMetricsService !== 'undefined') {
       try {
-        NotificationEngine.createNotification({
-          userId: task.assignee,
-          type: 'task_assigned',
-          title: 'Task Assigned',
-          message: 'You have been assigned to ' + task.id + ': ' + task.title,
-          entityType: 'task',
-          entityId: task.id,
-          channels: ['in_app', 'email']
-        });
+        if (task.reporter) UserMetricsService.recordTaskCreated(task.reporter);
+        if (task.assignee && task.reporter && task.assignee.toLowerCase() !== task.reporter.toLowerCase()) {
+          UserMetricsService.recordAssigneeUsed(task.reporter, task.assignee);
+        }
+      } catch (e) { console.error('createTask metrics failed:', e); }
+    }
+    if (typeof NotificationEngine !== 'undefined') {
+      try {
+        var createNotified = {};
+        var creatorEmail = task.reporter ? String(task.reporter).toLowerCase() : '';
+        var assigneeEmail = task.assignee ? String(task.assignee).toLowerCase() : '';
+        if (task.assignee && assigneeEmail !== creatorEmail) {
+          NotificationEngine.createNotification({
+            userId: task.assignee,
+            type: 'task_assigned',
+            title: 'Task Assigned',
+            message: 'You have been assigned to ' + task.id + ': ' + task.title,
+            entityType: 'task',
+            entityId: task.id,
+            channels: ['in_app', 'email']
+          });
+          createNotified[assigneeEmail] = true;
+        }
+        if (task.watchers) {
+          var newWatchers = typeof task.watchers === 'string'
+            ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+            : (Array.isArray(task.watchers) ? task.watchers : []);
+          newWatchers.forEach(function(watcherEmail) {
+            var lower = String(watcherEmail).toLowerCase();
+            if (lower === creatorEmail) return;
+            if (!createNotified[lower]) {
+              NotificationEngine.createNotification({
+                userId: watcherEmail,
+                type: 'task_updated',
+                title: 'Added to Task',
+                message: 'You were added as a watcher on ' + task.id + ': ' + task.title,
+                entityType: 'task',
+                entityId: task.id,
+                channels: ['in_app', 'email'],
+                reason: 'You were added as a watcher'
+              });
+              createNotified[lower] = true;
+            }
+          });
+        }
       } catch (e) {
-        console.error('Failed to send assignment notification:', e);
+        console.error('Failed to send task creation notifications:', e);
       }
     }
     return task;
@@ -932,8 +1000,10 @@ function updateTask(taskId, updates) {
       }
     }
     task.updatedAt = now();
+    var justCompleted = false;
     if (updates.status === 'Done' && !task.completedAt) {
       task.completedAt = now();
+      justCompleted = true;
     }
     const newRow = objectToRow(task, columns);
     sheet.getRange(rowIndex, 1, 1, columns.length).setValues([newRow]);
@@ -941,43 +1011,115 @@ function updateTask(taskId, updates) {
     if (Object.keys(changes).length > 0) {
       logActivity(currentUser, 'updated', 'task', taskId, changes);
     }
-    if (changes.assignee && updates.assignee && updates.assignee !== currentUser && typeof NotificationEngine !== 'undefined') {
+    if (justCompleted && task.assignee && typeof UserMetricsService !== 'undefined') {
       try {
-        NotificationEngine.createNotification({
-          userId: updates.assignee,
-          type: 'task_assigned',
-          title: 'Task Assigned',
-          message: 'You have been assigned to ' + taskId + ': ' + task.title,
-          entityType: 'task',
-          entityId: taskId,
-          channels: ['in_app', 'email']
-        });
+        UserMetricsService.recordTaskCompleted(task.assignee, task);
       } catch (e) {
-        console.error('Failed to send assignment notification:', e);
+        console.error('recordTaskCompleted failed:', e);
       }
     }
-    if (Object.keys(changes).length > 0 && task.watchers && typeof NotificationEngine !== 'undefined') {
+    if (changes.assignee && updates.assignee && typeof UserMetricsService !== 'undefined') {
       try {
-        var watcherList = typeof task.watchers === 'string'
-          ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
-          : (Array.isArray(task.watchers) ? task.watchers : []);
-        watcherList.forEach(function(watcherEmail) {
-          if (watcherEmail !== currentUser && watcherEmail !== updates.assignee) {
-            var changedFields = Object.keys(changes).join(', ');
-            NotificationEngine.createNotification({
-              userId: watcherEmail,
-              type: 'task_updated',
-              title: 'Task Updated',
-              message: taskId + ': ' + task.title + ' — updated: ' + changedFields,
-              entityType: 'task',
-              entityId: taskId,
-              channels: ['in_app'],
-              reason: 'You are watching this task'
-            });
-          }
-        });
+        var reporter = task.reporter || currentUser;
+        if (reporter) UserMetricsService.recordAssigneeUsed(reporter, updates.assignee);
       } catch (e) {
-        console.error('Failed to send watcher notifications:', e);
+        console.error('recordAssigneeUsed failed:', e);
+      }
+    }
+    if (Object.keys(changes).length > 0 && typeof NotificationEngine !== 'undefined') {
+      try {
+        var notifiedUsers = {};
+
+        if (changes.assignee && updates.assignee) {
+          NotificationEngine.createNotification({
+            userId: updates.assignee,
+            type: 'task_assigned',
+            title: 'Task Assigned',
+            message: 'You have been assigned to ' + taskId + ': ' + task.title,
+            entityType: 'task',
+            entityId: taskId,
+            channels: ['in_app', 'email']
+          });
+          notifiedUsers[updates.assignee] = true;
+        }
+
+        if (changes.watchers) {
+          var oldWatchers = changes.watchers.from
+            ? String(changes.watchers.from).split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+            : [];
+          var newWatchers = changes.watchers.to
+            ? String(changes.watchers.to).split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+            : [];
+          newWatchers.forEach(function(w) {
+            if (oldWatchers.indexOf(w) === -1 && !notifiedUsers[w]) {
+              NotificationEngine.createNotification({
+                userId: w,
+                type: 'task_updated',
+                title: 'Added to Task',
+                message: 'You were added as a watcher on ' + taskId + ': ' + task.title,
+                entityType: 'task',
+                entityId: taskId,
+                channels: ['in_app', 'email'],
+                reason: 'You were added as a watcher'
+              });
+              notifiedUsers[w] = true;
+            }
+          });
+        }
+
+        if (task.watchers) {
+          var watcherList = typeof task.watchers === 'string'
+            ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+            : (Array.isArray(task.watchers) ? task.watchers : []);
+          var changedFields = Object.keys(changes).join(', ');
+          watcherList.forEach(function(watcherEmail) {
+            if (!notifiedUsers[watcherEmail]) {
+              NotificationEngine.createNotification({
+                userId: watcherEmail,
+                type: 'task_updated',
+                title: 'Task Updated',
+                message: taskId + ': ' + task.title + ' — updated: ' + changedFields,
+                entityType: 'task',
+                entityId: taskId,
+                channels: ['in_app', 'email'],
+                reason: 'You are watching this task'
+              });
+              notifiedUsers[watcherEmail] = true;
+            }
+          });
+        }
+
+        if (task.assignee && !notifiedUsers[task.assignee]) {
+          var changedFieldsForAssignee = Object.keys(changes).join(', ');
+          NotificationEngine.createNotification({
+            userId: task.assignee,
+            type: 'task_updated',
+            title: 'Task Updated',
+            message: taskId + ': ' + task.title + ' — updated: ' + changedFieldsForAssignee,
+            entityType: 'task',
+            entityId: taskId,
+            channels: ['in_app', 'email'],
+            reason: 'You are assigned to this task'
+          });
+          notifiedUsers[task.assignee] = true;
+        }
+
+        if (task.reporter && !notifiedUsers[task.reporter]) {
+          var changedFieldsForReporter = Object.keys(changes).join(', ');
+          NotificationEngine.createNotification({
+            userId: task.reporter,
+            type: 'task_updated',
+            title: 'Task Updated',
+            message: taskId + ': ' + task.title + ' — updated: ' + changedFieldsForReporter,
+            entityType: 'task',
+            entityId: taskId,
+            channels: ['in_app', 'email'],
+            reason: 'You reported this task'
+          });
+          notifiedUsers[task.reporter] = true;
+        }
+      } catch (e) {
+        console.error('Failed to send update notifications:', e);
       }
     }
     return task;
@@ -1049,6 +1191,7 @@ function purgeDeletedTasks(daysOld) {
   if (rowsToDelete.length > 0) {
     SpreadsheetApp.flush();
     RowIndexCache.invalidateSheet('Tasks');
+    try { resetTaskSequences(); } catch (e) { console.error('purgeDeletedTasks: sequence reset failed:', e); }
   }
   return rowsToDelete.length;
 }
@@ -1117,13 +1260,18 @@ function createUser(userData) {
   if (getUserByEmail(userData.email)) {
     return getUserByEmail(userData.email);
   }
+  const timestamp = now();
   const user = {
     email: userData.email.toLowerCase().trim(),
     name: userData.name || userData.email.split('@')[0],
-    role: 'member',
+    role: userData.role || 'member',
     active: true,
     workbookId: userData.workbookId || '',
-    createdAt: now()
+    createdAt: timestamp,
+    avatar: userData.avatar || '',
+    title: userData.title || '',
+    department: userData.department || '',
+    updatedAt: timestamp
   };
   sheet.appendRow(objectToRow(user, CONFIG.USER_COLUMNS));
   UserCache.invalidate();
@@ -1144,13 +1292,14 @@ function updateUser(email, updates) {
       throw new Error('Permission denied: only admins can change roles');
     }
   }
-  const allowedFields = ['name', 'role', 'active', 'workbookId', 'avatar', 'department', 'title'];
+  const allowedFields = ['name', 'role', 'active', 'workbookId', 'avatar', 'department', 'title', 'organizationId', 'teamId'];
   var safeUpdates = {};
   allowedFields.forEach(function(key) {
     if (updates.hasOwnProperty(key)) {
       safeUpdates[key] = updates[key];
     }
   });
+  safeUpdates.updatedAt = now();
   const lock = LockService.getScriptLock();
   lock.waitLock(5000);
   try {
@@ -1182,7 +1331,7 @@ function getAllProjects() {
   const sheet = getProjectsSheet();
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
-  const columns = CONFIG.PROJECT_COLUMNS;
+  const columns = data[0].map(function(h) { return String(h).trim(); });
   const projects = [];
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -1194,7 +1343,13 @@ function getAllProjects() {
 
 function getProjectById(projectId) {
   const projects = getAllProjects();
-  return projects.find(p => p.id === projectId) || null;
+  var match = projects.find(p => p.id === projectId);
+  if (match) return match;
+  if (typeof projectId === 'string' && projectId.indexOf('DA_') === 0) {
+    var asset = getDataAssetById(projectId);
+    if (asset) return { id: asset.id, name: asset.assetName };
+  }
+  return null;
 }
 
 function createProject(projectData) {
@@ -1203,6 +1358,7 @@ function createProject(projectData) {
   const existingProjects = getAllProjects();
   const currentUser = getCurrentUserEmail();
   const projectId = projectData.id || generateProjectAcronym(projectData.name, existingProjects);
+  const skipNotification = projectData.skipNotification === true;
   const project = {
     id: projectId,
     name: sanitize(projectData.name || 'New Project'),
@@ -1231,9 +1387,30 @@ function createProject(projectData) {
       if (pSettings[f] && !project[f]) project[f] = String(pSettings[f]);
     });
   } catch (e) {}
-  sheet.appendRow(objectToRow(project, CONFIG.PROJECT_COLUMNS));
+  var sheetHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function(h) { return String(h).trim(); });
+  sheet.appendRow(objectToRow(project, sheetHeaders));
   SpreadsheetApp.flush();
   logActivity(currentUser, 'created', 'project', project.id, { name: project.name });
+  if (currentUser && typeof UserMetricsService !== 'undefined') {
+    try { UserMetricsService.recordProjectCreated(currentUser); } catch (e) { console.error('recordProjectCreated failed:', e); }
+  }
+  if (!skipNotification && typeof NotificationEngine !== 'undefined') {
+    try {
+      if (project.ownerId && project.ownerId !== currentUser) {
+        NotificationEngine.createNotification({
+          userId: project.ownerId,
+          type: 'project_assigned',
+          title: 'Project Assigned',
+          message: 'You have been assigned as owner of project ' + project.id + ': ' + project.name,
+          entityType: 'project',
+          entityId: project.id,
+          channels: ['in_app', 'email']
+        });
+      }
+    } catch (e) {
+      console.error('createProject notification failed:', e);
+    }
+  }
   return project;
 }
 
@@ -1244,11 +1421,12 @@ function updateProject(projectId, updates) {
   try {
     const sheet = getProjectsSheet();
     const data = sheet.getDataRange().getValues();
-    const columns = CONFIG.PROJECT_COLUMNS;
+    const columns = data[0].map(function(h) { return String(h).trim(); });
     const idIndex = 0;
     for (let i = 1; i < data.length; i++) {
       if (data[i][idIndex] === projectId) {
         const project = rowToObject(data[i], columns);
+        const prevOwnerId = project.ownerId;
         Object.assign(project, updates);
         try {
           var uSettings = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {});
@@ -1265,6 +1443,24 @@ function updateProject(projectId, updates) {
         const newRow = objectToRow(project, columns);
         sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
         SpreadsheetApp.flush();
+        if (typeof NotificationEngine !== 'undefined' &&
+            updates.ownerId && updates.ownerId !== prevOwnerId &&
+            updates.ownerId !== project.lastUpdatedBy) {
+          try {
+            NotificationEngine.createNotification({
+              userId: updates.ownerId,
+              type: 'project_assigned',
+              title: 'Project Assigned',
+              message: 'You have been assigned as owner of project ' + project.id + ': ' + project.name,
+              entityType: 'project',
+              entityId: project.id,
+              channels: ['in_app', 'email'],
+              reason: 'Ownership change'
+            });
+          } catch (e) {
+            console.error('updateProject notification failed:', e);
+          }
+        }
         return project;
       }
     }
@@ -1506,12 +1702,15 @@ function addComment(taskId, content) {
   };
   sheet.appendRow(objectToRow(comment, CONFIG.COMMENT_COLUMNS));
   logActivity(currentUser, 'commented', 'task', taskId, { preview: content.substring(0, 50) });
+  if (currentUser && typeof UserMetricsService !== 'undefined') {
+    try { UserMetricsService.recordCommentPosted(currentUser); } catch (e) { console.error('recordCommentPosted failed:', e); }
+  }
   if (typeof NotificationEngine !== 'undefined') {
     try {
       var commentTask = getTaskById(taskId);
       if (commentTask) {
         var recipients = {};
-        if (commentTask.assignee && commentTask.assignee !== currentUser) {
+        if (commentTask.assignee) {
           recipients[commentTask.assignee] = 'You are assigned to this task';
         }
         if (commentTask.watchers) {
@@ -1519,8 +1718,11 @@ function addComment(taskId, content) {
             ? commentTask.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
             : (Array.isArray(commentTask.watchers) ? commentTask.watchers : []);
           wList.forEach(function(w) {
-            if (w !== currentUser && !recipients[w]) recipients[w] = 'You are watching this task';
+            if (!recipients[w]) recipients[w] = 'You are watching this task';
           });
+        }
+        if (commentTask.reporter && !recipients[commentTask.reporter]) {
+          recipients[commentTask.reporter] = 'You reported this task';
         }
         Object.keys(recipients).forEach(function(email) {
           NotificationEngine.createNotification({
@@ -1530,7 +1732,7 @@ function addComment(taskId, content) {
             message: 'New comment on ' + taskId + ': ' + commentTask.title,
             entityType: 'task',
             entityId: taskId,
-            channels: ['in_app'],
+            channels: ['in_app', 'email'],
             reason: recipients[email]
           });
         });
@@ -2111,7 +2313,9 @@ function getAllDataAssets() {
 }
 
 function getDataAssetById(assetId) {
-  const assets = getAllDataAssets();
+  const assets = typeof getAllDataAssetsOptimized === 'function'
+    ? getAllDataAssetsOptimized()
+    : getAllDataAssets();
   return assets.find(a => a.id === assetId) || null;
 }
 
@@ -2143,6 +2347,9 @@ function createDataAsset(assetData) {
   sheet.appendRow(objectToRow(asset, CONFIG.DATA_ASSET_COLUMNS));
   SpreadsheetApp.flush();
   logActivity(currentUser, 'created', 'dataasset', asset.id, { name: asset.assetName });
+  if (asset.assetOwner && typeof UserMetricsService !== 'undefined') {
+    try { UserMetricsService.recordDataAssetCreated(asset.assetOwner); } catch (e) { console.error('recordDataAssetCreated failed:', e); }
+  }
   return asset;
 }
 

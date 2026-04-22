@@ -1,6 +1,13 @@
 <script>
   let lastAnalyticsDateRange = null;
 
+  function _setAnalyticsRefreshBusy(busy) {
+    var btn = document.getElementById('analyticsRefreshBtn');
+    var icon = document.getElementById('analyticsRefreshIcon');
+    if (icon) icon.classList.toggle('fa-spin', !!busy);
+    if (btn) btn.disabled = !!busy;
+  }
+
   async function loadAnalyticsData() {
     try { await ensureChartJs(); } catch (e) { console.error('Chart.js failed to load:', e); }
     const dateRange = $("analyticsDateRange")?.value || "30";
@@ -14,6 +21,7 @@
     } else {
       showLoading(true);
     }
+    _setAnalyticsRefreshBusy(true);
     lastAnalyticsDateRange = dateRange;
     google.script.run
       .withSuccessHandler(handleAnalyticsData)
@@ -23,6 +31,7 @@
 
   function handleAnalyticsData(data) {
     showLoading(false);
+    _setAnalyticsRefreshBusy(false);
     if (!data) {
       toast("No analytics data available", "warning");
       return;
@@ -39,6 +48,7 @@
   function handleAnalyticsError(error) {
     console.error("Analytics error:", error);
     showLoading(false);
+    _setAnalyticsRefreshBusy(false);
     toast("Failed to load analytics data", "error");
   }
 

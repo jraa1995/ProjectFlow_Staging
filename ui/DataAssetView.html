@@ -1,29 +1,29 @@
 <div id="dataAssetView" class="h-full flex flex-col">
-  <div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
-    <h1 class="text-xl font-bold text-gray-900">Data Assets</h1>
+  <div class="px-6 py-3 flex items-center justify-between flex-shrink-0" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
+    <h1 class="text-[18px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.015em;">Data Assets</h1>
     <div class="flex items-center gap-2">
-      <button onclick="_pc('DataAssetPage','importFromWorklog')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">
-        <i class="fas fa-file-import text-xs"></i> Import from Worklog
+      <button onclick="_pc('DataAssetPage','importFromWorklog')" class="co-btn-outline">
+        <i class="fas fa-file-import text-[11px]"></i> Import from Worklog
       </button>
-      <button onclick="_pc('DataAssetPage','openNewAssetForm')" class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">
-        <i class="fas fa-plus text-xs"></i> New Data Asset
+      <button onclick="_pc('DataAssetPage','openNewAssetForm')" class="co-btn-solid">
+        <i class="fas fa-plus text-[11px]"></i> New Data Asset
       </button>
     </div>
   </div>
 
   <div id="dataAssetSplitPane" class="split-pane flex-1 min-h-0">
-    <div class="split-pane-left border-r border-gray-200 bg-white flex flex-col">
+    <div class="split-pane-left flex flex-col" style="background:var(--co-surface);border-right:1px solid var(--co-border-subtle);">
       <div class="flex-1 overflow-y-auto" id="dataAssetListContainer">
-        <div class="flex items-center justify-center h-32 text-gray-400 text-sm">Loading...</div>
+        <div class="flex items-center justify-center h-32 text-sm" style="color:var(--co-gray-400);">Loading...</div>
       </div>
     </div>
     <div class="split-pane-divider"></div>
-    <div class="split-pane-right flex flex-col bg-gray-50 min-h-0">
+    <div class="split-pane-right flex flex-col min-h-0" style="background:var(--co-page-bg);">
       <div id="dataAssetDetailContainer" class="flex-1 flex flex-col min-h-0">
-        <div class="flex-1 flex flex-col items-center justify-center text-gray-400">
-          <i class="fas fa-database text-4xl mb-3 text-gray-300"></i>
-          <p class="text-sm font-medium text-gray-500">Select a data asset to view details</p>
-          <p class="text-xs text-gray-400 mt-1">Choose from the list on the left</p>
+        <div class="flex-1 flex flex-col items-center justify-center" style="color:var(--co-gray-400);">
+          <i class="fas fa-database text-4xl mb-4" style="color:var(--co-gray-300);"></i>
+          <p class="text-sm font-medium" style="color:var(--co-ink-muted);">Select a data asset to view details</p>
+          <p class="text-xs mt-1" style="color:var(--co-gray-400);">Choose from the list on the left</p>
         </div>
       </div>
     </div>

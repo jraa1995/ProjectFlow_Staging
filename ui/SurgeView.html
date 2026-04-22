@@ -1,30 +1,33 @@
-<div class="p-6">
+<div class="max-w-[1200px] mx-auto px-8 py-8">
   <div class="flex items-center justify-between mb-6">
-    <h2 class="text-lg font-semibold text-gray-900">
-      <i class="fas fa-bolt mr-2 text-gray-500"></i>Pick Ups / Surge
-    </h2>
-    <button onclick="SurgePage.loadTasks()" class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
-      <i class="fas fa-sync-alt text-gray-500"></i> Refresh
+    <div>
+      <h2 class="text-[22px] font-semibold tracking-tight flex items-center gap-2.5" style="color:var(--co-ink);letter-spacing:-0.015em;">
+        <i class="fas fa-bolt" style="color:var(--co-accent-500);font-size:18px;"></i>Pick Ups
+      </h2>
+      <p class="text-[12px] mt-1" style="color:var(--co-ink-muted);">Grab open work and help your teammates</p>
+    </div>
+    <button id="surgeRefreshBtn" onclick="SurgePage.loadTasks()" class="co-btn-outline disabled:opacity-60 disabled:cursor-not-allowed">
+      <i id="surgeRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh
     </button>
   </div>
 
-  <div class="flex gap-4 mb-6">
-    <div class="flex-1 bg-white border border-gray-200 rounded-lg p-4">
-      <div class="text-2xl font-bold text-gray-900" id="surgeStatTotal">0</div>
-      <div class="text-sm text-gray-500 mt-1">Total Open</div>
+  <div class="grid grid-cols-3 gap-3 mb-6">
+    <div class="co-stat-card">
+      <div class="co-stat-value" id="surgeStatTotal">0</div>
+      <div class="co-stat-label">Total Open</div>
     </div>
-    <div class="flex-1 bg-white border border-gray-200 rounded-lg p-4">
-      <div class="text-2xl font-bold text-gray-900" id="surgeStatHighPriority">0</div>
-      <div class="text-sm text-gray-500 mt-1">High Priority</div>
+    <div class="co-stat-card">
+      <div class="co-stat-value" id="surgeStatHighPriority">0</div>
+      <div class="co-stat-label">High Priority</div>
     </div>
-    <div class="flex-1 bg-white border border-gray-200 rounded-lg p-4">
-      <div class="text-2xl font-bold text-gray-900" id="surgeStatAging">0</div>
-      <div class="text-sm text-gray-500 mt-1">Aging &gt; 7d</div>
+    <div class="co-stat-card">
+      <div class="co-stat-value" id="surgeStatAging">0</div>
+      <div class="co-stat-label">Aging &gt; 7d</div>
     </div>
   </div>
 
-  <div class="flex items-center gap-3 mb-6">
-    <select id="surgePriorityFilter" onchange="SurgePage.applyFilters()" class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400">
+  <div class="flex items-center gap-2.5 mb-6">
+    <select id="surgePriorityFilter" onchange="SurgePage.applyFilters()" class="co-filter-select">
       <option value="">All Priorities</option>
       <option value="Critical">Critical</option>
       <option value="Highest">Highest</option>
@@ -33,7 +36,7 @@
       <option value="Low">Low</option>
       <option value="Lowest">Lowest</option>
     </select>
-    <select id="surgeProjectFilter" onchange="SurgePage.applyFilters()" class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400">
+    <select id="surgeProjectFilter" onchange="SurgePage.applyFilters()" class="co-filter-select">
       <option value="">All Projects</option>
     </select>
     <input
@@ -41,11 +44,11 @@
       type="text"
       placeholder="Search tasks..."
       oninput="SurgePage.applyFilters()"
-      class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
+      class="co-search-input flex-1"
     />
   </div>
 
-  <div id="surgeTaskGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  <div id="surgeTaskGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
 </div>
 
 <script>
@@ -58,11 +61,20 @@ var SurgePage = {
     this.loadTasks();
   },
 
+  _setRefreshBusy(busy) {
+    var btn = document.getElementById('surgeRefreshBtn');
+    var icon = document.getElementById('surgeRefreshIcon');
+    if (icon) icon.classList.toggle('fa-spin', !!busy);
+    if (btn) btn.disabled = !!busy;
+  },
+
   loadTasks() {
     showLoading(true);
+    this._setRefreshBusy(true);
     google.script.run
       .withSuccessHandler((result) => {
         showLoading(false);
+        this._setRefreshBusy(false);
         if (!result.success) {
           toast(result.error || 'Failed to load surge tasks', 'error');
           return;
@@ -75,6 +87,7 @@ var SurgePage = {
       })
       .withFailureHandler((error) => {
         showLoading(false);
+        this._setRefreshBusy(false);
         console.error('Failed to load surge tasks:', error);
         toast('Failed to load surge tasks', 'error');
       })
@@ -127,10 +140,10 @@ var SurgePage = {
 
     if (!this.filteredTasks.length) {
       grid.innerHTML = `
-        <div class="col-span-3 flex flex-col items-center justify-center py-20 text-gray-400">
-          <i class="fas fa-hand-paper text-5xl mb-4"></i>
-          <p class="text-base font-medium">No open tasks available</p>
-          <p class="text-sm mt-1">Check back later or adjust your filters</p>
+        <div class="col-span-3 flex flex-col items-center justify-center py-20" style="color:var(--co-gray-400);">
+          <i class="fas fa-hand-paper text-5xl mb-4" style="color:var(--co-gray-300);"></i>
+          <p class="text-[14px] font-medium" style="color:var(--co-ink-muted);">No open tasks available</p>
+          <p class="text-[12px] mt-1" style="color:var(--co-gray-400);">Check back later or adjust your filters</p>
         </div>`;
       return;
     }
@@ -193,41 +206,42 @@ var SurgePage = {
       const due = new Date(task.dueDate);
       const isOverdue = due < new Date();
       const label = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      dueBadge = `<span class="inline-flex items-center gap-1 text-xs ${isOverdue ? 'text-red-600' : 'text-gray-500'}">
+      dueBadge = `<span class="inline-flex items-center gap-1 text-[11px]" style="color:${isOverdue ? '#dc2626' : 'var(--co-ink-muted)'}">
         <i class="fas fa-calendar-alt"></i> ${escapeHtml(label)}
       </span>`;
     }
 
     let requestorTag = '';
     if (cf.requestor) {
-      requestorTag = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+      requestorTag = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]" style="background:var(--co-surface-sunken);color:var(--co-ink-muted);">
         <i class="fas fa-user"></i> ${escapeHtml(cf.requestor)}
       </span>`;
     }
 
     let teamTag = '';
     if (cf.team) {
-      teamTag = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+      teamTag = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]" style="background:var(--co-surface-sunken);color:var(--co-ink-muted);">
         <i class="fas fa-users"></i> ${escapeHtml(cf.team)}
       </span>`;
     }
 
     const metaTags = [requestorTag, teamTag].filter(Boolean).join('');
 
-    return `<div data-surge-task="${escId}" class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 flex flex-col gap-3">
+    return `<div data-surge-task="${escId}" class="rounded-xl p-4 flex flex-col gap-3 transition-all surge-card" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
       <div class="flex items-center justify-between">
-        <span class="text-xs font-mono text-gray-400">${escId}</span>
-        <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${priorityClass}">${escPriority}</span>
+        <span class="text-[11px] font-mono" style="color:var(--co-gray-400);">${escId}</span>
+        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${priorityClass}">${escPriority}</span>
       </div>
-      <div class="font-semibold text-gray-900 text-sm leading-snug">${escTitle}</div>
+      <div class="font-semibold text-[13px] leading-snug" style="color:var(--co-ink);">${escTitle}</div>
       <div class="flex flex-col gap-1.5">
-        ${escProject ? `<span class="inline-flex items-center gap-1 text-xs text-gray-500"><i class="fas fa-folder"></i> ${escProject}</span>` : ''}
+        ${escProject ? `<span class="inline-flex items-center gap-1 text-[11px]" style="color:var(--co-ink-muted);"><i class="fas fa-folder"></i> ${escProject}</span>` : ''}
         ${dueBadge}
       </div>
       ${metaTags ? `<div class="flex flex-wrap gap-1.5">${metaTags}</div>` : ''}
       <button
         onclick="SurgePage.pickUp('${escId}')"
-        class="mt-auto w-full py-2 text-sm font-semibold bg-gray-900 text-white rounded-md hover:bg-gray-800 active:bg-gray-700 transition-colors"
+        class="mt-auto w-full py-2 text-[13px] font-medium rounded-lg transition-colors surge-pickup-btn"
+        style="background:var(--co-ink);color:#fff;"
       >
         <i class="fas fa-hand-paper mr-1.5"></i> Pick Up
       </button>
@@ -243,3 +257,17 @@ var SurgePage = {
 
 };
 </script>
+
+<style>
+.surge-card:hover {
+  border-color:var(--co-border-soft);
+  box-shadow:var(--co-shadow-md);
+  transform:translateY(-2px);
+}
+.surge-pickup-btn:hover {
+  background:var(--co-primary-800) !important;
+}
+.surge-pickup-btn:active {
+  background:var(--co-ink) !important;
+}
+</style>

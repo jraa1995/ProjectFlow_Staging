@@ -98,10 +98,12 @@
     const localProjects = LocalCache.get('projects');
     const localUsers = LocalCache.get('users');
     const localBoard = LocalCache.get('board');
+    const localDataAssets = LocalCache.get('dataAssets');
     if (!forceRefresh && localTasks && localProjects) {
       State.setTasks(localTasks);
       State.setProjects(localProjects);
       State.setUsers(localUsers || []);
+      State.setDataAssets(localDataAssets || []);
       if (localBoard) {
         State.board = localBoard;
       }
@@ -109,24 +111,28 @@
       return {
         tasks: localTasks,
         projects: localProjects,
-        users: localUsers || []
+        users: localUsers || [],
+        dataAssets: localDataAssets || []
       };
     }
     if (!forceRefresh && typeof CacheService !== 'undefined') {
       try {
-        const [cachedTasks, cachedProjects, cachedUsers, cachedConfig] = await Promise.all([
+        const [cachedTasks, cachedProjects, cachedUsers, cachedConfig, cachedDataAssets] = await Promise.all([
           CacheService.get('tasks'),
           CacheService.get('projects'),
           CacheService.get('users'),
-          CacheService.get('config')
+          CacheService.get('config'),
+          CacheService.get('dataAssets')
         ]);
         if (cachedTasks && cachedProjects && cachedUsers) {
           State.setTasks(cachedTasks);
           State.setProjects(cachedProjects);
           State.setUsers(cachedUsers);
+          State.setDataAssets(cachedDataAssets || []);
           LocalCache.set('tasks', cachedTasks);
           LocalCache.set('projects', cachedProjects);
           LocalCache.set('users', cachedUsers);
+          LocalCache.set('dataAssets', cachedDataAssets || []);
           if (cachedConfig) {
             State.config = cachedConfig;
             if (!State.board) State.board = {};
@@ -172,14 +178,17 @@
     State.setTasks(data.tasks || []);
     State.setProjects(data.projects || []);
     State.setUsers(data.users || []);
+    State.setDataAssets(data.dataAssets || []);
     LocalCache.set('tasks', data.tasks || []);
     LocalCache.set('projects', data.projects || []);
     LocalCache.set('users', data.users || []);
+    LocalCache.set('dataAssets', data.dataAssets || []);
     if (typeof CacheService !== 'undefined') {
       Promise.all([
         CacheService.set('tasks', data.tasks || []),
         CacheService.set('projects', data.projects || []),
-        CacheService.set('users', data.users || [])
+        CacheService.set('users', data.users || []),
+        CacheService.set('dataAssets', data.dataAssets || [])
       ]).catch(err => console.error('Background cache persist failed:', err));
     }
   }
@@ -259,29 +268,41 @@
 
   var _lofiPlaying = false;
   function toggleLofi() {
-    var btn = document.getElementById('lofiToggle');
     var player = document.getElementById('lofiPlayer');
-    var icon = btn.querySelector('i');
+    var cassette = document.getElementById('lofiCassette');
+    var reelL = document.getElementById('lofiReelLeft');
+    var reelR = document.getElementById('lofiReelRight');
     if (_lofiPlaying) {
       player.src = '';
       player.style.display = 'none';
-      icon.className = 'fas fa-play';
-      btn.classList.remove('text-green-500');
-      btn.classList.add('text-gray-400');
+      reelL.style.animation = 'none';
+      reelR.style.animation = 'none';
+      cassette.style.opacity = '0.45';
       _lofiPlaying = false;
     } else {
       player.src = 'https://www.youtube.com/embed/jfKfPfyJRdk?autoplay=1&mute=0';
       player.style.display = 'none';
-      icon.className = 'fas fa-pause';
-      btn.classList.remove('text-gray-400');
-      btn.classList.add('text-green-500');
+      reelL.style.transformOrigin = '38px 30px';
+      reelR.style.transformOrigin = '82px 30px';
+      reelL.style.animation = 'lofiSpin 1.5s linear infinite';
+      reelR.style.animation = 'lofiSpin 1.5s linear infinite';
+      cassette.style.opacity = '1';
       _lofiPlaying = true;
     }
   }
 
   async function refreshCurrentView() {
-    await refreshAllData();
-    switchView(State.currentView || 'my');
+    var btn = document.getElementById('topbarRefreshBtn');
+    var icon = document.getElementById('topbarRefreshIcon');
+    if (icon) icon.classList.add('fa-spin');
+    if (btn) btn.disabled = true;
+    try {
+      await refreshAllData();
+      switchView(State.currentView || 'my');
+    } finally {
+      if (icon) icon.classList.remove('fa-spin');
+      if (btn) btn.disabled = false;
+    }
   }
 
   function loadScript(url) {
@@ -399,6 +420,7 @@
     list: { container: 'listView', page: 'ListViewPage', title: 'List View' },
     projects: { container: 'projectsView', page: 'ProjectPage', title: 'Projects', scripts: ['ProjectViewScript'] },
     dataassets: { container: 'dataAssetsView', page: 'DataAssetPage', title: 'Data Assets', scripts: ['DataAssetViewScript'] },
+    adhoc: { container: 'adhocView', page: 'AdHocPage', title: 'Ad Hoc' },
     surge: { container: 'surgeView', page: 'SurgePage', title: 'Pick Ups / Surge' },
     master: { container: 'boardView', loader: 'loadBoard', title: 'Master Board', requiredRole: 'manager', scripts: ['BoardView'] },
     my: { container: 'boardView', loader: 'loadBoard', title: 'My Board', scripts: ['BoardView'] },
@@ -912,7 +934,34 @@
     updateProjectNav();
     restoreSidebarGroupStates();
     updateStats();
-    switchView('home');
+    var deepLinkHandled = false;
+    try {
+      var deep = (typeof window.__COLONY_DEEP_LINK__ === 'object' && window.__COLONY_DEEP_LINK__) || {};
+      if (deep.projectId) {
+        switchView('projects');
+        setTimeout(function() {
+          if (typeof ProjectPage !== 'undefined' && ProjectPage.selectProject) {
+            ProjectPage.selectProject(deep.projectId);
+            if (deep.tab && ProjectPage.switchTab) {
+              setTimeout(function() { ProjectPage.switchTab(deep.tab); }, 100);
+            }
+          }
+        }, 150);
+        deepLinkHandled = true;
+      } else if (deep.taskId) {
+        switchView('list');
+        setTimeout(function() {
+          if (typeof TaskDetailPanel !== 'undefined' && TaskDetailPanel.open) {
+            TaskDetailPanel.open(deep.taskId);
+          }
+        }, 200);
+        deepLinkHandled = true;
+      } else if (deep.view) {
+        switchView(deep.view);
+        deepLinkHandled = true;
+      }
+    } catch (e) { console.error('Deep-link routing failed:', e); }
+    if (!deepLinkHandled) switchView('home');
     updateSidebarDate();
     setInterval(updateSidebarDate, 60000);
     setTimeout(function() {
@@ -922,6 +971,14 @@
         console.error("SyncManager init failed:", syncError);
       }
     }, 500);
+    setTimeout(function() {
+      try {
+        if (typeof BadgeShowcase !== 'undefined') {
+          BadgeShowcase.initSidebar();
+          BadgeShowcase.checkAndEvaluate();
+        }
+      } catch (e) {}
+    }, 2000);
     setTimeout(function() {
       hydrateScript('TaskDetailPanel');
       hydrateScript('TaskEditModal');
@@ -1085,8 +1142,13 @@
     const avatar = $("userAvatar");
     const name = $("userName");
     const email = $("userEmail");
-    if (avatar)
-      avatar.textContent = getInitials(State.user.name || State.user.email);
+    if (avatar) {
+      if (typeof Avatar !== 'undefined' && Avatar.apply) {
+        Avatar.apply(avatar, State.user);
+      } else {
+        avatar.textContent = getInitials(State.user.name || State.user.email);
+      }
+    }
     if (name) name.textContent = State.user.name || State.user.email;
     if (email) email.textContent = State.user.email;
     applyRoleBasedVisibility();
@@ -1164,11 +1226,19 @@
     }
     const projectSelect = $("taskProject");
     if (projectSelect && State.projects) {
-      projectSelect.innerHTML =
-        '<option value="">No Project</option>' +
-        State.projects
-        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
-        .join("");
+      var qpHtml = '<option value="">No Project</option>';
+      if (State.projects.length) {
+        qpHtml += '<optgroup label="Projects">';
+        qpHtml += State.projects.map(function(p) { return '<option value="' + p.id + '">' + escapeHtml(p.name) + '</option>'; }).join('');
+        qpHtml += '</optgroup>';
+      }
+      var qpAssets = State.dataAssets || [];
+      if (qpAssets.length) {
+        qpHtml += '<optgroup label="Data Assets">';
+        qpHtml += qpAssets.map(function(da) { return '<option value="' + da.id + '">' + escapeHtml(da.assetName) + '</option>'; }).join('');
+        qpHtml += '</optgroup>';
+      }
+      projectSelect.innerHTML = qpHtml;
     }
     const assigneeSelect = $("taskAssignee");
     if (assigneeSelect && State.users) {
@@ -1193,4 +1263,135 @@
   }
 
   document.addEventListener("DOMContentLoaded", init);
+
+  var DrivePicker = {
+    _pickerLoaded: false,
+    _oauthToken: null,
+    _developerKey: '',
+    _appId: '',
+    _configFetched: false,
+    _pendingCallback: null,
+    _pendingMulti: false,
+    _uploadParentFolderId: null,
+    _withUpload: false,
+
+    _ensureLoaded(cb) {
+      if (this._pickerLoaded && this._oauthToken && this._configFetched) { cb(); return; }
+      var self = this;
+      var loadPickerLib = function() {
+        if (typeof gapi === 'undefined') { toast('Google API not loaded yet, try again', 'error'); return; }
+        gapi.load('picker', function() {
+          self._pickerLoaded = true;
+          if (self._configFetched) cb();
+        });
+      };
+      if (!this._configFetched) {
+        google.script.run
+          .withSuccessHandler(function(config) {
+            self._oauthToken = (config && config.token) || '';
+            self._developerKey = (config && config.developerKey) || '';
+            self._appId = (config && config.appId) || '';
+            self._configFetched = true;
+            if (self._pickerLoaded) cb(); else loadPickerLib();
+          })
+          .withFailureHandler(function(err) {
+            console.error('Failed to get picker config:', err);
+            toast('Failed to authorize Drive access', 'error');
+          })
+          .getPickerConfig();
+      }
+      if (!this._pickerLoaded) loadPickerLib();
+    },
+
+    open(callback, multi) {
+      this._pendingCallback = callback;
+      this._pendingMulti = !!multi;
+      this._uploadParentFolderId = null;
+      this._withUpload = false;
+      var self = this;
+      this._ensureLoaded(function() { self._showPicker(); });
+    },
+
+    openForBrowse(callback, multi) {
+      this._pendingCallback = callback;
+      this._pendingMulti = !!multi;
+      this._uploadParentFolderId = null;
+      this._withUpload = false;
+      var self = this;
+      this._ensureLoaded(function() { self._showPicker(); });
+    },
+
+    openForProject(callback, multi, projectFolderId) {
+      this._pendingCallback = callback;
+      this._pendingMulti = !!multi;
+      this._uploadParentFolderId = projectFolderId || null;
+      this._withUpload = true;
+      var self = this;
+      this._ensureLoaded(function() { self._showPicker(); });
+    },
+
+    _showPicker() {
+      var self = this;
+      try {
+        var docsView = new google.picker.DocsView()
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(false)
+          .setOwnedByMe(false);
+        var builder = new google.picker.PickerBuilder()
+          .addView(docsView)
+          .setOAuthToken(this._oauthToken)
+          .setCallback(function(data) { self._onPick(data); });
+
+        if (this._developerKey) builder.setDeveloperKey(this._developerKey);
+        if (this._appId) builder.setAppId(this._appId);
+
+        var addedUpload = false;
+        if (this._withUpload) {
+          try {
+            var uploadView = new google.picker.DocsUploadView();
+            if (this._uploadParentFolderId) {
+              try { uploadView.setParent(this._uploadParentFolderId); }
+              catch (e) { console.error('DocsUploadView.setParent failed:', e); }
+            }
+            builder.addView(uploadView);
+            addedUpload = true;
+          } catch (e) {
+            console.error('DocsUploadView unavailable, falling back to browse-only:', e);
+          }
+        }
+
+        builder.setTitle(addedUpload ? 'Select or Upload File(s)' : 'Select File(s)');
+        if (this._pendingMulti) {
+          builder.enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
+        }
+        var picker = builder.build();
+        picker.setVisible(true);
+
+        setTimeout(function() {
+          if (!self._developerKey) {
+            console.warn('DrivePicker: no PICKER_API_KEY script property set. If the picker shows a 403, link this Apps Script to a standard Google Cloud project, enable the Google Picker API, then set script property PICKER_API_KEY to an API key from that project.');
+          }
+        }, 0);
+      } catch (e) {
+        console.error('DrivePicker._showPicker failed:', e);
+        toast('Unable to open file picker. Check that the Google Picker API is enabled in the linked Cloud project.', 'error');
+        this._pendingCallback = null;
+        this._uploadParentFolderId = null;
+        this._withUpload = false;
+      }
+    },
+
+    _onPick(data) {
+      if (data.action === google.picker.Action.PICKED && this._pendingCallback) {
+        var files = data.docs.map(function(doc) {
+          return { id: doc.id, name: doc.name, url: doc.url, mimeType: doc.mimeType };
+        });
+        this._pendingCallback(this._pendingMulti ? files : files[0]);
+      } else if (data.action === google.picker.Action.CANCEL) {
+      }
+      this._pendingCallback = null;
+      this._uploadParentFolderId = null;
+      this._withUpload = false;
+    }
+  };
 </script>

@@ -24,7 +24,9 @@ const CONFIG = {
     TRIAGE_QUEUE: 'Triage_Queue',
     JSON_CACHE: 'JSON_Cache',
     DATA_ASSETS: 'Data_Assets',
-    ACCESS_REQUESTS: 'Access_Requests'
+    ACCESS_REQUESTS: 'Access_Requests',
+    USER_BADGES: 'User_Badges',
+    USER_METRICS: 'User_Metrics'
   },
 
   JSON_CACHE_COLUMNS: ['key', 'data', 'updatedAt', 'version'],
@@ -33,7 +35,7 @@ const CONFIG = {
 
   PRIORITIES: ['Lowest', 'Low', 'Medium', 'High', 'Highest', 'Critical'],
 
-  TYPES: ['Task', 'Bug', 'Feature', 'Story', 'Epic', 'Spike'],
+  TYPES: ['Task', 'Bug', 'Feature', 'Enhancement', 'Story', 'Epic', 'Spike'],
 
   COLORS: {
     'Backlog': '#6B7280',
@@ -80,7 +82,8 @@ const CONFIG = {
     'isDeleted',
     'deletedAt',
     'taskUid',
-    'jsonData'
+    'jsonData',
+    'requestedBy'
   ],
 
   USER_COLUMNS: [
@@ -100,7 +103,11 @@ const CONFIG = {
     'lastLogin',
     'organizationId',
     'teamId',
-    'jsonData'
+    'jsonData',
+    'avatar',
+    'title',
+    'department',
+    'updatedAt'
   ],
 
   PROJECT_COLUMNS: [
@@ -126,6 +133,8 @@ const CONFIG = {
     'developmentPriority',
     'developmentPhase',
     'techStack',
+    'sdmSupported',
+    'deploymentLocation',
     'linkedProjectId',
     'jsonData'
   ],
@@ -343,7 +352,10 @@ const CONFIG = {
     'task_updated',
     'deadline_approaching',
     'project_update',
-    'comment_added'
+    'project_assigned',
+    'project_ping',
+    'comment_added',
+    'badge_earned'
   ],
 
   NOTIFICATION_CHANNELS: [
@@ -359,7 +371,65 @@ const CONFIG = {
     'start_to_finish'
   ],
 
-  FUNNEL_STATUSES: ['pending', 'reviewed', 'imported', 'rejected'],
+  FUNNEL_STATUSES: ['pending', 'reviewed', 'assigned', 'imported', 'rejected'],
+
+  REQUEST_TYPE_ROUTING: {
+    'Ad Hoc Request':                   { kind: 'task',    projectId: 'ADHOC' },
+    'New Project':                      { kind: 'project' },
+    'Bug fix for existing project':     { kind: 'task',    taskType: 'Bug' },
+    'Enhancement to existing project':  { kind: 'task',    taskType: 'Enhancement' }
+  },
+
+  TEMP_STAKEHOLDERS: ['Stakeholder 1', 'Stakeholder 2', 'Stakeholder 3'],
+
+  REQ_GATHERING_TEMPLATES: [
+    {
+      id: 'business-req-v1', type: 'business', name: 'Business Requirements',
+      description: 'Capture business objectives, success criteria, and scope.',
+      fields: [
+        { key: 'businessObjectives', label: 'Business Objectives', type: 'textarea', required: true },
+        { key: 'successCriteria', label: 'Success Criteria', type: 'textarea', required: true },
+        { key: 'stakeholderNeeds', label: 'Key Stakeholder Needs', type: 'textarea' },
+        { key: 'scopeConstraints', label: 'Scope & Constraints', type: 'textarea' },
+        { key: 'intendedUsers', label: 'Intended Users', type: 'static_select', optionsKey: 'intendedUsers', target: 'settings.intendedUsers' },
+        { key: 'workstream', label: 'Workstream', type: 'taxonomy_select', target: 'project.workstream' }
+      ]
+    },
+    {
+      id: 'stakeholder-req-v1', type: 'stakeholder', name: 'Stakeholder Requirements',
+      description: 'Identify stakeholders, expectations, and decision-makers.',
+      fields: [
+        { key: 'primaryStakeholder', label: 'Primary Stakeholder', type: 'text', target: 'settings.clientOwner' },
+        { key: 'secondaryStakeholders', label: 'Other Gov Stakeholders', type: 'textarea', target: 'settings.clientStakeholders' },
+        { key: 'stakeholderExpectations', label: 'Stakeholder Expectations', type: 'textarea' },
+        { key: 'communicationCadence', label: 'Communication Cadence', type: 'text' },
+        { key: 'decisionMakers', label: 'Decision Makers', type: 'textarea' }
+      ]
+    },
+    {
+      id: 'technical-req-v1', type: 'technical', name: 'Technical Requirements',
+      description: 'Document tech stack, deployment, integrations, and non-functional needs.',
+      fields: [
+        { key: 'techStack', label: 'Tech Stack', type: 'taxonomy_multiselect', target: 'project.techStack' },
+        { key: 'deploymentLocation', label: 'Deployment Location', type: 'taxonomy_select', target: 'project.deploymentLocation' },
+        { key: 'dataCadence', label: 'Data Refresh Cadence', type: 'static_select', optionsKey: 'dataCadence', target: 'settings.dataCadence' },
+        { key: 'dataSourceExplain', label: 'Data Sourcing', type: 'textarea', target: 'settings.dataSourceExplain' },
+        { key: 'integrations', label: 'Integrations Required', type: 'textarea' },
+        { key: 'performanceRequirements', label: 'Performance Requirements', type: 'textarea' },
+        { key: 'securityRequirements', label: 'Security & Access Requirements', type: 'textarea' }
+      ]
+    },
+    {
+      id: 'data-req-v1', type: 'data', name: 'Data Requirements',
+      description: 'Define data sources, quality expectations, and update cadence.',
+      fields: [
+        { key: 'dataSourceFiles', label: 'Data Source Files', type: 'drive_picker_multi', target: 'settings.dataSourceFiles' },
+        { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'drive_picker', target: 'settings.dataDictionaries' },
+        { key: 'updateFrequency', label: 'Data Update Frequency', type: 'text' },
+        { key: 'dataQualityExpectations', label: 'Data Quality Expectations', type: 'textarea' }
+      ]
+    }
+  ],
 
   DATA_ASSET_COLUMNS: [
     'id', 'status', 'assetOwner', 'backupOwner', 'assetName',
@@ -375,7 +445,88 @@ const CONFIG = {
     'id', 'email', 'name', 'requestedAt', 'status', 'reviewedBy', 'reviewedAt', 'reason'
   ],
 
-  TAXONOMY_FIELDS: ['workstream', 'projectCategory', 'projectType', 'developmentPriority', 'developmentPhase', 'techStack'],
+  USER_BADGE_COLUMNS: [
+    'id',
+    'userEmail',
+    'badgeId',
+    'badgeName',
+    'category',
+    'rarity',
+    'earnedAt',
+    'awardedBy',
+    'triggerMetric',
+    'triggerValue',
+    'notes'
+  ],
+
+  USER_METRIC_COLUMNS: [
+    'userEmail',
+    'tasksCreated',
+    'tasksCompleted',
+    'tasksCompletedWithinHour',
+    'tasksAssignedToOthers',
+    'uniqueAssigneesList',
+    'uniqueAssigneesCount',
+    'unblockerCount',
+    'inProgressPeak',
+    'commentsPosted',
+    'projectsCreated',
+    'dataAssetsCreated',
+    'orgsOwnedCount',
+    'teamsJoinedCount',
+    'completionDays',
+    'currentCompletionStreak',
+    'longestCompletionStreak',
+    'lastCompletedAt',
+    'loginDays',
+    'currentLoginStreak',
+    'longestLoginStreak',
+    'lastLoginAt',
+    'totalBadges',
+    'lastEvaluatedAt',
+    'updatedAt'
+  ],
+
+  TAXONOMY_FIELDS: ['workstream', 'projectCategory', 'projectType', 'developmentPriority', 'developmentPhase', 'techStack', 'sdmSupported', 'deploymentLocation'],
+
+  TAXONOMY_OPTIONS: {
+    workstream: ['Business Intelligence', 'Business Development', 'Financial Management', 'Workforce Management', 'Customer Experience', 'Quality Management', 'Contractor Use'],
+    sdmSupported: ['FEDSIM', 'FLEX', 'INNOVATE', 'ALL', 'N/A'],
+    deploymentLocation: ['D2D', 'AAS Intranet (Google Sites)', 'External GSA Site', 'Standalone Web-App', 'Tableau Server', 'AWS', 'Google App Script Library'],
+    developmentPriority: ['High (P1)', 'Medium (P2)', 'Low (P3)', 'Backlog', 'N/A'],
+    developmentPhase: ['Coding', 'Complete', 'Deployment', 'Design', 'Enhancements', 'Maintenance', 'Not Started', 'Planning', 'Testing', 'Stopped'],
+    aiInvolved: ['Yes - AI used in Development', 'Yes - AI incorporated in solution', 'No - AI Not Involved in Solution'],
+    intendedUsers: ['All-AAS', 'OSO', 'BU Leadership', 'BU1', 'BU2', 'BU3', 'BU5', 'Multiple IPTs', 'Single IPT', 'All-Contractors', 'Contractor Leadership', 'BI Team'],
+    contractOptions: ['AMPS', 'Forward', 'SQuAT'],
+    dataCadence: ['Daily', 'Weekly (Mon-Fri)', 'Biweekly', 'Monthly', 'Quarterly', 'Annually', 'Ad Hoc', 'Real-Time', 'N/A']
+  },
+
+  BI_SMES: ['Andra Velea', 'Dan Kain', 'Dan Russell', 'Joe Boozer', 'Justin Aguila', 'Michael Gallahan', 'Michael Thoennes', 'Michelle McAllister'],
+
+  PROJECT_ID_WORKSTREAM_CODES: {
+    'Business Intelligence': 'BI',
+    'Business Development': 'BD',
+    'Financial Management': 'FM',
+    'Workforce Management': 'WM',
+    'Customer Experience': 'CE',
+    'Quality Management': 'QM',
+    'Contractor Use': 'CU'
+  },
+
+  PROJECT_ID_TYPE_CODES: {
+    'Web Application': '01',
+    'Data Pipeline': '02',
+    'Database': '03',
+    'Data Visualization': '04'
+  },
+
+  PROJECT_ID_CONTRACT_CODES: {
+    'SQuAT': 'S',
+    'Forward': 'F',
+    'AMPS': 'A'
+  },
+
+  PROJECT_TYPE_OPTIONS: ['Web Application', 'Data Pipeline', 'Database', 'Data Visualization'],
 
   DEPRECATED_SETTINGS_KEYS: ['futureOwner', 'futureContractHome', 'transitionPriority', 'transitionMeetingDate', 'transitionComplete'],
 
@@ -397,14 +548,10 @@ function generateId(prefix) {
 
 function generateTaskId(projectId) {
   const prefix = projectId || 'TASK';
-  const key = 'TASK_SEQ_' + prefix;
   const lock = LockService.getScriptLock();
   lock.waitLock(5000);
   try {
-    const props = PropertiesService.getScriptProperties();
-    const next = parseInt(props.getProperty(key) || '0') + 1;
-    props.setProperty(key, String(next));
-    return prefix + '-' + next;
+    return generateTaskIdUnderLock_(prefix);
   } finally {
     lock.releaseLock();
   }
@@ -426,9 +573,34 @@ function generateTaskIdUnderLock_(projectId) {
   var prefix = projectId || 'TASK';
   var key = 'TASK_SEQ_' + prefix;
   var props = PropertiesService.getScriptProperties();
-  var next = parseInt(props.getProperty(key) || '0') + 1;
+  var storedSeq = parseInt(props.getProperty(key) || '0');
+  var sheetMax = getMaxTaskSeqFromSheet_(prefix);
+  var base = Math.max(storedSeq, sheetMax);
+  var next = base + 1;
   props.setProperty(key, String(next));
   return prefix + '-' + next;
+}
+
+function getMaxTaskSeqFromSheet_(prefix) {
+  try {
+    var sheet = getTasksSheet();
+    var idCol = CONFIG.TASK_COLUMNS.indexOf('id');
+    if (idCol === -1) return 0;
+    var data = sheet.getDataRange().getValues();
+    var max = 0;
+    var pattern = prefix + '-';
+    for (var i = 1; i < data.length; i++) {
+      var id = String(data[i][idCol] || '');
+      if (id.indexOf(pattern) === 0) {
+        var seq = parseInt(id.substring(pattern.length));
+        if (seq > max) max = seq;
+      }
+    }
+    return max;
+  } catch (e) {
+    console.error('getMaxTaskSeqFromSheet_ failed:', e);
+    return 0;
+  }
 }
 
 function generateProjectAcronym(name, existingProjects, parentAcronym) {

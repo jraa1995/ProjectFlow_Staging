@@ -1,0 +1,537 @@
+<div class="h-full flex flex-col">
+  <div class="px-6 py-3 flex items-center justify-between flex-shrink-0 flex-wrap gap-3" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
+    <div class="flex items-center gap-2.5 flex-wrap">
+      <h2 class="text-[18px] font-semibold tracking-tight flex items-center gap-2 mr-2" style="color:var(--co-ink);letter-spacing:-0.015em;">
+        <i class="fas fa-clipboard-list" style="color:var(--co-accent-500);font-size:14px;"></i>Ad Hoc
+      </h2>
+      <select id="adhocStatusFilter" onchange="AdHocPage.applyFilters()" class="co-filter-select">
+        <option value="">All Statuses</option>
+      </select>
+      <select id="adhocPriorityFilter" onchange="AdHocPage.applyFilters()" class="co-filter-select">
+        <option value="">All Priorities</option>
+      </select>
+      <select id="adhocAssigneeFilter" onchange="AdHocPage.applyFilters()" class="co-filter-select">
+        <option value="">All Assignees</option>
+      </select>
+      <input id="adhocSearchInput" type="text" placeholder="Search..." oninput="AdHocPage.applyFilters()" class="co-search-input w-48" />
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="adhocRefreshBtn" onclick="AdHocPage.loadTasks()" class="co-btn-outline disabled:opacity-60 disabled:cursor-not-allowed">
+        <i id="adhocRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh
+      </button>
+      <button onclick="AdHocPage.openNewTask()" class="co-btn-solid">
+        <i class="fas fa-plus text-[11px]"></i> New Ad Hoc Task
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3 px-6 py-4 flex-shrink-0" style="border-bottom:1px solid var(--co-border-subtle);">
+    <div class="co-stat-card">
+      <div class="co-stat-value" id="adhocStatTotal">0</div>
+      <div class="co-stat-label">Total</div>
+    </div>
+    <div class="co-stat-card">
+      <div class="co-stat-value" id="adhocStatOpen">0</div>
+      <div class="co-stat-label">Open</div>
+    </div>
+    <div class="co-stat-card">
+      <div class="co-stat-value" id="adhocStatDone" style="color:#0f8565;">0</div>
+      <div class="co-stat-label">Done</div>
+    </div>
+    <div class="co-stat-card">
+      <div class="co-stat-value" id="adhocStatOverdue" style="color:#dc2626;">0</div>
+      <div class="co-stat-label">Overdue</div>
+    </div>
+    <div class="co-stat-card">
+      <div class="co-stat-value" id="adhocStatAvgHrs">0</div>
+      <div class="co-stat-label">Avg Est. Hrs</div>
+    </div>
+  </div>
+
+  <div class="flex-1 overflow-auto px-6 py-4">
+    <div class="rounded-xl overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+      <table class="w-full text-sm">
+        <thead class="sticky top-0 z-10" style="background:var(--co-surface-sunken);">
+          <tr style="border-bottom:1px solid var(--co-border-subtle);">
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer w-28" style="color:var(--co-ink-muted);" onclick="AdHocPage.sortBy('id')">ID <i class="fas fa-sort text-[10px]" style="color:var(--co-gray-300);"></i></th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer" style="color:var(--co-ink-muted);" onclick="AdHocPage.sortBy('title')">Title <i class="fas fa-sort text-[10px]" style="color:var(--co-gray-300);"></i></th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer w-28" style="color:var(--co-ink-muted);" onclick="AdHocPage.sortBy('status')">Status <i class="fas fa-sort text-[10px]" style="color:var(--co-gray-300);"></i></th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer w-24" style="color:var(--co-ink-muted);" onclick="AdHocPage.sortBy('priority')">Priority <i class="fas fa-sort text-[10px]" style="color:var(--co-gray-300);"></i></th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer w-24" style="color:var(--co-ink-muted);" onclick="AdHocPage.sortBy('type')">Type <i class="fas fa-sort text-[10px]" style="color:var(--co-gray-300);"></i></th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer w-36" style="color:var(--co-ink-muted);" onclick="AdHocPage.sortBy('assignee')">Assignee <i class="fas fa-sort text-[10px]" style="color:var(--co-gray-300);"></i></th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer w-32" style="color:var(--co-ink-muted);" onclick="AdHocPage.sortBy('requestedBy')">Requested By <i class="fas fa-sort text-[10px]" style="color:var(--co-gray-300);"></i></th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer w-28" style="color:var(--co-ink-muted);" onclick="AdHocPage.sortBy('dueDate')">Due Date <i class="fas fa-sort text-[10px]" style="color:var(--co-gray-300);"></i></th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider w-36" style="color:var(--co-ink-muted);">Timer</th>
+            <th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider w-16" style="color:var(--co-ink-muted);">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="adhocTaskTableBody">
+          <tr><td colspan="10" class="py-12 text-center" style="color:var(--co-gray-400);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+var AdHocPage = {
+  tasks: [],
+  filteredTasks: [],
+  users: [],
+  sortField: 'createdAt',
+  sortAsc: false,
+  isLoaded: false,
+  _activeTimers: {},
+  _timerInterval: null,
+
+  init() {
+    this._restoreTimers();
+    this.loadTasks();
+    this._startTickInterval();
+  },
+
+  _setRefreshBusy(busy) {
+    var btn = document.getElementById('adhocRefreshBtn');
+    var icon = document.getElementById('adhocRefreshIcon');
+    if (icon) icon.classList.toggle('fa-spin', !!busy);
+    if (btn) btn.disabled = !!busy;
+  },
+
+  loadTasks() {
+    showLoading(true);
+    this._setRefreshBusy(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        AdHocPage._setRefreshBusy(false);
+        if (!result.success) {
+          toast(result.error || 'Failed to load ad hoc tasks', 'error');
+          return;
+        }
+        AdHocPage.tasks = result.tasks || [];
+        AdHocPage.users = result.users || [];
+        AdHocPage.filteredTasks = AdHocPage.tasks.slice();
+        AdHocPage.isLoaded = true;
+        AdHocPage._populateFilterDropdowns();
+        AdHocPage.applyFilters();
+        AdHocPage.renderStats();
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        AdHocPage._setRefreshBusy(false);
+        console.error('Failed to load ad hoc tasks:', error);
+        toast('Failed to load ad hoc tasks', 'error');
+      })
+      .getAdHocData();
+  },
+
+  _populateFilterDropdowns() {
+    var statuses = {};
+    var priorities = {};
+    var assignees = {};
+    this.tasks.forEach(function(t) {
+      if (t.status) statuses[t.status] = true;
+      if (t.priority) priorities[t.priority] = true;
+      if (t.assignee) assignees[t.assignee] = true;
+    });
+    this._fillSelect('adhocStatusFilter', 'All Statuses', Object.keys(statuses).sort());
+    var prioOrder = (typeof CONFIG !== 'undefined' && CONFIG.PRIORITIES) || ['Lowest','Low','Medium','High','Highest','Critical'];
+    var prioVals = prioOrder.filter(function(p) { return priorities[p]; });
+    this._fillSelect('adhocPriorityFilter', 'All Priorities', prioVals);
+    var assigneeList = Object.keys(assignees).sort();
+    var userMap = {};
+    this.users.forEach(function(u) { userMap[u.email] = u.name || u.email; });
+    this._fillSelect('adhocAssigneeFilter', 'All Assignees', assigneeList, function(v) { return userMap[v] || v; });
+  },
+
+  _fillSelect(id, placeholder, values, labelFn) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    var current = sel.value;
+    sel.innerHTML = '<option value="">' + escapeHtml(placeholder) + '</option>';
+    values.forEach(function(v) {
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = labelFn ? labelFn(v) : v;
+      if (v === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  },
+
+  applyFilters() {
+    var status = (document.getElementById('adhocStatusFilter') || {}).value || '';
+    var priority = (document.getElementById('adhocPriorityFilter') || {}).value || '';
+    var assignee = (document.getElementById('adhocAssigneeFilter') || {}).value || '';
+    var search = ((document.getElementById('adhocSearchInput') || {}).value || '').toLowerCase().trim();
+
+    this.filteredTasks = this.tasks.filter(function(t) {
+      if (status && t.status !== status) return false;
+      if (priority && t.priority !== priority) return false;
+      if (assignee && t.assignee !== assignee) return false;
+      if (search) {
+        var hay = [t.title, t.id, t.assignee, t.type].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+    this._sortTasks();
+    this.renderTable();
+    this.renderStats();
+  },
+
+  sortBy(field) {
+    if (this.sortField === field) {
+      this.sortAsc = !this.sortAsc;
+    } else {
+      this.sortField = field;
+      this.sortAsc = true;
+    }
+    this._sortTasks();
+    this.renderTable();
+  },
+
+  _sortTasks() {
+    var field = this.sortField;
+    var asc = this.sortAsc ? 1 : -1;
+    var prioMap = { 'Critical': 6, 'Highest': 5, 'High': 4, 'Medium': 3, 'Low': 2, 'Lowest': 1 };
+    this.filteredTasks.sort(function(a, b) {
+      var va = a[field] || '';
+      var vb = b[field] || '';
+      if (field === 'priority') {
+        va = prioMap[va] || 0;
+        vb = prioMap[vb] || 0;
+      }
+      if (va < vb) return -1 * asc;
+      if (va > vb) return 1 * asc;
+      return 0;
+    });
+  },
+
+  renderStats() {
+    var all = this.tasks;
+    var doneStatuses = { 'Done': 1, 'Completed': 1, 'Resolved': 1, 'Closed': 1 };
+    var now = new Date();
+    var total = all.length;
+    var done = all.filter(function(t) { return doneStatuses[t.status]; }).length;
+    var open = total - done;
+    var overdue = all.filter(function(t) {
+      if (doneStatuses[t.status]) return false;
+      if (!t.dueDate || t.dueDate === 'TBD') return false;
+      return new Date(t.dueDate) < now;
+    }).length;
+    var estSum = 0; var estCount = 0;
+    all.forEach(function(t) {
+      var h = parseFloat(t.estimatedHrs);
+      if (h > 0) { estSum += h; estCount++; }
+    });
+    var avgHrs = estCount > 0 ? (estSum / estCount).toFixed(1) : '0';
+
+    var elTotal = document.getElementById('adhocStatTotal');
+    var elOpen = document.getElementById('adhocStatOpen');
+    var elDone = document.getElementById('adhocStatDone');
+    var elOverdue = document.getElementById('adhocStatOverdue');
+    var elAvg = document.getElementById('adhocStatAvgHrs');
+    if (elTotal) elTotal.textContent = total;
+    if (elOpen) elOpen.textContent = open;
+    if (elDone) elDone.textContent = done;
+    if (elOverdue) elOverdue.textContent = overdue;
+    if (elAvg) elAvg.textContent = avgHrs;
+  },
+
+  renderTable() {
+    var tbody = document.getElementById('adhocTaskTableBody');
+    if (!tbody) return;
+    if (!this.filteredTasks.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="py-16 text-center" style="color:var(--co-gray-400);">' +
+        '<i class="fas fa-clipboard text-4xl mb-3 block" style="color:var(--co-gray-300);"></i>' +
+        '<p class="text-sm font-medium" style="color:var(--co-ink-muted);">No ad hoc tasks found</p>' +
+        '<p class="text-xs mt-1" style="color:var(--co-gray-400);">Create one or adjust your filters</p></td></tr>';
+      return;
+    }
+    var userMap = {};
+    this.users.forEach(function(u) { userMap[u.email] = u.name || u.email; });
+    var now = new Date();
+    var doneStatuses = { 'Done': 1, 'Completed': 1, 'Resolved': 1, 'Closed': 1 };
+    tbody.innerHTML = this.filteredTasks.map(function(t) {
+      var escId = escapeHtml(t.id);
+      var escTitle = escapeHtml(t.title || '');
+      var assigneeName = escapeHtml(userMap[t.assignee] || t.assignee || '');
+      var dueLbl = '';
+      var dueClass = 'text-gray-500';
+      if (t.dueDate && t.dueDate !== 'TBD') {
+        var d = new Date(t.dueDate);
+        dueLbl = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (!doneStatuses[t.status] && d < now) dueClass = 'text-red-600 font-medium';
+      } else if (t.dueDate === 'TBD') {
+        dueLbl = 'TBD';
+      }
+      var statusColor = AdHocPage._statusBadgeClass(t.status);
+      var prioColor = typeof getPriorityColor === 'function' ? getPriorityColor(t.priority) : 'bg-gray-100 text-gray-700';
+      var isActive = AdHocPage._activeTimers[t.id];
+      var timerBtnClass = isActive
+        ? 'text-red-700 bg-red-50 border-red-200 hover:bg-red-100'
+        : 'text-green-700 bg-green-50 border-green-200 hover:bg-green-100';
+      var timerIcon = isActive ? 'fa-stop' : 'fa-play';
+      var timerLabel = isActive ? 'Stop' : 'Start';
+      var timerElapsed = isActive ? ' <span class="font-mono text-xs text-gray-500" id="adhocTimer_' + escId + '">' + AdHocPage._formatDuration(Date.now() - isActive) + '</span>' : '';
+      return '<tr class="adhoc-row cursor-pointer" style="border-bottom:1px solid var(--co-border-subtle);" onclick="AdHocPage.openTask(\'' + escId + '\')">' +
+        '<td class="py-2.5 px-3 font-mono text-[11px]" style="color:var(--co-gray-400);">' + escId + '</td>' +
+        '<td class="py-2.5 px-3 text-[13px] font-medium" style="color:var(--co-ink);">' + escTitle + '</td>' +
+        '<td class="py-2.5 px-3"><span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ' + statusColor + '">' + escapeHtml(t.status || '') + '</span></td>' +
+        '<td class="py-2.5 px-3"><span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ' + prioColor + '">' + escapeHtml(t.priority || '') + '</span></td>' +
+        '<td class="py-2.5 px-3 text-[12px]" style="color:var(--co-ink-muted);">' + escapeHtml(t.type || '') + '</td>' +
+        '<td class="py-2.5 px-3 text-[12px]" style="color:var(--co-ink-muted);">' + assigneeName + '</td>' +
+        '<td class="py-2.5 px-3 text-[12px]" style="color:var(--co-ink-muted);">' + escapeHtml(t.requestedBy || '') + '</td>' +
+        '<td class="py-2.5 px-3 text-[12px] ' + dueClass + '">' + escapeHtml(dueLbl) + '</td>' +
+        '<td class="py-2.5 px-3" onclick="event.stopPropagation()">' +
+          '<div class="flex items-center gap-1">' +
+            '<button onclick="AdHocPage.toggleTimer(\'' + escId + '\')" class="px-2 py-1 text-[11px] font-medium rounded-md border ' + timerBtnClass + ' flex items-center gap-1" title="' + timerLabel + ' Timer">' +
+              '<i class="fas ' + timerIcon + '" style="font-size:9px"></i> ' + timerLabel +
+            '</button>' + timerElapsed +
+            '<button onclick="AdHocPage.openTimeLog(\'' + escId + '\')" class="ml-1 transition-colors" style="color:var(--co-gray-400);" onmouseover="this.style.color=\'var(--co-ink)\'" onmouseout="this.style.color=\'var(--co-gray-400)\'" title="View/Edit Time Log"><i class="fas fa-clock text-[11px]"></i></button>' +
+          '</div>' +
+        '</td>' +
+        '<td class="py-2.5 px-3"><button onclick="event.stopPropagation();AdHocPage.editTask(\'' + escId + '\')" class="transition-colors" style="color:var(--co-gray-400);" onmouseover="this.style.color=\'var(--co-ink)\'" onmouseout="this.style.color=\'var(--co-gray-400)\'"><i class="fas fa-pen text-[11px]"></i></button></td>' +
+        '</tr>';
+    }).join('');
+  },
+
+  _statusBadgeClass(status) {
+    var map = {
+      'To Do': 'bg-blue-100 text-blue-700',
+      'Backlog': 'bg-gray-100 text-gray-600',
+      'In Progress': 'bg-gray-200 text-gray-800',
+      'Review': 'bg-purple-100 text-purple-700',
+      'Testing': 'bg-cyan-100 text-cyan-700',
+      'Done': 'bg-green-100 text-green-700',
+      'Completed': 'bg-green-100 text-green-700',
+      'Resolved': 'bg-green-100 text-green-700',
+      'Closed': 'bg-gray-100 text-gray-500'
+    };
+    return map[status] || 'bg-gray-100 text-gray-600';
+  },
+
+  openTask(taskId) {
+    if (typeof hydrateScript === 'function') hydrateScript('TaskDetailPanel');
+    if (typeof TaskDetailPanel !== 'undefined' && TaskDetailPanel.open) {
+      TaskDetailPanel.open(taskId);
+    }
+  },
+
+  editTask(taskId) {
+    if (typeof hydrateScript === 'function') hydrateScript('TaskEditModal');
+    if (typeof TaskEditModal !== 'undefined' && TaskEditModal.open) {
+      TaskEditModal.open(taskId);
+    }
+  },
+
+  openNewTask() {
+    if (typeof hydrateScript === 'function') hydrateScript('TaskEditModal');
+    if (typeof TaskEditModal !== 'undefined' && TaskEditModal.openNew) {
+      TaskEditModal.openNew({ projectId: 'ADHOC' });
+    }
+  },
+
+  _restoreTimers() {
+    try {
+      var saved = localStorage.getItem('co_adhoc_timers');
+      if (saved) this._activeTimers = JSON.parse(saved);
+    } catch (e) { this._activeTimers = {}; }
+  },
+
+  _persistTimers() {
+    localStorage.setItem('co_adhoc_timers', JSON.stringify(this._activeTimers));
+  },
+
+  _startTickInterval() {
+    if (this._timerInterval) clearInterval(this._timerInterval);
+    this._timerInterval = setInterval(function() {
+      var timers = AdHocPage._activeTimers;
+      for (var taskId in timers) {
+        var el = document.getElementById('adhocTimer_' + taskId);
+        if (el) el.textContent = AdHocPage._formatDuration(Date.now() - timers[taskId]);
+      }
+    }, 1000);
+  },
+
+  _formatDuration(ms) {
+    var s = Math.floor(ms / 1000);
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    var sec = s % 60;
+    return (h > 0 ? h + ':' : '') + (h > 0 ? String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+  },
+
+  toggleTimer(taskId) {
+    if (this._activeTimers[taskId]) {
+      this._stopTimer(taskId);
+    } else {
+      this._startTimer(taskId);
+    }
+  },
+
+  _startTimer(taskId) {
+    this._activeTimers[taskId] = Date.now();
+    this._persistTimers();
+    if (typeof TaskTimer !== 'undefined' && TaskTimer.activeTaskId === taskId) {
+      // already tracked by TaskTimer — no conflict
+    }
+    this.renderTable();
+  },
+
+  _stopTimer(taskId) {
+    var startTime = this._activeTimers[taskId];
+    if (!startTime) return;
+    var elapsed = (Date.now() - startTime) / 3600000;
+    var entry = {
+      taskId: taskId,
+      start: new Date(startTime).toISOString(),
+      end: new Date().toISOString(),
+      hours: Math.round(elapsed * 100) / 100
+    };
+    delete this._activeTimers[taskId];
+    this._persistTimers();
+    this.renderTable();
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          var task = AdHocPage.tasks.find(function(t) { return t.id === taskId; });
+          if (task) {
+            task.actualHrs = result.actualHrs;
+            var entries = [];
+            try { entries = task.timeEntries ? (typeof task.timeEntries === 'string' ? JSON.parse(task.timeEntries) : task.timeEntries) : []; } catch (e) { entries = []; }
+            entries.push({ start: entry.start, end: entry.end, hours: entry.hours, user: '' });
+            task.timeEntries = JSON.stringify(entries);
+          }
+          toast('Time logged: ' + AdHocPage._formatDuration((Date.now() - new Date(entry.start).getTime()) > 0 ? entry.hours * 3600000 : 0), 'success');
+        } else {
+          toast(result ? result.error : 'Failed to save time', 'error');
+        }
+      })
+      .withFailureHandler(function(err) {
+        console.error('Time save failed:', err);
+        toast('Failed to save time', 'error');
+      })
+      .logTimeEntry(taskId, entry);
+  },
+
+  openTimeLog(taskId) {
+    var task = this.tasks.find(function(t) { return t.id === taskId; });
+    if (!task) return;
+    var entries = [];
+    try { entries = task.timeEntries ? (typeof task.timeEntries === 'string' ? JSON.parse(task.timeEntries) : task.timeEntries) : []; } catch (e) { entries = []; }
+    var existing = document.getElementById('adhocTimeLogModal');
+    if (existing) existing.remove();
+    var userMap = {};
+    this.users.forEach(function(u) { userMap[u.email] = u.name || u.email; });
+    var totalHrs = 0;
+    entries.forEach(function(e) { totalHrs += parseFloat(e.hours || 0); });
+    totalHrs = Math.round(totalHrs * 100) / 100;
+    var rowsHtml = '';
+    if (entries.length === 0) {
+      rowsHtml = '<tr><td colspan="5" class="py-8 text-center text-gray-400 text-sm">No time entries yet</td></tr>';
+    } else {
+      rowsHtml = entries.map(function(e, idx) {
+        var startDt = e.start ? new Date(e.start) : null;
+        var endDt = e.end ? new Date(e.end) : null;
+        var startVal = startDt ? AdHocPage._toLocalDatetimeStr(startDt) : '';
+        var endVal = endDt ? AdHocPage._toLocalDatetimeStr(endDt) : '';
+        var who = escapeHtml(userMap[e.user] || e.user || '');
+        return '<tr class="border-b border-gray-100">' +
+          '<td class="py-2 px-2"><input type="datetime-local" value="' + startVal + '" data-idx="' + idx + '" data-field="start" class="adhoc-time-input text-xs border border-gray-200 rounded px-2 py-1 w-full focus:ring-2 focus:ring-gray-400 focus:outline-none" /></td>' +
+          '<td class="py-2 px-2"><input type="datetime-local" value="' + endVal + '" data-idx="' + idx + '" data-field="end" class="adhoc-time-input text-xs border border-gray-200 rounded px-2 py-1 w-full focus:ring-2 focus:ring-gray-400 focus:outline-none" /></td>' +
+          '<td class="py-2 px-2 text-center text-xs font-medium text-gray-700" id="adhocEntryHrs_' + idx + '">' + (e.hours || 0) + 'h</td>' +
+          '<td class="py-2 px-2 text-xs text-gray-500">' + who + '</td>' +
+          '<td class="py-2 px-2 text-center"><button onclick="AdHocPage._saveTimeEntry(\'' + escapeHtml(taskId) + '\',' + idx + ')" class="text-xs text-gray-600 hover:text-gray-900 border border-gray-200 rounded px-2 py-0.5 hover:bg-gray-50">Save</button></td>' +
+          '</tr>';
+      }).join('');
+    }
+    var modal = document.createElement('div');
+    modal.id = 'adhocTimeLogModal';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center';
+    modal.innerHTML =
+      '<div class="absolute inset-0 bg-black/30" onclick="AdHocPage.closeTimeLog()"></div>' +
+      '<div class="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">' +
+        '<div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">' +
+          '<div>' +
+            '<h3 class="text-sm font-bold text-gray-900">Time Log — ' + escapeHtml(task.title || taskId) + '</h3>' +
+            '<p class="text-xs text-gray-500 mt-0.5">Total: ' + totalHrs + 'h</p>' +
+          '</div>' +
+          '<button onclick="AdHocPage.closeTimeLog()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>' +
+        '</div>' +
+        '<div class="overflow-auto flex-1 px-5 py-3">' +
+          '<table class="w-full text-sm">' +
+            '<thead><tr class="border-b border-gray-200">' +
+              '<th class="py-2 px-2 text-left text-xs font-medium text-gray-500">Start</th>' +
+              '<th class="py-2 px-2 text-left text-xs font-medium text-gray-500">End</th>' +
+              '<th class="py-2 px-2 text-center text-xs font-medium text-gray-500 w-16">Hours</th>' +
+              '<th class="py-2 px-2 text-left text-xs font-medium text-gray-500 w-24">User</th>' +
+              '<th class="py-2 px-2 text-center text-xs font-medium text-gray-500 w-16"></th>' +
+            '</tr></thead>' +
+            '<tbody id="adhocTimeLogBody">' + rowsHtml + '</tbody>' +
+          '</table>' +
+        '</div>' +
+        '<div class="px-5 py-3 border-t border-gray-100 flex justify-end">' +
+          '<button onclick="AdHocPage.closeTimeLog()" class="px-4 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+  },
+
+  closeTimeLog() {
+    var modal = document.getElementById('adhocTimeLogModal');
+    if (modal) modal.remove();
+  },
+
+  _toLocalDatetimeStr(d) {
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  },
+
+  _saveTimeEntry(taskId, idx) {
+    var inputs = document.querySelectorAll('#adhocTimeLogBody .adhoc-time-input');
+    var startVal = null;
+    var endVal = null;
+    inputs.forEach(function(inp) {
+      if (parseInt(inp.dataset.idx) === idx) {
+        if (inp.dataset.field === 'start') startVal = inp.value;
+        if (inp.dataset.field === 'end') endVal = inp.value;
+      }
+    });
+    if (!startVal || !endVal) { toast('Please fill both start and end times', 'error'); return; }
+    var startDate = new Date(startVal);
+    var endDate = new Date(endVal);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) { toast('Invalid date format', 'error'); return; }
+    if (endDate <= startDate) { toast('End time must be after start time', 'error'); return; }
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          toast('Time entry updated', 'success');
+          var task = AdHocPage.tasks.find(function(t) { return t.id === taskId; });
+          if (task && result.entries) {
+            task.timeEntries = JSON.stringify(result.entries);
+            task.actualHrs = result.actualHrs;
+          }
+          var hrsEl = document.getElementById('adhocEntryHrs_' + idx);
+          if (hrsEl) {
+            var newHrs = Math.round(((endDate - startDate) / 3600000) * 100) / 100;
+            hrsEl.textContent = newHrs + 'h';
+          }
+        } else {
+          toast(result ? result.error : 'Failed to update', 'error');
+        }
+      })
+      .withFailureHandler(function(err) {
+        console.error('updateTimeEntry failed:', err);
+        toast('Failed to update time entry', 'error');
+      })
+      .updateTimeEntry(taskId, idx, { start: startDate.toISOString(), end: endDate.toISOString() });
+  }
+};
+</script>
+
+<style>
+.adhoc-row:hover {
+  background:var(--co-surface-sunken);
+}
+</style>

@@ -1,24 +1,26 @@
 <style>
 .list-table {
   width: 100%;
-  background: white;
-  border-radius: 8px;
+  background: var(--co-surface);
+  border-radius: var(--co-border-radius-md);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--co-shadow-sm);
+  border: 1px solid var(--co-border-subtle);
 }
 
 .list-table thead {
-  background: var(--co-gray-50);
-  border-bottom: 2px solid var(--co-gray-200);
+  background: var(--co-surface-sunken);
+  border-bottom: 1px solid var(--co-border-subtle);
 }
 
 .list-table th {
-  padding: 12px 16px;
+  padding: 10px 16px;
   text-align: left;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--co-gray-700);
+  color: var(--co-ink-muted);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -26,7 +28,8 @@
 }
 
 .list-table th.sortable:hover {
-  background: var(--co-gray-100);
+  background: var(--co-border-subtle);
+  color: var(--co-ink);
 }
 
 .list-table th .sort-icon {
@@ -38,26 +41,27 @@
 .list-table th.sorted-asc .sort-icon,
 .list-table th.sorted-desc .sort-icon {
   opacity: 1;
-  color: var(--co-primary-600);
+  color: var(--co-accent-600);
 }
 
 .list-table tbody tr {
-  border-bottom: 1px solid var(--co-gray-200);
+  border-bottom: 1px solid var(--co-border-subtle);
   transition: background 0.15s ease;
 }
 
 .list-table tbody tr:hover {
-  background: var(--co-gray-50);
+  background: var(--co-surface-sunken);
 }
 
 .list-table tbody tr.selected {
-  background: #f5f5f5;
+  background: var(--co-accent-50);
+  box-shadow: inset 3px 0 0 var(--co-accent-500);
 }
 
 .list-table td {
-  padding: 12px 16px;
-  font-size: 14px;
-  color: var(--co-gray-900);
+  padding: 11px 16px;
+  font-size: 13px;
+  color: var(--co-ink-soft);
   vertical-align: middle;
 }
 
@@ -68,7 +72,7 @@
 }
 
 .editable-cell:hover {
-  background: var(--co-gray-100);
+  background: var(--co-border-subtle);
   border-radius: 4px;
 }
 
@@ -451,7 +455,7 @@ input[type="checkbox"] {
 <div class="p-6">
   <div class="flex justify-between items-center mb-6">
     <div>
-      <h1 class="text-3xl font-bold text-gray-900">List View</h1>
+      <h1 class="text-3xl font-bold text-gray-900">Task List</h1>
       <p class="text-gray-600 mt-1">Manage and filter all tasks</p>
     </div>
     <div class="flex gap-3">
@@ -1044,12 +1048,27 @@ var ListViewPage = {
     });
 
     const projectSelect = document.getElementById('filterProject');
+    var projGroup = document.createElement('optgroup');
+    projGroup.label = 'Projects';
     this.projects.forEach(project => {
       const option = document.createElement('option');
       option.value = project.id;
       option.textContent = project.name;
-      projectSelect.appendChild(option);
+      projGroup.appendChild(option);
     });
+    if (this.projects.length) projectSelect.appendChild(projGroup);
+    var daList = (typeof State !== 'undefined' ? State.dataAssets : null) || [];
+    if (daList.length) {
+      var daGroup = document.createElement('optgroup');
+      daGroup.label = 'Data Assets';
+      daList.forEach(function(da) {
+        var opt = document.createElement('option');
+        opt.value = da.id;
+        opt.textContent = da.assetName;
+        daGroup.appendChild(opt);
+      });
+      projectSelect.appendChild(daGroup);
+    }
 
     this.renderColumnVisibilityPanel();
   },
@@ -1068,6 +1087,9 @@ var ListViewPage = {
     const dateTo = document.getElementById('filterDateTo').value;
 
     this.filteredTasks = this.allTasks.filter(task => {
+      const pid = (task.projectId || '').toUpperCase();
+      if (pid === 'ADHOC' || pid === 'TASK' || pid === '') return false;
+
       if (search) {
         const taskId = (task.id || '').toLowerCase();
         const taskTitle = (task.title || '').toLowerCase();

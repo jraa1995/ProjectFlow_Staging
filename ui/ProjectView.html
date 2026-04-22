@@ -1,41 +1,89 @@
 <div id="projectView" class="h-full flex flex-col">
-  <div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
-    <div class="flex items-center gap-4">
-      <h1 class="text-xl font-bold text-gray-900">Projects</h1>
+  <div class="px-6 py-3 flex items-center justify-between gap-4 flex-shrink-0 flex-wrap" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
+    <div class="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+      <h1 class="text-[18px] font-semibold tracking-tight flex-shrink-0 mr-3" style="color:var(--co-ink);letter-spacing:-0.015em;">Projects</h1>
       <select id="projectStatusFilter" onchange="ProjectPage.filterStatus=this.value;ProjectPage.renderProjectList()"
-        class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
+        class="co-filter-select min-w-[130px]">
         <option value="">All Statuses</option>
         <option value="active">Active</option>
         <option value="completed">Completed</option>
         <option value="paused">Paused</option>
         <option value="archived">Archived</option>
       </select>
-    </div>
-    <div class="flex items-center gap-2">
-      <button onclick="_pc('ProjectPage','importFromWorklog')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">
-        <i class="fas fa-file-import text-xs"></i> Import from Worklog
+      <select id="projWorkstreamFilter" onchange="ProjectPage.filterWorkstream=this.value;ProjectPage.renderProjectList()"
+        class="co-filter-select min-w-[140px] max-w-[180px] truncate">
+        <option value="">All Workstreams</option>
+      </select>
+      <select id="projTypeFilter" onchange="ProjectPage.filterProjectType=this.value;ProjectPage.renderProjectList()"
+        class="co-filter-select min-w-[140px] max-w-[180px] truncate">
+        <option value="">All Project Types</option>
+      </select>
+      <select id="projTechStackFilter" onchange="ProjectPage.filterTechStack=this.value;ProjectPage.renderProjectList()"
+        class="co-filter-select min-w-[140px] max-w-[180px] truncate">
+        <option value="">All Tech Stacks</option>
+      </select>
+      <select id="projPrimaryOwnerFilter" onchange="ProjectPage.filterPrimaryOwner=this.value;ProjectPage.renderProjectList()"
+        class="co-filter-select min-w-[140px] max-w-[180px] truncate">
+        <option value="">All Primary Owners</option>
+      </select>
+      <button onclick="ProjectPage.clearExtraFilters()" class="px-2 py-1.5 text-xs flex-shrink-0 transition-colors" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)'" onmouseout="this.style.color='var(--co-gray-400)'" title="Clear filters">
+        <i class="fas fa-times"></i>
       </button>
-      <button onclick="_pc('ProjectPage','openNewProjectForm')" class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">
-        <i class="fas fa-plus text-xs"></i> New Project
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <button id="projExportCsvBtn" onclick="_pc('ProjectPage','exportProjectsCsv')" class="hidden co-btn-outline">
+        <i class="fas fa-file-csv text-[11px]"></i> Export CSV
+      </button>
+      <button id="projImportWorklogBtn" onclick="_pc('ProjectPage','importFromWorklog')" class="hidden co-btn-outline">
+        <i class="fas fa-file-import text-[11px]"></i> Import from Worklog
+      </button>
+      <button onclick="_pc('ProjectPage','openNewProjectForm')" class="co-btn-solid">
+        <i class="fas fa-plus text-[11px]"></i> New Project
       </button>
     </div>
   </div>
 
   <div id="projectSplitPane" class="split-pane flex-1 min-h-0">
-    <div class="split-pane-left border-r border-gray-200 bg-white flex flex-col">
+    <div class="split-pane-left flex flex-col" style="background:var(--co-surface);border-right:1px solid var(--co-border-subtle);">
       <div class="flex-1 overflow-y-auto" id="projectListContainer">
-        <div class="flex items-center justify-center h-32 text-gray-400 text-sm">Loading...</div>
+        <div class="flex items-center justify-center h-32 text-sm" style="color:var(--co-gray-400);">Loading...</div>
       </div>
     </div>
     <div class="split-pane-divider"></div>
-    <div class="split-pane-right flex flex-col bg-gray-50 min-h-0">
+    <div class="split-pane-right flex flex-col min-h-0" style="background:var(--co-page-bg);">
       <div id="projectDetailContainer" class="flex-1 flex flex-col min-h-0">
-        <div class="flex-1 flex flex-col items-center justify-center text-gray-400">
-          <i class="fas fa-folder-open text-4xl mb-3 text-gray-300"></i>
-          <p class="text-sm font-medium text-gray-500">Select a project to view details</p>
-          <p class="text-xs text-gray-400 mt-1">Choose from the list on the left</p>
+        <div class="flex-1 flex flex-col items-center justify-center" style="color:var(--co-gray-400);">
+          <i class="fas fa-folder-open text-4xl mb-4" style="color:var(--co-gray-300);"></i>
+          <p class="text-sm font-medium" style="color:var(--co-ink-muted);">Select a project to view details</p>
+          <p class="text-xs mt-1" style="color:var(--co-gray-400);">Choose from the list on the left</p>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<style>
+.co-project-item:hover {
+  background:var(--co-surface-sunken);
+}
+#projSearchBar {
+  padding:0.625rem 0.875rem;
+  border-bottom:1px solid var(--co-border-subtle);
+  background:var(--co-surface);
+}
+#projSearchInput {
+  padding:0.375rem 0.75rem;
+  font-size:0.8125rem;
+  border:1px solid var(--co-border-soft);
+  border-radius:0.5rem;
+  background:var(--co-surface-sunken);
+  color:var(--co-ink);
+  width:100%;
+}
+#projSearchInput:focus {
+  outline:none;
+  border-color:var(--co-primary-700);
+  box-shadow:0 0 0 3px rgba(192,107,74,0.12);
+  background:var(--co-surface);
+}
+</style>

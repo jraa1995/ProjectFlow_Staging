@@ -3,7 +3,7 @@
   onclick="TaskDetailPanel.handleOverlayClick(event)">
   <div class="task-detail-container bg-white w-full max-w-2xl h-full shadow-xl flex flex-col overflow-hidden"
     onclick="event.stopPropagation()">
-    <div class="task-detail-header flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+    <div class="task-detail-header flex items-center justify-between px-6 py-4" style="border-bottom:1px solid var(--co-border-subtle);background:var(--co-surface-sunken);">
       <div class="flex items-center gap-3">
         <span id="taskDetailId" class="text-sm font-mono text-gray-500 bg-gray-200 px-2 py-1 rounded">TASK-000</span>
         <h2 id="taskDetailTitle" class="text-lg font-semibold text-gray-900 truncate max-w-md">Task Title</h2>
@@ -12,14 +12,20 @@
         <button
           id="taskDetailEditBtn"
           onclick="TaskDetailPanel.openEditModal()"
-          class="px-3 py-1.5 text-sm font-medium text-primary-600 hover:bg-primary-50 rounded-lg flex items-center gap-1"
+          class="px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1 transition-colors"
+          style="color:var(--co-ink-soft);"
+          onmouseover="this.style.background='var(--co-surface)'"
+          onmouseout="this.style.background='transparent'"
         >
           <i class="fas fa-edit"></i> Edit
         </button>
         <button
           id="taskDetailDeleteBtn"
           onclick="TaskDetailPanel.deleteTask()"
-          class="px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
+          class="px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1 transition-colors"
+          style="color:var(--co-error);"
+          onmouseover="this.style.background='var(--co-error-light)'"
+          onmouseout="this.style.background='transparent'"
           title="Delete Task"
         >
           <i class="fas fa-trash-alt"></i>
@@ -27,13 +33,13 @@
         <div id="taskDetailEditActions" class="hidden flex items-center gap-2">
           <button
             onclick="TaskDetailPanel.cancelChanges()"
-            class="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+            class="co-btn-outline"
           >
             Cancel
           </button>
           <button
             onclick="TaskDetailPanel.saveChanges()"
-            class="px-3 py-1.5 text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 rounded-lg flex items-center gap-1"
+            class="co-btn-solid"
           >
             <i class="fas fa-save"></i> Save
           </button>
@@ -41,23 +47,26 @@
         <button
           id="taskTimerBtn"
           onclick="TaskDetailPanel.toggleTimer()"
-          class="px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 rounded-lg flex items-center gap-1.5 border border-green-200"
+          class="timer-btn timer-btn-idle px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5"
           title="Start Timer"
         >
           <i id="taskTimerIcon" class="fas fa-play text-xs"></i>
           <span id="taskTimerLabel">Start</span>
-          <span id="timerDisplay" class="font-mono text-xs text-gray-500 hidden"></span>
+          <span id="timerDisplay" class="font-mono text-xs hidden" style="color:var(--co-ink-muted);"></span>
         </button>
         <button
           onclick="TaskDetailPanel.close()"
-          class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+          class="p-2 rounded-lg transition-colors"
+          style="color:var(--co-gray-400);"
+          onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface)'"
+          onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent'"
         >
           <i class="fas fa-times text-lg"></i>
         </button>
       </div>
     </div>
 
-    <div class="task-detail-tabs flex border-b border-gray-200 bg-white px-6">
+    <div class="task-detail-tabs flex px-6" style="border-bottom:1px solid var(--co-border-subtle);background:var(--co-surface);">
       <button class="task-detail-tab active" data-tab="details" onclick="TaskDetailPanel.setActiveTab('details')">
         <i class="fas fa-info-circle mr-2"></i>Details
       </button>
@@ -108,7 +117,7 @@
           <div class="skeleton skeleton-text w-1/4 mb-2"></div>
           <div class="skeleton skeleton-textarea"></div>
         </div>
-        <div class="border-t border-gray-200 pt-4 mt-6">
+        <div class="pt-4 mt-6" style="border-top:1px solid var(--co-border-subtle);">
           <div class="grid grid-cols-2 gap-4">
             <div class="skeleton skeleton-text w-2/3"></div>
             <div class="skeleton skeleton-text w-2/3"></div>
@@ -152,11 +161,20 @@
               </div>
             </div>
             <div class="task-field">
-              <label class="task-field-label">Reporter</label>
+              <label class="task-field-label">Created By</label>
               <div id="taskDetailReporterView" class="task-field-value flex items-center gap-2">
                 <span class="text-gray-400">Unknown</span>
               </div>
             </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="task-field">
+              <label class="task-field-label">Requested By</label>
+              <div id="taskDetailRequestedByView" class="task-field-value">
+                <span class="text-gray-400">-</span>
+              </div>
+            </div>
+            <div class="task-field"></div>
           </div>
 
           <div class="grid grid-cols-2 gap-4">
@@ -196,50 +214,50 @@
             </div>
           </div>
 
-          <div class="task-field border-t border-gray-200 pt-6 mt-6">
+          <div class="task-field pt-6 mt-6" style="border-top:1px solid var(--co-border-subtle);">
             <label class="task-field-label flex items-center gap-2">
-              <i class="fas fa-link text-blue-500"></i>
+              <i class="fas fa-link" style="color:var(--co-accent-500);"></i>
               <span>Dependencies</span>
             </label>
             <div class="mt-4">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <i class="fas fa-arrow-left text-red-500"></i>
+                <h4 class="text-sm font-semibold flex items-center gap-2" style="color:var(--co-ink-soft);">
+                  <i class="fas fa-arrow-left" style="color:var(--co-error);"></i>
                   Blocked By
                 </h4>
                 <button
                   onclick="TaskDetailPanel.openDependencyPicker('predecessor')"
-                  class="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                  class="dep-add-btn text-xs px-2 py-1 rounded transition-colors"
                 >
                   <i class="fas fa-plus mr-1"></i>Add Blocker
                 </button>
               </div>
               <div id="taskDetailBlockedByList" class="space-y-2">
-                <div class="text-sm text-gray-400 italic">No blocking tasks</div>
+                <div class="text-sm italic" style="color:var(--co-gray-400);">No blocking tasks</div>
               </div>
             </div>
             <div class="mt-4">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <i class="fas fa-arrow-right text-green-500"></i>
+                <h4 class="text-sm font-semibold flex items-center gap-2" style="color:var(--co-ink-soft);">
+                  <i class="fas fa-arrow-right" style="color:var(--co-success);"></i>
                   Blocking
                 </h4>
                 <button
                   onclick="TaskDetailPanel.openDependencyPicker('successor')"
-                  class="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                  class="dep-add-btn text-xs px-2 py-1 rounded transition-colors"
                 >
                   <i class="fas fa-plus mr-1"></i>Add Dependent
                 </button>
               </div>
               <div id="taskDetailBlockingList" class="space-y-2">
-                <div class="text-sm text-gray-400 italic">No dependent tasks</div>
+                <div class="text-sm italic" style="color:var(--co-gray-400);">No dependent tasks</div>
               </div>
             </div>
           </div>
 
-          <div class="task-field border-t border-gray-200 pt-6 mt-6">
+          <div class="task-field pt-6 mt-6" style="border-top:1px solid var(--co-border-subtle);">
             <label class="task-field-label flex items-center gap-2">
-              <i class="fas fa-clock text-gray-400"></i>
+              <i class="fas fa-clock" style="color:var(--co-gray-400);"></i>
               <span>Time Log</span>
             </label>
             <div id="taskDetailTimeLog" class="mt-3 space-y-1">
@@ -247,8 +265,8 @@
             </div>
           </div>
 
-          <div class="border-t border-gray-200 pt-4 mt-6">
-            <div class="grid grid-cols-2 gap-4 text-xs text-gray-500">
+          <div class="pt-4 mt-6" style="border-top:1px solid var(--co-border-subtle);">
+            <div class="grid grid-cols-2 gap-4 text-xs" style="color:var(--co-ink-muted);">
               <div>
                 <span class="font-medium">Created:</span>
                 <span id="taskDetailCreatedAt">-</span>
@@ -372,26 +390,28 @@
           </div>
         </div>
 
-        <div class="comment-input-area border-t border-gray-200 p-4 bg-gray-50">
+        <div class="comment-input-area p-4">
           <div class="comment-input-container relative">
             <textarea
               id="taskDetailCommentInput"
-              class="comment-textarea w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none transition-all"
+              class="comment-textarea w-full px-3 py-2 rounded-lg resize-none transition-all"
               rows="3"
               placeholder="Add a comment... Type @ to mention someone"
               aria-label="Comment input"
+              style="background:var(--co-surface);border:1px solid var(--co-border-soft);color:var(--co-ink);"
             ></textarea>
           </div>
           <div class="flex items-center justify-between mt-3">
-            <span class="text-xs text-gray-500">
+            <span class="text-xs" style="color:var(--co-ink-muted);">
               <i class="fas fa-at mr-1"></i>Type @ to mention team members
             </span>
             <div class="flex items-center gap-2">
-              <span id="taskDetailCommentCharCount" class="text-xs text-gray-400 hidden">0/2000</span>
+              <span id="taskDetailCommentCharCount" class="text-xs hidden" style="color:var(--co-gray-400);">0/2000</span>
               <button
                 id="taskDetailPostCommentBtn"
                 onclick="TaskDetailPanel.addComment()"
-                class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                class="co-btn-solid disabled:opacity-50 disabled:cursor-not-allowed"
+                style="padding:0.5rem 1rem;"
                 disabled
               >
                 <i class="fas fa-paper-plane"></i> Post Comment
@@ -402,11 +422,12 @@
       </div>
 
       <div id="taskDetailActivityTab" class="task-tab-content hidden">
-        <div class="px-6 py-3 border-b border-gray-200 bg-gray-50">
+        <div class="px-6 py-3" style="border-bottom:1px solid var(--co-border-subtle);background:var(--co-surface-sunken);">
           <select
             id="taskDetailActivityFilter"
             onchange="TaskDetailPanel.filterActivity()"
-            class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+            class="px-3 py-1.5 rounded-lg text-sm"
+            style="background:var(--co-surface);border:1px solid var(--co-border-soft);color:var(--co-ink);"
           >
             <option value="">All Activity</option>
             <option value="status">Status Changes</option>
@@ -471,21 +492,24 @@
   padding: 0.75rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--co-ink-muted);
   border-bottom: 2px solid transparent;
-  transition: all 0.15s;
+  transition: color var(--co-transition-fast), background-color var(--co-transition-fast), border-color var(--co-transition-fast);
   display: flex;
   align-items: center;
+  background: transparent;
+  cursor: pointer;
 }
 
 .task-detail-tab:hover {
-  color: #374151;
-  background-color: #f9fafb;
+  color: var(--co-ink);
+  background-color: var(--co-surface-sunken);
 }
 
 .task-detail-tab.active {
-  color: #525252;
-  border-bottom-color: #525252;
+  color: var(--co-ink);
+  font-weight: 600;
+  border-bottom-color: var(--co-accent-500);
 }
 
 .task-field {
@@ -511,16 +535,94 @@
 .task-field-input {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--co-border-soft);
   border-radius: 0.5rem;
   font-size: 0.875rem;
-  transition: all 0.15s;
+  background: var(--co-surface);
+  color: var(--co-ink);
+  transition: border-color var(--co-transition-fast), box-shadow var(--co-transition-fast);
 }
 
 .task-field-input:focus {
   outline: none;
-  border-color: #525252;
-  box-shadow: 0 0 0 3px rgba(82, 82, 82, 0.1);
+  border-color: var(--co-primary-700);
+  box-shadow: 0 0 0 3px rgba(192,107,74,0.12);
+}
+
+.dep-add-btn {
+  color: var(--co-accent-700);
+  background: var(--co-accent-50);
+  border: 1px solid var(--co-accent-200);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.dep-add-btn:hover {
+  background: var(--co-accent-100);
+}
+
+.timer-btn {
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color var(--co-transition-fast), border-color var(--co-transition-fast), color var(--co-transition-fast);
+}
+
+.timer-btn-idle {
+  color: var(--co-success-dark);
+  background: var(--co-success-light);
+  border-color: var(--co-success-light);
+}
+
+.timer-btn-idle:hover {
+  border-color: var(--co-success);
+}
+
+.timer-btn-running {
+  color: var(--co-error-dark);
+  background: var(--co-error-light);
+  border-color: var(--co-error-light);
+}
+
+.timer-btn-running:hover {
+  border-color: var(--co-error);
+}
+
+.dep-card {
+  background: var(--co-surface);
+  border: 1px solid var(--co-border-subtle);
+}
+
+.dep-card:hover {
+  background: var(--co-surface-sunken);
+}
+
+.dep-card-blocked {
+  border-left: 3px solid var(--co-error);
+}
+
+.dep-card-blocking {
+  border-left: 3px solid var(--co-accent-500);
+}
+
+.dep-card-action {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--co-border-radius-sm);
+  background: transparent;
+  color: var(--co-ink-muted);
+  border: none;
+  cursor: pointer;
+  transition: background-color var(--co-transition-fast), color var(--co-transition-fast);
+}
+
+.dep-card-action:hover {
+  background: var(--co-surface-sunken);
+  color: var(--co-ink);
+}
+
+.dep-card-action-danger:hover {
+  background: var(--co-error-light);
+  color: var(--co-error-dark);
 }
 
 .status-badge {
@@ -529,14 +631,15 @@
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 600;
+  border: 1px solid transparent;
 }
 
-.status-badge.status-backlog { background: #f3f4f6; color: #6b7280; }
-.status-badge.status-todo { background: #dbeafe; color: #1e40af; }
-.status-badge.status-in-progress { background: #f5f5f5; color: #171717; }
-.status-badge.status-review { background: #ede9fe; color: #5b21b6; }
-.status-badge.status-testing { background: #cffafe; color: #155e75; }
-.status-badge.status-done { background: #d1fae5; color: #065f46; }
+.status-badge.status-backlog { background: transparent; color: var(--co-ink-muted); border-color: var(--co-border-soft); }
+.status-badge.status-todo { background: var(--co-surface-sunken); color: var(--co-ink); }
+.status-badge.status-in-progress { background: var(--co-accent-100); color: var(--co-accent-700); }
+.status-badge.status-review { background: var(--co-warning-light); color: var(--co-warning-dark); }
+.status-badge.status-testing { background: var(--co-primary-200); color: var(--co-primary-800); }
+.status-badge.status-done { background: var(--co-success-light); color: var(--co-success-dark); }
 
 .activity-item {
   display: flex;
@@ -561,30 +664,30 @@
   font-size: 0.75rem;
 }
 
-.activity-icon.status { background: #dbeafe; color: #1e40af; }
-.activity-icon.field { background: #f5f5f5; color: #171717; }
-.activity-icon.comment { background: #d1fae5; color: #065f46; }
-.activity-icon.assignment { background: #ede9fe; color: #5b21b6; }
-.activity-icon.created { background: #cffafe; color: #155e75; }
+.activity-icon.status { background: var(--co-accent-100); color: var(--co-accent-700); }
+.activity-icon.field { background: var(--co-surface-sunken); color: var(--co-ink); }
+.activity-icon.comment { background: var(--co-success-light); color: var(--co-success-dark); }
+.activity-icon.assignment { background: var(--co-primary-100); color: var(--co-primary-800); }
+.activity-icon.created { background: var(--co-accent-100); color: var(--co-accent-700); }
 
 .comment-item {
-  background: #f9fafb;
+  background: var(--co-surface-sunken);
   border-radius: 0.5rem;
   padding: 0.75rem;
-  border-left: 3px solid #e5e7eb;
-  transition: all 0.15s ease;
+  border-left: 3px solid var(--co-border-subtle);
+  transition: background-color var(--co-transition-fast), border-left-color var(--co-transition-fast);
 }
 
 .comment-item:hover {
-  border-left-color: #525252;
-  background: #fefce8;
+  border-left-color: var(--co-accent-500);
+  background: var(--co-accent-50);
 }
 
 .comment-avatar {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 50%;
-  background: linear-gradient(135deg, #525252 0%, #404040 100%);
+  background: var(--co-ink);
   color: white;
   display: flex;
   align-items: center;
@@ -592,7 +695,6 @@
   font-weight: 600;
   font-size: 0.75rem;
   flex-shrink: 0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .comment-header {
@@ -622,24 +724,24 @@
 }
 
 .comment-content .mention {
-  background: linear-gradient(135deg, #f5f5f5 0%, #d4d4d4 100%);
-  color: #171717;
+  background: var(--co-accent-100);
+  color: var(--co-accent-700);
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color var(--co-transition-fast);
 }
 
 .comment-content .mention:hover {
-  background: linear-gradient(135deg, #d4d4d4 0%, #d4d4d4 100%);
+  background: var(--co-accent-200);
 }
 
 .comment-input-area {
   position: sticky;
   bottom: 0;
-  background: #f9fafb;
-  border-top: 1px solid #e5e7eb;
+  background: var(--co-surface-sunken);
+  border-top: 1px solid var(--co-border-subtle);
 }
 
 .comment-textarea {
@@ -651,19 +753,19 @@
 
 .comment-textarea:focus {
   outline: none;
-  border-color: #525252;
-  box-shadow: 0 0 0 3px rgba(82, 82, 82, 0.1);
+  border-color: var(--co-primary-700);
+  box-shadow: 0 0 0 3px rgba(192,107,74,0.12);
 }
 
 .comment-list-container {
   scrollbar-width: thin;
-  scrollbar-color: #d1d5db #f3f4f6;
+  scrollbar-color: var(--co-border-soft) transparent;
 }
 
 .comment-list-container::-webkit-scrollbar { width: 6px; }
-.comment-list-container::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 3px; }
-.comment-list-container::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-.comment-list-container::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+.comment-list-container::-webkit-scrollbar-track { background: transparent; }
+.comment-list-container::-webkit-scrollbar-thumb { background: var(--co-border-soft); border-radius: 3px; }
+.comment-list-container::-webkit-scrollbar-thumb:hover { background: var(--co-gray-400); }
 
 .comment-item.new-comment {
   animation: slideInComment 0.3s ease-out;
@@ -676,10 +778,10 @@
 
 .mention-autocomplete {
   position: absolute;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--co-surface);
+  border: 1px solid var(--co-border-subtle);
   border-radius: 0.5rem;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 10px 25px rgba(24,24,20,0.12);
   max-height: 250px;
   overflow-y: auto;
   z-index: 1000;
@@ -696,14 +798,14 @@
 
 .mention-suggestion:hover,
 .mention-suggestion.selected {
-  background: #f5f5f5;
+  background: var(--co-surface-sunken);
 }
 
 .mention-avatar {
   width: 2rem;
   height: 2rem;
   border-radius: 50%;
-  background: linear-gradient(135deg, #525252 0%, #404040 100%);
+  background: var(--co-ink);
   color: white;
   display: flex;
   align-items: center;
@@ -736,7 +838,7 @@
 }
 
 .mention-highlight {
-  background: #d4d4d4;
+  background: var(--co-accent-200);
   font-weight: 600;
 }
 
@@ -753,8 +855,8 @@
   content: '';
   width: 1rem;
   height: 1rem;
-  border: 2px solid #e5e7eb;
-  border-top-color: #525252;
+  border: 2px solid var(--co-border-subtle);
+  border-top-color: var(--co-accent-500);
   border-radius: 50%;
   margin-right: 0.5rem;
   animation: spin 0.8s linear infinite;
@@ -780,7 +882,7 @@
   width: 1.5rem;
   height: 1.5rem;
   border-radius: 50%;
-  background: #525252;
+  background: var(--co-ink);
   color: white;
   display: flex;
   align-items: center;
@@ -807,7 +909,7 @@ var TaskTimer = {
     const icon = document.getElementById('taskTimerIcon');
     const label = document.getElementById('taskTimerLabel');
     const display = document.getElementById('timerDisplay');
-    if (btn) btn.className = 'px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg flex items-center gap-1.5 border border-red-200';
+    if (btn) btn.className = 'timer-btn timer-btn-running px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5';
     if (icon) { icon.classList.remove('fa-play'); icon.classList.add('fa-stop'); }
     if (label) label.textContent = 'Stop';
     if (display) display.classList.remove('hidden');
@@ -832,7 +934,7 @@ var TaskTimer = {
     const icon = document.getElementById('taskTimerIcon');
     const label = document.getElementById('taskTimerLabel');
     const display = document.getElementById('timerDisplay');
-    if (btn) btn.className = 'px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 rounded-lg flex items-center gap-1.5 border border-green-200';
+    if (btn) btn.className = 'timer-btn timer-btn-idle px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5';
     if (icon) { icon.classList.remove('fa-stop'); icon.classList.add('fa-play'); }
     if (label) label.textContent = 'Start';
     if (display) { display.textContent = ''; display.classList.add('hidden'); }
@@ -951,12 +1053,12 @@ var TaskDetailPanel = {
     const display = document.getElementById('timerDisplay');
     if (!btn) return;
     if (this.task && TaskTimer.activeTaskId === this.task.id) {
-      btn.className = 'px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg flex items-center gap-1.5 border border-red-200';
+      btn.className = 'timer-btn timer-btn-running px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5';
       if (icon) { icon.classList.remove('fa-play'); icon.classList.add('fa-stop'); }
       if (label) label.textContent = 'Stop';
       if (display) display.classList.remove('hidden');
     } else {
-      btn.className = 'px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 rounded-lg flex items-center gap-1.5 border border-green-200';
+      btn.className = 'timer-btn timer-btn-idle px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5';
       if (icon) { icon.classList.remove('fa-stop'); icon.classList.add('fa-play'); }
       if (label) label.textContent = 'Start';
       if (display) { display.textContent = ''; display.classList.add('hidden'); }
@@ -978,10 +1080,10 @@ var TaskDetailPanel = {
       var date = e.start ? new Date(e.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
       var hrs = e.hours != null ? e.hours + 'h' : '';
       var who = escapeHtml(e.user || e.who || '');
-      return '<div class="flex items-center justify-between py-1.5 px-2 rounded bg-gray-50 text-sm">' +
-        '<span class="text-gray-500">' + date + '</span>' +
-        '<span class="font-medium text-gray-700">' + hrs + '</span>' +
-        (who ? '<span class="text-gray-400 text-xs">' + who + '</span>' : '') +
+      return '<div class="flex items-center justify-between py-1.5 px-2 rounded text-sm" style="background:var(--co-surface-sunken);">' +
+        '<span style="color:var(--co-ink-muted);">' + date + '</span>' +
+        '<span class="font-medium" style="color:var(--co-ink);">' + hrs + '</span>' +
+        (who ? '<span class="text-xs" style="color:var(--co-gray-400);">' + who + '</span>' : '') +
         '</div>';
     }).join('');
   },
@@ -1304,6 +1406,15 @@ var TaskDetailPanel = {
       }
     }
 
+    const requestedByView = document.getElementById('taskDetailRequestedByView');
+    if (requestedByView) {
+      if (task.requestedBy) {
+        requestedByView.innerHTML = '<span class="text-sm text-gray-900">' + escapeHtml(task.requestedBy) + '</span>';
+      } else {
+        requestedByView.innerHTML = '<span class="text-gray-400">-</span>';
+      }
+    }
+
     this.setElementText('taskDetailStartDateView', task.startDate ? this.formatDate(task.startDate) : '<span class="text-gray-400">Not set</span>', true);
     this.setElementText('taskDetailDueDateView', task.dueDate ? this.formatDate(task.dueDate) : '<span class="text-gray-400">Not set</span>', true);
     this.setElementText('taskDetailStoryPointsView', task.storyPoints || '0');
@@ -1364,34 +1475,34 @@ var TaskDetailPanel = {
     if (!task) return '';
 
     const isBlocked = type === 'predecessor' && task.status !== 'Done';
-    const cardClass = isBlocked ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200';
-    const iconClass = isBlocked ? 'text-red-600' : 'text-green-600';
+    const rowClass = isBlocked ? 'dep-card dep-card-blocked' : 'dep-card dep-card-blocking';
+    const arrowColor = isBlocked ? 'var(--co-error)' : 'var(--co-success)';
 
     return `
-      <div class="flex items-center justify-between p-3 rounded-lg border ${cardClass} hover:shadow-sm transition-shadow">
+      <div class="${rowClass} flex items-center justify-between p-3 rounded-lg transition-all">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-mono text-gray-600">${escapeHtml(task.id)}</span>
-            <span class="text-xs px-1.5 py-0.5 rounded ${this.getStatusClass(task.status)}">${escapeHtml(task.status)}</span>
-            ${isBlocked ? '<span class="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">Blocking</span>' : ''}
+            <span class="text-xs font-mono" style="color:var(--co-ink-muted);">${escapeHtml(task.id)}</span>
+            <span class="status-badge ${this.getStatusClass(task.status)}">${escapeHtml(task.status)}</span>
+            ${isBlocked ? '<span class="text-xs px-1.5 py-0.5 rounded" style="background:var(--co-error-light);color:var(--co-error-dark);">Blocking</span>' : ''}
           </div>
-          <div class="text-sm font-medium text-gray-900 truncate">${escapeHtml(task.title)}</div>
-          <div class="text-xs text-gray-500 mt-1">
-            <i class="fas fa-link ${iconClass} mr-1"></i>
+          <div class="text-sm font-medium truncate" style="color:var(--co-ink);">${escapeHtml(task.title)}</div>
+          <div class="text-xs mt-1" style="color:var(--co-ink-muted);">
+            <i class="fas fa-link mr-1" style="color:${arrowColor};"></i>
             ${dep.dependencyType.replace(/_/g, '-')}
           </div>
         </div>
         <div class="flex items-center gap-2 ml-2">
           <button
             onclick="event.stopPropagation(); openTaskDetailPanel('${task.id}')"
-            class="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50"
+            class="dep-card-action"
             title="View task"
           >
             <i class="fas fa-external-link-alt"></i>
           </button>
           <button
             onclick="event.stopPropagation(); TaskDetailPanel.removeDependency('${dep.id}')"
-            class="text-xs text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50"
+            class="dep-card-action dep-card-action-danger"
             title="Remove dependency"
           >
             <i class="fas fa-times"></i>
@@ -1498,10 +1609,23 @@ var TaskDetailPanel = {
     const projectSelect = document.getElementById('taskDetailProjectEdit');
     if (projectSelect) {
       const projects = State.projects || [];
-      projectSelect.innerHTML = '<option value="">No Project</option>' +
-        projects.map(p =>
-          `<option value="${p.id}" ${p.id === this.task?.projectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+      const dataAssets = State.dataAssets || [];
+      var projHtml = '<option value="">No Project</option>';
+      if (projects.length) {
+        projHtml += '<optgroup label="Projects">';
+        projHtml += projects.map(p =>
+          '<option value="' + p.id + '"' + (p.id === this.task?.projectId ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>'
         ).join('');
+        projHtml += '</optgroup>';
+      }
+      if (dataAssets.length) {
+        projHtml += '<optgroup label="Data Assets">';
+        projHtml += dataAssets.map(da =>
+          '<option value="' + da.id + '"' + (da.id === this.task?.projectId ? ' selected' : '') + '>' + escapeHtml(da.assetName) + '</option>'
+        ).join('');
+        projHtml += '</optgroup>';
+      }
+      projectSelect.innerHTML = projHtml;
     }
 
     const assigneeSelect = document.getElementById('taskDetailAssigneeEdit');
@@ -1700,12 +1824,16 @@ var TaskDetailPanel = {
 
   getProjectName(projectId) {
     if (!projectId) return null;
-    if (!State || !State.projects || !Array.isArray(State.projects)) {
-      return null;
-    }
     try {
-      const project = State.projects.find(p => p && p.id === projectId);
-      return project ? project.name : null;
+      if (State && Array.isArray(State.projects)) {
+        var project = State.projects.find(function(p) { return p && p.id === projectId; });
+        if (project) return project.name;
+      }
+      if (State && Array.isArray(State.dataAssets)) {
+        var asset = State.dataAssets.find(function(da) { return da && da.id === projectId; });
+        if (asset) return asset.assetName;
+      }
+      return null;
     } catch (error) {
       console.error('Error in getProjectName:', error);
       return null;
@@ -1933,9 +2061,8 @@ var TaskDetailPanel = {
       if (length > 0) {
         charCount.classList.remove('hidden');
         charCount.textContent = `${length}/${maxLength}`;
-        charCount.className = length > maxLength
-          ? 'text-xs text-red-500'
-          : 'text-xs text-gray-400';
+        charCount.className = 'text-xs';
+        charCount.style.color = length > maxLength ? 'var(--co-error)' : 'var(--co-gray-400)';
       } else {
         charCount.classList.add('hidden');
       }

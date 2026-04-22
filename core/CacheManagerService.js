@@ -59,6 +59,7 @@ function invalidateCache(entityType, entityId, changeType) {
   try {
     logChange(entityType || 'unknown', entityId || '*', changeType || 'update');
     VersionedCache.resetRequestVersion();
+    VersionedCache.remove('ALL_TASKS_CACHE');
     if (typeof RequestCache !== 'undefined') {
       RequestCache.clear();
     }
@@ -102,7 +103,8 @@ function rebuildBatchCache() {
     const usersData = usersSheet ? usersSheet.getDataRange().getValues() : [];
 
     const taskJsonIdx = CONFIG.TASK_COLUMNS.indexOf('jsonData');
-    const projJsonIdx = CONFIG.PROJECT_COLUMNS.indexOf('jsonData');
+    const projHeaders = projectsData.length > 0 ? projectsData[0].map(function(h) { return String(h).trim(); }) : CONFIG.PROJECT_COLUMNS;
+    const projJsonIdx = projHeaders.indexOf('jsonData');
     const userJsonIdx = CONFIG.USER_COLUMNS.indexOf('jsonData');
     const isDeletedIdx = CONFIG.TASK_COLUMNS.indexOf('isDeleted');
 
@@ -137,9 +139,9 @@ function rebuildBatchCache() {
         const row = projectsData[i];
         if (!row[0]) continue;
         if (projJsonIdx !== -1 && row[projJsonIdx]) {
-          try { projects.push(JSON.parse(row[projJsonIdx])); } catch (e) { projects.push(rowToObject(row, CONFIG.PROJECT_COLUMNS)); }
+          try { projects.push(JSON.parse(row[projJsonIdx])); } catch (e) { projects.push(rowToObject(row, projHeaders)); }
         } else {
-          projects.push(rowToObject(row, CONFIG.PROJECT_COLUMNS));
+          projects.push(rowToObject(row, projHeaders));
         }
       }
     }
@@ -174,7 +176,9 @@ function rebuildBatchCache() {
         statuses: CONFIG.STATUSES,
         priorities: CONFIG.PRIORITIES,
         types: CONFIG.TYPES,
-        colors: CONFIG.COLORS
+        colors: CONFIG.COLORS,
+        tempStakeholders: CONFIG.TEMP_STAKEHOLDERS || [],
+        reqTemplates: CONFIG.REQ_GATHERING_TEMPLATES || []
       }
     };
 
@@ -199,7 +203,9 @@ function buildBatchDataFallback() {
       statuses: CONFIG.STATUSES,
       priorities: CONFIG.PRIORITIES,
       types: CONFIG.TYPES,
-      colors: CONFIG.COLORS
+      colors: CONFIG.COLORS,
+      tempStakeholders: CONFIG.TEMP_STAKEHOLDERS || [],
+      reqTemplates: CONFIG.REQ_GATHERING_TEMPLATES || []
     }
   };
 }

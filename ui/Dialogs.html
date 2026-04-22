@@ -157,14 +157,14 @@
 
   var _newProjSettingsSchema = {
     portfolio: [
-      { key: 'workstream', label: 'Workstream', type: 'text' },
+      { key: 'workstream', label: 'Workstream', type: 'select', optionsKey: 'workstream' },
       { key: 'projectCategory', label: 'Project Category', type: 'text' },
-      { key: 'projectType', label: 'Project Type', type: 'text' },
-      { key: 'developmentPriority', label: 'Development Priority', type: 'text' },
-      { key: 'developmentPhase', label: 'Development Phase', type: 'text' },
+      { key: 'projectType', label: 'Project Type', type: 'select', optionsKey: 'projectType' },
+      { key: 'developmentPriority', label: 'Development Priority', type: 'select', optionsKey: 'developmentPriority' },
+      { key: 'developmentPhase', label: 'Development Phase', type: 'select', optionsKey: 'developmentPhase' },
       { key: 'externalProjectId', label: 'External Project ID', type: 'text' },
       { key: 'linkedProjectId', label: 'Linked Project ID', type: 'text' },
-      { key: 'sdmSupported', label: 'SDMs Supported', type: 'text' },
+      { key: 'sdmSupported', label: 'SDMs Supported', type: 'select', optionsKey: 'sdmSupported' },
       { key: 'docCompleteness', label: 'Documentation Completeness', type: 'text' },
       { key: 'govRequestDate', label: 'Gov Request Date', type: 'date' },
       { key: 'firstDeployDate', label: 'First Deploy Date', type: 'date' },
@@ -189,7 +189,7 @@
     ],
     infrastructure: [
       { key: 'techStack', label: 'Tech Stack', type: 'text' },
-      { key: 'deploymentLocation', label: 'Deployment Location', type: 'text' },
+      { key: 'deploymentLocation', label: 'Deployment Location', type: 'multiselect', optionsKey: 'deploymentLocation' },
       { key: 'deployedPublicly', label: 'Deployed Publicly', type: 'boolean' },
       { key: 'contractInitial', label: 'Contract (Initial)', type: 'text' },
       { key: 'contractCurrent', label: 'Contract (Current)', type: 'text' },
@@ -197,7 +197,7 @@
       { key: 'activeGas', label: 'Active GAS Project', type: 'boolean' },
       { key: 'gasProjectUid', label: 'GAS Project UID', type: 'url' },
       { key: 'activeDataMgmt', label: 'Active Data Mgmt', type: 'boolean' },
-      { key: 'dataCadence', label: 'Data Cadence', type: 'text' },
+      { key: 'dataCadence', label: 'Data Cadence', type: 'select', optionsKey: 'dataCadence' },
       { key: 'dataSourceFiles', label: 'Data Source Files', type: 'text' },
       { key: 'dataSourceExplain', label: 'Data Source', type: 'textarea' },
       { key: 'standaloneAppLink', label: 'Standalone App', type: 'url' },
@@ -205,15 +205,67 @@
       { key: 'aasIntranetLink', label: 'AAS Intranet', type: 'url' },
       { key: 'gsaLink', label: 'GSA Link', type: 'url' },
       { key: 'tableauLink', label: 'Tableau', type: 'url' },
-      { key: 'googleDriveFolder', label: 'Google Drive', type: 'url' },
-      { key: 'githubLinks', label: 'GitHub Links', type: 'url' },
-      { key: 'devDocs', label: 'Dev Documentation', type: 'url' },
-      { key: 'sops', label: 'SOPs', type: 'url' },
-      { key: 'userGuides', label: 'User Guides', type: 'url' },
-      { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'url' },
       { key: 'additionalFiles', label: 'Additional Files', type: 'url' }
+    ],
+    documentation: [
+      { key: 'googleDriveFolder', label: 'Google Drive Folder', type: 'url', hint: 'Auto-created on save if blank' },
+      { key: 'githubLinks', label: 'Git Repository', type: 'url' },
+      { key: 'devDocs', label: 'Development Documentation', type: 'url' },
+      { key: 'designDocs', label: 'Design Documentation', type: 'url' },
+      { key: 'sops', label: 'SOPs (Internal)', type: 'url' },
+      { key: 'userGuides', label: 'User Guides', type: 'url' },
+      { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'url' }
     ]
   };
+
+  var _DOC_COMPLETENESS_KEYS = ['googleDriveFolder','githubLinks','devDocs','designDocs','sops','userGuides','dataDictionaries'];
+
+  function _computeDocCompletenessFromSettings(settings) {
+    var filled = 0;
+    _DOC_COMPLETENESS_KEYS.forEach(function(k) {
+      var v = settings ? settings[k] : null;
+      if (v && String(v).trim() && v !== '[]') filled++;
+    });
+    var total = _DOC_COMPLETENESS_KEYS.length;
+    var pct = Math.round((filled / total) * 100);
+    return { pct: pct, filled: filled, total: total };
+  }
+
+  function _updateNewProjDocBadge() {
+    var badge = document.getElementById('newProjDocCompletenessBadge');
+    if (!badge) return;
+    var settings = {};
+    _DOC_COMPLETENESS_KEYS.forEach(function(k) {
+      var el = document.getElementById('newProjSetting_' + k);
+      if (el && el.value) settings[k] = el.value;
+    });
+    var result = _computeDocCompletenessFromSettings(settings);
+    badge.textContent = result.pct + '% (' + result.filled + '/' + result.total + ')';
+    var color = 'text-gray-400';
+    if (result.pct >= 100) color = 'text-green-600';
+    else if (result.pct >= 50) color = 'text-yellow-600';
+    else if (result.pct > 0) color = 'text-red-500';
+    badge.className = 'text-sm font-semibold ' + color;
+  }
+
+  function _bindNewProjDocListeners() {
+    _DOC_COMPLETENESS_KEYS.forEach(function(k) {
+      var el = document.getElementById('newProjSetting_' + k);
+      if (el && !el.dataset.docListener) {
+        el.addEventListener('input', _updateNewProjDocBadge);
+        el.dataset.docListener = '1';
+      }
+    });
+  }
+
+  function _getNewProjTaxonomyOptions(key) {
+    try {
+      if (typeof ProjectPage !== 'undefined' && ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[key]) {
+        return ProjectPage._taxonomyValues[key];
+      }
+    } catch (e) {}
+    return [];
+  }
 
   function _buildNewProjSettingsFields(groupKey) {
     var schema = _newProjSettingsSchema[groupKey] || [];
@@ -227,6 +279,21 @@
         inputHtml = '<textarea id="' + id + '" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"></textarea>';
       } else if (field.type === 'date') {
         inputHtml = '<input id="' + id + '" type="date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
+      } else if (field.type === 'select') {
+        var opts = _getNewProjTaxonomyOptions(field.optionsKey || field.key);
+        var selectHtml = '<option value="">-- Select --</option>';
+        opts.forEach(function(opt) {
+          selectHtml += '<option value="' + escapeHtml(opt) + '">' + escapeHtml(opt) + '</option>';
+        });
+        inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' + selectHtml + '</select>';
+      } else if (field.type === 'multiselect') {
+        var msOpts = _getNewProjTaxonomyOptions(field.optionsKey || field.key);
+        var checkboxes = msOpts.map(function(opt) {
+          return '<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-50 px-2 rounded">' +
+            '<input type="checkbox" data-newproj-ms="' + field.key + '" value="' + escapeHtml(opt) + '" class="rounded border-gray-300 text-gray-900 focus:ring-gray-400">' +
+            '<span class="text-sm text-gray-900">' + escapeHtml(opt) + '</span></label>';
+        }).join('');
+        inputHtml = '<div id="' + id + '" class="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">' + (checkboxes || '<span class="text-xs text-gray-400">No options available</span>') + '</div>';
       } else {
         inputHtml = '<input id="' + id + '" type="' + (field.type === 'url' ? 'url' : 'text') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
       }
@@ -235,16 +302,26 @@
   }
 
   function switchNewProjTab(tabId) {
-    ['overview', 'portfolio', 'ownership', 'infrastructure'].forEach(function(id) {
+    ['overview', 'portfolio', 'ownership', 'infrastructure', 'documentation'].forEach(function(id) {
       var panel = $('newProjTab_' + id);
       if (panel) panel.classList.toggle('hidden', id !== tabId);
     });
     var buttons = document.querySelectorAll('#newProjTabBar button[data-nptab]');
     buttons.forEach(function(btn) {
       var isActive = btn.getAttribute('data-nptab') === tabId;
-      btn.className = 'px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap ' +
-        (isActive ? 'border-gray-900 font-semibold text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300');
+      btn.className = 'co-tab' + (isActive ? ' co-tab-active' : '');
     });
+  }
+
+  function _renderNewProjAllPanels() {
+    ['portfolio', 'ownership', 'infrastructure'].forEach(function(group) {
+      var panel = $('newProjTab_' + group);
+      if (panel) panel.innerHTML = _buildNewProjSettingsFields(group);
+    });
+    var docPanel = $('newProjDocFields');
+    if (docPanel) docPanel.innerHTML = _buildNewProjSettingsFields('documentation');
+    _bindNewProjDocListeners();
+    _updateNewProjDocBadge();
   }
 
   function openProjectModal() {
@@ -254,15 +331,21 @@
       ownerSelect.innerHTML = '<option value="">Current User (default)</option>' +
         users.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '">' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('');
     }
-    ['newProjName', 'newProjDesc', 'newProjStartDate', 'newProjEndDate', 'newProjVersion', 'newProjRepoUrl', 'newProjTags'].forEach(function(id) {
+    ['newProjName', 'newProjDesc', 'newProjStartDate', 'newProjGovRequestDate', 'newProjFirstDeployDate', 'newProjRetiredDate', 'newProjVersion', 'newProjRepoUrl', 'newProjTags'].forEach(function(id) {
       var el = $(id);
       if (el) el.value = '';
     });
     if (ownerSelect) ownerSelect.value = '';
-    ['portfolio', 'ownership', 'infrastructure'].forEach(function(group) {
-      var panel = $('newProjTab_' + group);
-      if (panel) panel.innerHTML = _buildNewProjSettingsFields(group);
-    });
+    _renderNewProjAllPanels();
+    if (typeof ProjectPage === 'undefined' || !ProjectPage._taxonomyValues) {
+      google.script.run
+        .withSuccessHandler(function(vals) {
+          if (typeof ProjectPage !== 'undefined') ProjectPage._taxonomyValues = vals;
+          _renderNewProjAllPanels();
+        })
+        .withFailureHandler(function() {})
+        .getProjectTaxonomyValues();
+    }
     switchNewProjTab('overview');
     show($("projectModal"));
   }
@@ -275,9 +358,16 @@
     var name = ($('newProjName') || {}).value || '';
     if (!name.trim()) { toast('Project name is required', 'error'); return; }
     var settings = {};
-    ['portfolio', 'ownership', 'infrastructure'].forEach(function(group) {
+    ['portfolio', 'ownership', 'infrastructure', 'documentation'].forEach(function(group) {
       var schema = _newProjSettingsSchema[group] || [];
       schema.forEach(function(field) {
+        if (field.type === 'multiselect') {
+          var boxes = document.querySelectorAll('input[data-newproj-ms="' + field.key + '"]:checked');
+          var selected = [];
+          boxes.forEach(function(cb) { selected.push(cb.value); });
+          if (selected.length) settings[field.key] = selected;
+          return;
+        }
         var el = $('newProjSetting_' + field.key);
         if (!el) return;
         if (field.type === 'boolean') {
@@ -289,12 +379,18 @@
     });
     var tagsRaw = ($('newProjTags') || {}).value || '';
     var tags = tagsRaw.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+    var govRequestDate = ($('newProjGovRequestDate') || {}).value || '';
+    var firstDeployDate = ($('newProjFirstDeployDate') || {}).value || '';
+    var projectRetiredDate = ($('newProjRetiredDate') || {}).value || '';
+    if (govRequestDate) settings.govRequestDate = govRequestDate;
+    if (firstDeployDate) settings.firstDeployDate = firstDeployDate;
+    if (projectRetiredDate) settings.projectRetiredDate = projectRetiredDate;
     var projectData = {
       name: name.trim(),
       description: ($('newProjDesc') || {}).value || '',
       ownerId: ($('newProjOwner') || {}).value || '',
       startDate: ($('newProjStartDate') || {}).value || '',
-      endDate: ($('newProjEndDate') || {}).value || '',
+      endDate: '',
       version: ($('newProjVersion') || {}).value || '',
       repoUrl: ($('newProjRepoUrl') || {}).value || '',
       tags: JSON.stringify(tags),
@@ -400,6 +496,12 @@
           results.push({ type: 'project', id: p.id, title: p.name, subtitle: 'Project', icon: 'fa-folder' });
         }
       });
+      var dataAssets = State ? State.dataAssets || [] : [];
+      dataAssets.forEach(function(da) {
+        if ((da.assetName || '').toLowerCase().includes(query) || (da.id || '').toLowerCase().includes(query)) {
+          results.push({ type: 'dataasset', id: da.id, title: da.assetName, subtitle: 'Data Asset', icon: 'fa-database' });
+        }
+      });
       this.results = results.slice(0, 10);
       this.selectedIndex = 0;
       this.renderResults();
@@ -450,6 +552,9 @@
       } else if (r.type === 'project') {
         switchView('projects');
         setTimeout(function() { if (typeof ProjectPage !== 'undefined') ProjectPage.selectProject(r.id); }, 200);
+      } else if (r.type === 'dataasset') {
+        switchView('dataassets');
+        setTimeout(function() { if (typeof DataAssetPage !== 'undefined') DataAssetPage.selectAsset(r.id); }, 200);
       } else if (r.type === 'action') {
         if (r.id === 'new-task') TaskEditModal.openNew({ projectId: State.projectFilter || '' });
         else if (r.id === 'view-my') switchView('my');

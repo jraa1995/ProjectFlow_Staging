@@ -1,0 +1,562 @@
+<style>
+.badge-showcase-overlay {
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.6);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:100;
+  padding:1rem;
+  backdrop-filter:blur(6px);
+  animation:fadeInBackdrop 0.2s ease-out;
+}
+.badge-showcase-overlay.hidden { display:none; }
+.badge-card {
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:1rem;
+  border-radius:0.75rem;
+  border:1px solid #e5e5e5;
+  background:#fff;
+  cursor:pointer;
+  transition:all 0.2s;
+  text-align:center;
+}
+.badge-card:hover {
+  transform:translateY(-2px);
+  box-shadow:0 8px 20px rgba(0,0,0,0.08);
+}
+.badge-card.locked {
+  opacity:0.4;
+  filter:grayscale(1);
+}
+.badge-card.locked:hover {
+  opacity:0.6;
+  filter:grayscale(0.6);
+}
+.badge-icon-ring {
+  width:3.5rem;
+  height:3.5rem;
+  border-radius:9999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:1.25rem;
+  margin-bottom:0.5rem;
+  position:relative;
+}
+.badge-icon-ring::after {
+  content:'';
+  position:absolute;
+  inset:-3px;
+  border-radius:9999px;
+  border:2px solid transparent;
+  opacity:0;
+  transition:opacity 0.2s;
+}
+.badge-card:not(.locked):hover .badge-icon-ring::after {
+  opacity:1;
+}
+.rarity-uncommon .badge-icon-ring::after { border-color:#10b981; }
+.rarity-rare .badge-icon-ring::after { border-color:#3b82f6; }
+.rarity-epic .badge-icon-ring::after { border-color:#8b5cf6; }
+.rarity-extremely_rare .badge-icon-ring::after { border-color:#be185d; }
+.rarity-legendary .badge-icon-ring::after { border-color:#f59e0b; }
+.rarity-enigmatic .badge-icon-ring::after {
+  border-color:transparent;
+  background:linear-gradient(135deg,#1e1b4b,#7c3aed,#be185d,#1e1b4b) border-box;
+  -webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+  animation:enigmaShimmer 3s linear infinite;
+}
+@keyframes enigmaShimmer {
+  0% { filter:hue-rotate(0deg); }
+  100% { filter:hue-rotate(360deg); }
+}
+.rarity-tag {
+  display:inline-block;
+  font-size:0.625rem;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+  padding:0.125rem 0.375rem;
+  border-radius:9999px;
+  margin-top:0.25rem;
+}
+.rarity-tag.uncommon { background:#d1fae5; color:#065f46; }
+.rarity-tag.rare { background:#dbeafe; color:#1e40af; }
+.rarity-tag.epic { background:#ede9fe; color:#5b21b6; }
+.rarity-tag.extremely_rare { background:#fce7f3; color:#9f1239; }
+.rarity-tag.legendary { background:#fef3c7; color:#92400e; }
+.rarity-tag.enigmatic {
+  background:linear-gradient(135deg,#1e1b4b,#7c3aed,#be185d);
+  color:#fff;
+  background-size:200% 200%;
+  animation:enigmaTagShift 4s ease-in-out infinite;
+}
+@keyframes enigmaTagShift {
+  0%, 100% { background-position:0% 50%; }
+  50% { background-position:100% 50%; }
+}
+.badge-card.enigma-locked {
+  opacity:1;
+  filter:none;
+  background:linear-gradient(135deg,#f8fafc,#f1f5f9);
+  border-color:#cbd5e1;
+}
+.badge-card.enigma-locked .badge-icon-ring {
+  background:linear-gradient(135deg,#1e1b4b,#312e81)!important;
+  color:#c7d2fe!important;
+  animation:enigmaPulse 2.5s ease-in-out infinite;
+}
+@keyframes enigmaPulse {
+  0%, 100% { box-shadow:0 0 0 0 rgba(124,58,237,0.4); }
+  50% { box-shadow:0 0 0 6px rgba(124,58,237,0); }
+}
+.badge-earned-date {
+  font-size:0.65rem;
+  color:#a3a3a3;
+  margin-top:0.25rem;
+}
+.badge-toast {
+  position:fixed;
+  top:1.5rem;
+  right:1.5rem;
+  z-index:200;
+  background:#fff;
+  border:1px solid #e5e5e5;
+  border-radius:0.75rem;
+  box-shadow:0 20px 40px rgba(0,0,0,0.15);
+  padding:1rem 1.25rem;
+  display:flex;
+  align-items:center;
+  gap:0.75rem;
+  animation:badgeSlideIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  max-width:320px;
+}
+.badge-toast.hiding {
+  animation:badgeSlideOut 0.3s ease-in forwards;
+}
+@keyframes badgeSlideIn {
+  from { transform:translateX(120%); opacity:0; }
+  to { transform:translateX(0); opacity:1; }
+}
+@keyframes badgeSlideOut {
+  from { transform:translateX(0); opacity:1; }
+  to { transform:translateX(120%); opacity:0; }
+}
+@keyframes badgePulse {
+  0%, 100% { transform:scale(1); }
+  50% { transform:scale(1.15); }
+}
+.badge-toast .badge-icon-ring {
+  animation:badgePulse 0.6s ease-in-out 0.3s 2;
+  margin-bottom:0;
+}
+.sidebar-badge-row {
+  display:flex;
+  gap:0.25rem;
+  margin-top:0.25rem;
+  flex-wrap:wrap;
+}
+.sidebar-badge-mini {
+  width:1.25rem;
+  height:1.25rem;
+  border-radius:9999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:0.5rem;
+  cursor:pointer;
+  transition:transform 0.15s;
+}
+.sidebar-badge-mini:hover {
+  transform:scale(1.3);
+}
+.badge-progress-ring {
+  width:100%;
+  height:4px;
+  background:#f5f5f5;
+  border-radius:9999px;
+  overflow:hidden;
+  margin-top:0.75rem;
+}
+.badge-progress-fill {
+  height:100%;
+  border-radius:9999px;
+  transition:width 0.6s ease-out;
+}
+.badge-category-tab {
+  padding:0.375rem 0.75rem;
+  font-size:0.75rem;
+  font-weight:600;
+  border-radius:9999px;
+  cursor:pointer;
+  transition:all 0.15s;
+  color:#737373;
+  background:transparent;
+  border:none;
+}
+.badge-category-tab:hover { color:#262626; background:#f5f5f5; }
+.badge-category-tab.active { color:#fff; background:#404040; }
+
+#badgeDetailPopover {
+  opacity:1;
+  transform:translateY(0);
+  transition:opacity 0.4s ease,transform 0.4s ease;
+}
+
+#badgeDetailPopover.fading {
+  opacity:0;
+  transform:translateY(8px);
+  pointer-events:none;
+}
+
+#badgeDetailPopover:not(.hidden) {
+  animation:badgeDetailSlideIn 0.25s ease-out;
+}
+
+@keyframes badgeDetailSlideIn {
+  from { opacity:0; transform:translateY(12px); }
+  to { opacity:1; transform:translateY(0); }
+}
+</style>
+
+<script>
+var BadgeShowcase = (function() {
+  var _profile = null;
+  var _activeCategory = 'all';
+  var _toastQueue = [];
+  var _toastShowing = false;
+  var _detailTimer = null;
+  var _detailFadeTimer = null;
+  var DETAIL_AUTO_HIDE_MS = 7000;
+  var DETAIL_AUTO_HIDE_AFTER_HOVER_MS = 3000;
+  var DETAIL_FADE_MS = 400;
+
+  function open(email) {
+    var overlay = document.getElementById('badgeShowcaseOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('hidden');
+    overlay.querySelector('.badge-showcase-body').innerHTML = '<div class="flex items-center justify-center py-12 text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Loading badges...</div>';
+    google.script.run
+      .withSuccessHandler(function(profile) {
+        _profile = profile;
+        _activeCategory = 'all';
+        _renderShowcase();
+      })
+      .withFailureHandler(function(err) {
+        overlay.querySelector('.badge-showcase-body').innerHTML = '<div class="text-center py-12 text-red-500">Failed to load badges</div>';
+      })
+      .getBadgeProfile(email || null);
+  }
+
+  function close() {
+    _hideDetail();
+    var overlay = document.getElementById('badgeShowcaseOverlay');
+    if (overlay) overlay.classList.add('hidden');
+  }
+
+  function _renderShowcase() {
+    var container = document.querySelector('.badge-showcase-body');
+    if (!container || !_profile) return;
+
+    var defs = _profile.definitions || [];
+    var earned = {};
+    (_profile.badges || []).forEach(function(b) { earned[b.id] = b; });
+
+    var earnedCount = _profile.totalEarned || 0;
+    var totalCount = _profile.totalAvailable || defs.length;
+    var pct = totalCount ? Math.round((earnedCount / totalCount) * 100) : 0;
+
+    var categories = ['all', 'identity', 'productivity', 'collaboration', 'rare'];
+    var filtered = _activeCategory === 'all' ? defs : defs.filter(function(d) { return d.category === _activeCategory; });
+
+    filtered.sort(function(a, b) {
+      var aEarned = earned[a.id] ? 0 : 1;
+      var bEarned = earned[b.id] ? 0 : 1;
+      if (aEarned !== bEarned) return aEarned - bEarned;
+      var rarityOrder = { common: 0, uncommon: 1, rare: 2, epic: 3, extremely_rare: 4, legendary: 5, enigmatic: 6 };
+      return (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0);
+    });
+
+    var html = '';
+    html += '<div class="flex items-center justify-between mb-4">';
+    html += '<div>';
+    html += '<span class="text-2xl font-bold text-gray-900">' + earnedCount + '</span>';
+    html += '<span class="text-sm text-gray-400 ml-1">/ ' + totalCount + ' badges</span>';
+    html += '</div>';
+    if (_profile.loginStreak > 0) {
+      html += '<div class="flex items-center gap-1.5 text-sm text-gray-500">';
+      html += '<i class="fas fa-fire text-orange-400"></i>';
+      html += '<span>' + _profile.loginStreak + '-day login streak</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="badge-progress-ring"><div class="badge-progress-fill" style="width:' + pct + '%;background:linear-gradient(90deg,#404040,#737373);"></div></div>';
+
+    html += '<div class="flex gap-1 mt-4 mb-4 flex-wrap">';
+    categories.forEach(function(cat) {
+      var label = cat.charAt(0).toUpperCase() + cat.slice(1);
+      html += '<button class="badge-category-tab' + (cat === _activeCategory ? ' active' : '') + '" onclick="BadgeShowcase.setCategory(\'' + cat + '\')">' + label + '</button>';
+    });
+    html += '</div>';
+
+    html += '<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">';
+    filtered.forEach(function(def) {
+      var isEarned = !!earned[def.id];
+      var earnedDate = isEarned ? _formatDate(earned[def.id].earnedAt) : '';
+      var isSecretLocked = def.secret && !isEarned;
+
+      var displayName = isSecretLocked ? '???' : def.name;
+      var displayDesc = isSecretLocked ? '???' : def.description;
+      var displayIcon = isSecretLocked ? 'fa-question' : def.icon;
+      var displayColor = isSecretLocked ? '#1e1b4b' : def.color;
+      var rarityLabel = (def.rarity || '').replace(/_/g, ' ');
+
+      var cardClasses = 'badge-card rarity-' + def.rarity;
+      if (!isEarned) cardClasses += isSecretLocked ? ' enigma-locked' : ' locked';
+
+      html += '<div class="' + cardClasses + '" onclick="BadgeShowcase._showDetail(\'' + def.id + '\')" title="' + _escHtml(displayDesc) + '">';
+      html += '<div class="badge-icon-ring" style="background:' + displayColor + '15;color:' + displayColor + ';">';
+      html += '<i class="fas ' + displayIcon + '"></i>';
+      html += '</div>';
+      html += '<div class="text-xs font-semibold text-gray-800 mt-0.5">' + _escHtml(displayName) + '</div>';
+      html += '<span class="rarity-tag ' + def.rarity + '">' + rarityLabel + '</span>';
+      if (isEarned) {
+        html += '<div class="badge-earned-date">' + earnedDate + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+
+    container.innerHTML = html;
+  }
+
+  function setCategory(cat) {
+    _activeCategory = cat;
+    _renderShowcase();
+  }
+
+  function _showDetail(badgeId) {
+    if (!_profile) return;
+    var defs = _profile.definitions || [];
+    var def = defs.find(function(d) { return d.id === badgeId; });
+    if (!def) return;
+    var earned = {};
+    (_profile.badges || []).forEach(function(b) { earned[b.id] = b; });
+    var isEarned = !!earned[badgeId];
+    var earnedDate = isEarned ? _formatDate(earned[badgeId].earnedAt) : null;
+
+    var detail = document.getElementById('badgeDetailPopover');
+    if (!detail) return;
+
+    var isSecretLocked = def.secret && !isEarned;
+    var displayName = isSecretLocked ? '???' : def.name;
+    var displayDesc = isSecretLocked ? '???' : def.description;
+    var displayIcon = isSecretLocked ? 'fa-question' : def.icon;
+    var displayColor = isSecretLocked ? '#1e1b4b' : def.color;
+    var rarityLabel = (def.rarity || '').replace(/_/g, ' ');
+
+    detail.innerHTML = '<div class="flex flex-col items-center py-4 px-6">'
+      + '<div class="badge-icon-ring" style="width:4.5rem;height:4.5rem;font-size:1.75rem;background:' + displayColor + '15;color:' + displayColor + ';margin-bottom:0.75rem;"><i class="fas ' + displayIcon + '"></i></div>'
+      + '<div class="text-base font-bold text-gray-900">' + _escHtml(displayName) + '</div>'
+      + '<span class="rarity-tag ' + def.rarity + '" style="margin-top:0.25rem;">' + rarityLabel + '</span>'
+      + '<p class="text-sm text-gray-500 text-center mt-2">' + _escHtml(displayDesc) + '</p>'
+      + (isEarned ? '<div class="mt-2 text-xs text-green-600 font-medium"><i class="fas fa-check-circle mr-1"></i>Earned ' + earnedDate + '</div>' : '<div class="mt-2 text-xs text-gray-400"><i class="fas fa-lock mr-1"></i>Not yet earned</div>')
+      + '<button onclick="BadgeShowcase._hideDetail()" class="mt-3 text-xs text-gray-400 hover:text-gray-600">Close</button>'
+      + '</div>';
+    detail.classList.remove('hidden');
+    detail.classList.remove('fading');
+    detail.onmouseenter = _pauseDetailAutoHide;
+    detail.onmouseleave = _resumeDetailAutoHide;
+    _scheduleDetailAutoHide(DETAIL_AUTO_HIDE_MS);
+  }
+
+  function _scheduleDetailAutoHide(ms) {
+    _clearDetailTimers();
+    _detailTimer = setTimeout(function() {
+      var detail = document.getElementById('badgeDetailPopover');
+      if (!detail || detail.classList.contains('hidden')) return;
+      detail.classList.add('fading');
+      _detailFadeTimer = setTimeout(function() {
+        detail.classList.add('hidden');
+        detail.classList.remove('fading');
+      }, DETAIL_FADE_MS);
+    }, ms);
+  }
+
+  function _pauseDetailAutoHide() {
+    _clearDetailTimers();
+    var detail = document.getElementById('badgeDetailPopover');
+    if (detail) detail.classList.remove('fading');
+  }
+
+  function _resumeDetailAutoHide() {
+    _scheduleDetailAutoHide(DETAIL_AUTO_HIDE_AFTER_HOVER_MS);
+  }
+
+  function _clearDetailTimers() {
+    if (_detailTimer) { clearTimeout(_detailTimer); _detailTimer = null; }
+    if (_detailFadeTimer) { clearTimeout(_detailFadeTimer); _detailFadeTimer = null; }
+  }
+
+  function _hideDetail() {
+    _clearDetailTimers();
+    var detail = document.getElementById('badgeDetailPopover');
+    if (!detail) return;
+    detail.classList.add('hidden');
+    detail.classList.remove('fading');
+  }
+
+  function showToast(badge) {
+    if (!badge || !badge.id) return;
+    _toastQueue.push(badge);
+    if (!_toastShowing) _processToastQueue();
+  }
+
+  function _processToastQueue() {
+    if (!_toastQueue.length) {
+      _toastShowing = false;
+      return;
+    }
+    _toastShowing = true;
+    var badge = _toastQueue.shift();
+    var defs = (typeof BadgeEngine !== 'undefined' && BadgeEngine.BADGES) ? BadgeEngine.BADGES : {};
+    var def = defs[badge.id];
+    if (!def && _profile) {
+      def = (_profile.definitions || []).find(function(d) { return d.id === badge.id; });
+    }
+    if (!def) {
+      def = { name: badge.id, icon: 'fa-trophy', color: '#737373', description: '', rarity: 'uncommon' };
+    }
+
+    var existing = document.querySelector('.badge-toast');
+    if (existing) existing.remove();
+
+    var toast = document.createElement('div');
+    toast.className = 'badge-toast';
+    toast.innerHTML = '<div class="badge-icon-ring" style="width:2.5rem;height:2.5rem;font-size:1rem;background:' + def.color + '20;color:' + def.color + ';flex-shrink:0;"><i class="fas ' + def.icon + '"></i></div>'
+      + '<div><div class="text-xs text-gray-400 font-medium uppercase tracking-wide">Badge Unlocked</div>'
+      + '<div class="text-sm font-bold text-gray-900">' + _escHtml(def.name) + '</div>'
+      + '<div class="text-xs text-gray-500">' + _escHtml(def.description) + '</div></div>';
+    document.body.appendChild(toast);
+
+    setTimeout(function() {
+      toast.classList.add('hiding');
+      setTimeout(function() {
+        toast.remove();
+        _processToastQueue();
+      }, 300);
+    }, 4000);
+  }
+
+  function renderSidebarBadges(badges, definitions) {
+    var container = document.getElementById('sidebarBadges');
+    if (!container) return;
+    if (!badges || !badges.length) {
+      container.innerHTML = '';
+      return;
+    }
+    var defs = {};
+    (definitions || []).forEach(function(d) { defs[d.id] = d; });
+
+    var rarityOrder = { enigmatic: -2, legendary: -1, extremely_rare: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
+    var sorted = badges.slice().sort(function(a, b) {
+      var da = defs[a.id] || {};
+      var db = defs[b.id] || {};
+      return (rarityOrder[da.rarity] || 4) - (rarityOrder[db.rarity] || 4);
+    });
+
+    var display = sorted.slice(0, 6);
+    var html = '<div class="sidebar-badge-row">';
+    display.forEach(function(b) {
+      var def = defs[b.id] || { icon: 'fa-trophy', color: '#737373', name: b.id };
+      html += '<div class="sidebar-badge-mini" style="background:' + def.color + '20;color:' + def.color + ';" title="' + _escHtml(def.name) + '" onclick="BadgeShowcase.open()"><i class="fas ' + def.icon + '"></i></div>';
+    });
+    if (badges.length > 6) {
+      html += '<div class="sidebar-badge-mini" style="background:#f5f5f5;color:#737373;font-size:0.55rem;font-weight:700;" onclick="BadgeShowcase.open()">+' + (badges.length - 6) + '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  function checkAndEvaluate() {
+    google.script.run
+      .withSuccessHandler(function(newBadges) {
+        if (newBadges && newBadges.length) {
+          newBadges.forEach(function(b) { showToast(b); });
+          _refreshSidebarBadges();
+        }
+      })
+      .evaluateMyBadges();
+  }
+
+  function _refreshSidebarBadges() {
+    google.script.run
+      .withSuccessHandler(function(profile) {
+        if (profile) {
+          _profile = profile;
+          renderSidebarBadges(profile.badges, profile.definitions);
+        }
+      })
+      .getBadgeProfile(null);
+  }
+
+  function initSidebar() {
+    google.script.run
+      .withSuccessHandler(function(profile) {
+        if (profile) {
+          _profile = profile;
+          renderSidebarBadges(profile.badges, profile.definitions);
+        }
+      })
+      .getBadgeProfile(null);
+  }
+
+  function _formatDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function _escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  return {
+    open: open,
+    close: close,
+    setCategory: setCategory,
+    _showDetail: _showDetail,
+    _hideDetail: _hideDetail,
+    showToast: showToast,
+    renderSidebarBadges: renderSidebarBadges,
+    checkAndEvaluate: checkAndEvaluate,
+    initSidebar: initSidebar,
+    _refreshSidebarBadges: _refreshSidebarBadges
+  };
+})();
+</script>
+
+<div id="badgeShowcaseOverlay" class="badge-showcase-overlay hidden" onclick="BadgeShowcase.close()">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+      <div class="flex items-center gap-2">
+        <i class="fas fa-trophy text-gray-400"></i>
+        <h2 class="text-base font-semibold text-gray-900">Badge Showcase</h2>
+      </div>
+      <button onclick="BadgeShowcase.close()" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="badge-showcase-body flex-1 overflow-y-auto px-5 py-4"></div>
+    <div id="badgeDetailPopover" class="hidden absolute inset-x-0 bottom-0 bg-white border-t border-gray-200 shadow-lg rounded-b-xl"></div>
+  </div>
+</div>

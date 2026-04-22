@@ -71,6 +71,7 @@ function getMyBoardOptimized(projectId, userEmail) {
 function saveNewTask(taskData) {
   try {
     const result = createTask(taskData);
+    patchTaskCache(result.id, result, 'create');
     invalidateTaskCache(result.id, 'create');
     return result;
   } catch (error) {

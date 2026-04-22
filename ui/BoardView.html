@@ -253,10 +253,10 @@
     State.board.columns.forEach((col) => {
       html += `<div class="board-column" data-status="${col.id}">`;
       html += `<div class="column-header" style="border-top-color: ${col.color}">`;
-      html += `<h3 class="text-sm font-semibold text-gray-700">${escapeHtml(
+      html += `<h3 class="text-[12px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">${escapeHtml(
         col.name
         )}</h3>`;
-      html += `<span class="text-xs font-medium bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">${col.count}</span>`;
+      html += `<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full" style="background:var(--co-surface-sunken);color:var(--co-ink-soft);border:1px solid var(--co-border-subtle);">${col.count}</span>`;
       html += `</div>`;
       html += `<div class="task-list" data-status="${col.id}">`;
       col.tasks.forEach((task) => {

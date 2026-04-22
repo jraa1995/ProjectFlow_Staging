@@ -4,85 +4,194 @@ try {
 var ProjectPage = {
   projects: [],
   selectedProject: null,
-  activeTab: 'overview',
+  activeTab: 'details',
   isEditing: false,
   editingTab: null,
   showAddRelease: false,
   showAddUpdate: false,
+  showEmailRelease: false,
   _editSecondaryUsers: [],
   filterStatus: '',
+  filterWorkstream: '',
+  filterProjectType: '',
+  filterTechStack: '',
+  filterPrimaryOwner: '',
   searchTerm: '',
 
   _settingsSchema: {
-    portfolio: [
-      { key: 'workstream', label: 'Workstream', type: 'taxonomy_select' },
-      { key: 'projectCategory', label: 'Project Category', type: 'taxonomy_select' },
-      { key: 'projectType', label: 'Project Type', type: 'taxonomy_select' },
-      { key: 'developmentPriority', label: 'Development Priority', type: 'taxonomy_select' },
-      { key: 'developmentPhase', label: 'Development Phase', type: 'taxonomy_select' },
-      { key: 'externalProjectId', label: 'External Project ID', type: 'text' },
-      { key: 'linkedProjectId', label: 'Linked Project ID', type: 'text' },
-      { key: 'sdmSupported', label: 'SDMs Supported', type: 'text' },
-      { key: 'govRequestDate', label: 'Gov Request Date', type: 'date' },
-      { key: 'firstDeployDate', label: 'First Deploy Date', type: 'date' },
-      { key: 'projectRetiredDate', label: 'Project Retired', type: 'date' },
-      { key: 'isAiInvolved', label: 'AI Involved', type: 'boolean' },
-      { key: 'isInternalHive', label: 'Internal Hive', type: 'boolean' },
-      { key: 'inProjectFlow', label: 'In ProjectFlow', type: 'boolean' },
-      { key: 'legacyWbs', label: 'Legacy WBS', type: 'text' },
-      { key: 'notes', label: 'Notes', type: 'textarea' }
+    deployment: [
+      { key: 'deployedPublicly', label: 'Deployed Publicly', type: 'boolean' },
+      { key: 'deploymentLocation', label: 'Deployment Location', type: 'taxonomy_multiselect' },
+      { key: 'standaloneAppLink', label: 'Standalone App', type: 'url' },
+      { key: 'd2dLink', label: 'D2D', type: 'url' },
+      { key: 'aasIntranetLink', label: 'AAS Intranet', type: 'url' },
+      { key: 'gsaLink', label: 'External GSA', type: 'url' },
+      { key: 'tableauLink', label: 'Tableau Server', type: 'url' }
     ],
     ownership: [
-      { key: 'secondaryUsers', label: 'Backup Owners', type: 'userlist' },
-      { key: 'projectPoc', label: 'Project POC', type: 'text' },
-      { key: 'clientOwner', label: 'Client Owner', type: 'text' },
-      { key: 'clientStakeholders', label: 'Client Stakeholders', type: 'text' },
-      { key: 'futureOwner', label: 'Future Owner', type: 'text', deprecated: true },
-      { key: 'futureContractHome', label: 'Future Contract Home', type: 'text', deprecated: true },
-      { key: 'transitionPriority', label: 'Transition Priority', type: 'text', deprecated: true },
-      { key: 'transitionMeetingDate', label: 'Transition Meeting Date', type: 'date', deprecated: true },
-      { key: 'transitionComplete', label: 'Transition Complete', type: 'boolean', deprecated: true },
-      { key: 'gasOwner', label: 'GAS Owner', type: 'text' },
-      { key: 'dataMgmtOwner', label: 'Data Mgmt Owner', type: 'text' },
-      { key: 'dataTaskOwnership', label: 'Data Task Ownership', type: 'text' },
-      { key: 'contractInitial', label: 'Contract (Initial)', type: 'text' },
-      { key: 'contractCurrent', label: 'Contract (Current)', type: 'text' },
-      { key: 'contractTask', label: 'Contract Task', type: 'text' }
+      { key: 'secondaryUsers', label: 'Backup Owner(s)', type: 'static_multiselect', optionsKey: 'biSmes' },
+      { key: 'projectPoc', label: 'Other Contractor POC(s)', type: 'static_multiselect', optionsKey: 'cpmdNames' },
+      { key: 'clientStakeholders', label: 'Other Gov Stakeholders', type: 'text' },
+      { key: 'contractInitial', label: 'Contract of Initial Development', type: 'static_select', optionsKey: 'contractOptions' },
+      { key: 'contractCurrent', label: 'Current Contract Ownership', type: 'static_select', optionsKey: 'contractOptions' },
+      { key: 'contractTask', label: 'Contract Task-Level Ownership', type: 'taxonomy_select' },
+      { key: 'gasOwner', label: 'GAS Project Owner', type: 'static_select', optionsKey: 'biSmes' },
+      { key: 'dataMgmtOwner', label: 'Data Management Process Owner', type: 'static_select', optionsKey: 'biSmes' }
     ],
     infrastructure: [
-      { key: 'techStack', label: 'Tech Stack', type: 'taxonomy_select' },
-      { key: 'deploymentLocation', label: 'Deployment Location', type: 'text' },
-      { key: 'deployedPublicly', label: 'Deployed Publicly', type: 'boolean' },
+      { key: '_relatedDataAssets', label: 'Data Assets', type: 'data_assets' },
+      { key: 'techStack', label: 'Tech Stack', type: 'taxonomy_multiselect' },
       { key: 'activeGas', label: 'Active GAS Project', type: 'boolean' },
-      { key: 'gasProjectUid', label: 'GAS Project UID', type: 'url' },
-      { key: 'activeDataMgmt', label: 'Active Data Mgmt', type: 'boolean' },
-      { key: 'dataCadence', label: 'Data Cadence', type: 'text' },
-      { key: 'dataSourceFiles', label: 'Data Source Files', type: 'text' },
-      { key: 'dataSourceExplain', label: 'Data Source', type: 'textarea' }
+      { key: 'gasProjectUid', label: 'GAS Project Link(s)', type: 'url' },
+      { key: 'activeDataMgmt', label: 'Active Data Management Process', type: 'boolean' },
+      { key: 'dataSourceFiles', label: 'Data Source File(s)', type: 'drive_picker_multi' },
+      { key: 'dataCadence', label: 'Data Refresh Cadence', type: 'static_select', optionsKey: 'dataCadence' },
+      { key: 'dataSourceExplain', label: 'How is Data Sourced', type: 'textarea' }
     ],
     documentation: [
-      { key: 'docCompleteness', label: 'Documentation Completeness', type: 'text' },
-      { key: 'standaloneAppLink', label: 'Standalone App', type: 'url' },
-      { key: 'd2dLink', label: 'D2D Link', type: 'url' },
-      { key: 'aasIntranetLink', label: 'AAS Intranet', type: 'url' },
-      { key: 'gsaLink', label: 'GSA Link', type: 'url' },
-      { key: 'tableauLink', label: 'Tableau', type: 'url' },
-      { key: 'googleDriveFolder', label: 'Google Drive', type: 'url' },
-      { key: 'githubLinks', label: 'GitHub Links', type: 'url' },
-      { key: 'devDocs', label: 'Dev Documentation', type: 'url' },
-      { key: 'sops', label: 'SOPs', type: 'url' },
-      { key: 'userGuides', label: 'User Guides', type: 'url' },
-      { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'url' },
-      { key: 'additionalFiles', label: 'Additional Files', type: 'url' }
+      { key: 'docCompleteness', label: 'Documentation Completeness', type: 'computed_doc' },
+      { key: 'googleDriveFolder', label: 'Google Drive Folder', type: 'url' },
+      { key: 'githubLinks', label: 'Git Repository', type: 'url' },
+      { key: 'devDocs', label: 'Development Documentation', type: 'drive_picker' },
+      { key: 'designDocs', label: 'Design Documentation', type: 'drive_picker' },
+      { key: 'sops', label: 'SOPs (Internal)', type: 'drive_picker' },
+      { key: 'userGuides', label: 'User Guides', type: 'drive_picker' },
+      { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'drive_picker' },
+      { key: 'additionalFiles', label: 'Additional Files', type: 'drive_picker_multi' }
     ]
   },
 
+  _projectOptions: [],
+  _cpmdPersonnel: [],
+
   init() {
     if (typeof SplitPane !== 'undefined') SplitPane.init('projectSplitPane', 'projects', 288);
+    this._applyRoleVisibility();
     this.loadProjects();
     google.script.run.withSuccessHandler(function(vals) {
       ProjectPage._taxonomyValues = vals;
+      ProjectPage._populateExtraFilters();
     }).getProjectTaxonomyValues();
+    google.script.run.withSuccessHandler(function(opts) {
+      ProjectPage._projectOptions = opts || [];
+    }).getProjectPickerOptions();
+    this._loadCpmdPersonnel();
+  },
+
+  _applyRoleVisibility() {
+    var role = (typeof State !== 'undefined' && State.user && State.user.role)
+      ? String(State.user.role).toLowerCase() : '';
+    var importBtn = document.getElementById('projImportWorklogBtn');
+    if (importBtn) {
+      if (role === 'admin') {
+        importBtn.classList.remove('hidden');
+        importBtn.classList.add('flex');
+      } else {
+        importBtn.classList.add('hidden');
+        importBtn.classList.remove('flex');
+      }
+    }
+    var exportBtn = document.getElementById('projExportCsvBtn');
+    if (exportBtn) {
+      if (role === 'admin') {
+        exportBtn.classList.remove('hidden');
+        exportBtn.classList.add('flex');
+      } else {
+        exportBtn.classList.add('hidden');
+        exportBtn.classList.remove('flex');
+      }
+    }
+  },
+
+  _loadCpmdPersonnel() {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          ProjectPage._cpmdPersonnel = result.personnel || [];
+          var names = ProjectPage._cpmdPersonnel.map(function(p) { return p.name; });
+          if (!ProjectPage._taxonomyValues) ProjectPage._taxonomyValues = {};
+          ProjectPage._taxonomyValues.cpmdNames = names;
+        }
+      })
+      .withFailureHandler(function(err) {
+        console.error('Failed to load CPMD personnel:', err);
+      })
+      .loadCpmdPersonnel();
+  },
+
+  promptForCpmdWorkbookId() {
+    var id = prompt('Enter the CPMD workbook ID (from the Google Sheets URL):');
+    if (!id || !id.trim()) return;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          toast('CPMD workbook ID saved', 'success');
+          ProjectPage._loadCpmdPersonnel();
+        } else {
+          toast(result.error || 'Failed to save workbook ID', 'error');
+        }
+      })
+      .saveCpmdWorkbookId(id.trim());
+  },
+
+  clearExtraFilters() {
+    this.filterStatus = '';
+    this.filterWorkstream = '';
+    this.filterProjectType = '';
+    this.filterTechStack = '';
+    this.filterPrimaryOwner = '';
+    var st = document.getElementById('projectStatusFilter');
+    var ws = document.getElementById('projWorkstreamFilter');
+    var pt = document.getElementById('projTypeFilter');
+    var ts = document.getElementById('projTechStackFilter');
+    var po = document.getElementById('projPrimaryOwnerFilter');
+    if (st) st.value = '';
+    if (ws) ws.value = '';
+    if (pt) pt.value = '';
+    if (ts) ts.value = '';
+    if (po) po.value = '';
+    this.renderProjectList();
+  },
+
+  _populateExtraFilters() {
+    var tv = this._taxonomyValues || {};
+    var populate = function(selectId, values) {
+      var sel = document.getElementById(selectId);
+      if (!sel) return;
+      var current = sel.value;
+      var firstOpt = sel.options[0] ? sel.options[0].text : '';
+      sel.innerHTML = '<option value="">' + firstOpt + '</option>';
+      (values || []).sort().forEach(function(v) {
+        if (!v) return;
+        var opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        if (v === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    };
+    populate('projWorkstreamFilter', tv.workstream);
+    populate('projTypeFilter', tv.projectType);
+    populate('projTechStackFilter', tv.techStack);
+    this._populatePrimaryOwnerFilter();
+  },
+
+  _populatePrimaryOwnerFilter() {
+    var sel = document.getElementById('projPrimaryOwnerFilter');
+    if (!sel) return;
+    var ownerMap = {};
+    (this.projects || []).forEach(function(p) {
+      if (p && p.ownerId) ownerMap[p.ownerId] = true;
+    });
+    var owners = Object.keys(ownerMap).sort();
+    var current = sel.value;
+    var self = this;
+    sel.innerHTML = '<option value="">All Primary Owners</option>' +
+      owners.map(function(email) {
+        var name = self.resolveUserName(email) || email;
+        var selected = email === current ? ' selected' : '';
+        return '<option value="' + escapeHtml(email) + '"' + selected + '>' + escapeHtml(name) + '</option>';
+      }).join('');
   },
 
   loadProjects() {
@@ -111,6 +220,7 @@ var ProjectPage = {
           State.setProjects(this.projects);
         }
         this.renderProjectList();
+        this._populatePrimaryOwnerFilter();
         if (this.projects.length > 0 && !this.selectedProject) {
           this.selectProject(this.projects[0].id);
         }
@@ -125,11 +235,12 @@ var ProjectPage = {
 
   selectProject(projectId) {
     this.selectedProject = this.projects.find(p => p.id === projectId) || null;
-    this.activeTab = 'overview';
+    this.activeTab = 'details';
     this.isEditing = false;
     this.editingTab = null;
     this.showAddRelease = false;
     this.showAddUpdate = false;
+    this._editingReqTemplateId = null;
     this.renderProjectList();
     this._hierarchy = null;
     google.script.run.withSuccessHandler(function(h) {
@@ -145,6 +256,7 @@ var ProjectPage = {
     this.editingTab = null;
     this.showAddRelease = false;
     this.showAddUpdate = false;
+    if (tab !== 'requirements') this._editingReqTemplateId = null;
     this.renderProjectDetail();
   },
 
@@ -156,7 +268,15 @@ var ProjectPage = {
       var matchSearch = !term ||
         (p.name || '').toLowerCase().includes(term) ||
         (p.ownerId || '').toLowerCase().includes(term);
-      return matchStatus && matchSearch;
+      var pSettings = null;
+      if (self.filterWorkstream || self.filterProjectType || self.filterTechStack) {
+        try { pSettings = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {}); } catch (e) { pSettings = {}; }
+      }
+      var matchWs = !self.filterWorkstream || (p.workstream || (pSettings && pSettings.workstream) || '') === self.filterWorkstream;
+      var matchPt = !self.filterProjectType || (p.projectType || (pSettings && pSettings.projectType) || '') === self.filterProjectType;
+      var matchTs = !self.filterTechStack || (p.techStack || (pSettings && pSettings.techStack) || '') === self.filterTechStack;
+      var matchOwner = !self.filterPrimaryOwner || (p.ownerId || '') === self.filterPrimaryOwner;
+      return matchStatus && matchSearch && matchWs && matchPt && matchTs && matchOwner;
     });
   },
 
@@ -196,21 +316,42 @@ var ProjectPage = {
       var isActive = self.selectedProject && self.selectedProject.id === p.id;
       var statusDot = self._statusDotColor(p.status);
       var taskCount = parseInt(p.taskCount) || 0;
-      return '<div onclick="_pc(\'ProjectPage\',\'selectProject\',\'' + escapeHtml(p.id) + '\')" class="p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 transition-colors ' +
-        (isActive ? 'bg-gray-50 border-l-4 border-l-gray-900' : '') + '">' +
+      var docBadge = self._docBadgeForProject(p);
+      var activeStyle = isActive ? 'background:var(--co-surface-sunken);box-shadow:inset 3px 0 0 var(--co-accent-500);' : '';
+      return '<div onclick="_pc(\'ProjectPage\',\'selectProject\',\'' + escapeHtml(p.id) + '\')" class="px-4 py-3 cursor-pointer transition-colors co-project-item" style="border-bottom:1px solid var(--co-border-subtle);' + activeStyle + '">' +
         '<div class="flex items-start justify-between gap-2">' +
         '<div class="flex items-center gap-2 min-w-0">' +
-        '<span class="w-2 h-2 rounded-full flex-shrink-0 mt-1 ' + statusDot + '"></span>' +
-        '<div class="min-w-0"><span class="text-sm font-medium text-gray-900 truncate block">' + escapeHtml(p.name) + '</span>' +
-        '<span class="text-xs text-gray-400 font-mono">' + escapeHtml(p.id) + '</span></div>' +
+        '<span class="w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ' + statusDot + '"></span>' +
+        '<div class="min-w-0"><span class="text-[13px] font-medium truncate block" style="color:var(--co-ink);">' + escapeHtml(p.name) + '</span>' +
+        '<span class="text-[11px] font-mono mt-0.5 block" style="color:var(--co-gray-500);"><span style="color:var(--co-gray-400);">ID:</span> ' + escapeHtml(p.id) + '</span></div>' +
         '</div>' +
-        (p.version ? '<span class="text-xs bg-gray-900 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">' + escapeHtml(p.version) + '</span>' : '') +
+        (p.version ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-medium" style="background:var(--co-ink);color:#fff;">' + escapeHtml(p.version) + '</span>' : '') +
         '</div>' +
-        '<div class="mt-1 pl-4 flex items-center justify-between">' +
-        '<span class="text-xs text-gray-400">' + taskCount + ' task' + (taskCount !== 1 ? 's' : '') + '</span>' +
-        (p.status ? '<span class="text-xs text-gray-400 capitalize">' + escapeHtml(p.status) + '</span>' : '') +
+        '<div class="mt-1.5 pl-4 flex items-center justify-between gap-2">' +
+        '<span class="text-[11px]" style="color:var(--co-gray-400);">' + taskCount + ' task' + (taskCount !== 1 ? 's' : '') + '</span>' +
+        '<div class="flex items-center gap-1.5">' +
+          (docBadge || '') +
+          (p.status ? '<span class="text-[11px] capitalize" style="color:var(--co-gray-400);">' + escapeHtml(p.status) + '</span>' : '') +
+        '</div>' +
         '</div></div>';
     }).join('');
+  },
+
+  _docBadgeForProject(project) {
+    var settings = {};
+    try { settings = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {}); } catch (e) {}
+    var keys = ['googleDriveFolder','githubLinks','devDocs','designDocs','sops','userGuides','dataDictionaries'];
+    var filled = 0;
+    keys.forEach(function(k) {
+      var v = settings[k];
+      if (v && String(v).trim() && v !== '[]') filled++;
+    });
+    var pct = Math.round((filled / keys.length) * 100);
+    var colorClass = 'bg-red-100 text-red-700';
+    if (pct >= 100) colorClass = 'bg-green-100 text-green-700';
+    else if (pct >= 50) colorClass = 'bg-yellow-100 text-yellow-700';
+    else if (pct === 0) colorClass = 'bg-gray-100 text-gray-500';
+    return '<span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full ' + colorClass + '" title="Documentation: ' + filled + '/' + keys.length + '">' + pct + '%</span>';
   },
 
   renderProjectList() {
@@ -232,6 +373,29 @@ var ProjectPage = {
     } catch (e) { return {}; }
   },
 
+  _computeDocCompleteness() {
+    var s = this._getSettings();
+    var p = this.selectedProject || {};
+    var required = [
+      { key: 'googleDriveFolder', label: 'Google Drive Folder', source: 'settings' },
+      { key: 'githubLinks', label: 'Git Repository', source: 'settings' },
+      { key: 'devDocs', label: 'Development Documentation', source: 'settings' },
+      { key: 'designDocs', label: 'Design Documentation', source: 'settings' },
+      { key: 'sops', label: 'SOPs (Internal)', source: 'settings' },
+      { key: 'userGuides', label: 'User Guides', source: 'settings' },
+      { key: 'dataDictionaries', label: 'Data Dictionaries', source: 'settings' }
+    ];
+    var filled = 0, missing = [], allLabels = [];
+    required.forEach(function(r) {
+      allLabels.push(r.label);
+      var val = r.source === 'project' ? p[r.key] : s[r.key];
+      if (val && String(val).trim() && val !== '[]') filled++;
+      else missing.push(r.label);
+    });
+    var pct = Math.round((filled / required.length) * 100);
+    return { pct: pct, filled: filled, total: required.length, missing: missing, allLabels: allLabels };
+  },
+
   renderProjectDetail() {
     var container = document.getElementById('projectDetailContainer');
     if (!container) return;
@@ -243,37 +407,39 @@ var ProjectPage = {
       return;
     }
     var tabs = [
-      { id: 'overview', label: 'Overview' },
-      { id: 'portfolio', label: 'Portfolio' },
+      { id: 'details', label: 'Details' },
+      { id: 'deployment', label: 'Deployment' },
       { id: 'ownership', label: 'Ownership' },
       { id: 'infrastructure', label: 'Infrastructure' },
       { id: 'documentation', label: 'Documentation & Links' },
+      { id: 'requirements', label: 'Requirements' },
       { id: 'releases', label: 'Releases' },
       { id: 'updates', label: 'Updates' }
     ];
     var self = this;
-    var tabBar = '<div class="bg-white border-b border-gray-200 px-6 flex items-center gap-1 flex-shrink-0 overflow-x-auto">' +
+    var tabBar = '<div class="px-6 flex items-center gap-1 flex-shrink-0 overflow-x-auto" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">' +
       tabs.map(function(t) {
-        return '<button onclick="_pc(\'ProjectPage\',\'switchTab\',\'' + t.id + '\')" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap ' +
-          (self.activeTab === t.id ? 'border-gray-900 font-semibold text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300') +
-          '">' + t.label + '</button>';
+        return '<button onclick="_pc(\'ProjectPage\',\'switchTab\',\'' + t.id + '\')" class="co-tab' +
+          (self.activeTab === t.id ? ' co-tab-active' : '') + '">' + t.label + '</button>';
       }).join('') + '</div>';
     var tabContent = '';
-    if (this.activeTab === 'overview') tabContent = this._buildOverview();
-    else if (this.activeTab === 'portfolio') tabContent = this._buildSettingsTab('portfolio');
+    if (this.activeTab === 'details') tabContent = this._buildDetailsTab();
+    else if (this.activeTab === 'deployment') tabContent = this._buildSettingsTab('deployment');
     else if (this.activeTab === 'ownership') tabContent = this._buildSettingsTab('ownership');
     else if (this.activeTab === 'infrastructure') tabContent = this._buildSettingsTab('infrastructure');
     else if (this.activeTab === 'documentation') tabContent = this._buildSettingsTab('documentation');
+    else if (this.activeTab === 'requirements') tabContent = this._buildRequirementsTab();
     else if (this.activeTab === 'releases') tabContent = this._buildReleases();
     else if (this.activeTab === 'updates') tabContent = this._buildUpdates();
-    container.innerHTML = tabBar + '<div class="flex-1 overflow-y-auto p-6">' + tabContent + '</div>';
+    var pingBar = this._buildPingBar();
+    container.innerHTML = pingBar + tabBar + '<div class="flex-1 overflow-y-auto p-6">' + tabContent + '</div>';
   },
 
   _buildSettingsTab(groupKey) {
     var schema = this._settingsSchema[groupKey] || [];
     var settings = this._getSettings();
     var isEditingThis = this.isEditing && this.editingTab === groupKey;
-    var groupLabels = { portfolio: 'Portfolio', ownership: 'Ownership', infrastructure: 'Infrastructure', documentation: 'Documentation & Links' };
+    var groupLabels = { deployment: 'Deployment', ownership: 'Ownership', infrastructure: 'Infrastructure', documentation: 'Documentation & Links' };
 
     if (isEditingThis) {
       var fields = schema.map(function(field) {
@@ -303,15 +469,84 @@ var ProjectPage = {
             optionsHtml += '<option value="' + escapeHtml(String(val)) + '" selected>' + escapeHtml(String(val)) + '</option>';
           }
           inputHtml = '<select id="editSetting_' + field.key + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' + optionsHtml + '</select>';
+        } else if (field.type === 'static_select') {
+          var opts = (field.optionsKey && ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[field.optionsKey]) || [];
+          var soHtml = '<option value="">-- Select --</option>';
+          opts.forEach(function(opt) {
+            soHtml += '<option value="' + escapeHtml(opt) + '"' + (opt === String(val || '') ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+          });
+          if (val && opts.indexOf(String(val)) === -1) {
+            soHtml += '<option value="' + escapeHtml(String(val)) + '" selected>' + escapeHtml(String(val)) + '</option>';
+          }
+          inputHtml = '<select id="editSetting_' + field.key + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' + soHtml + '</select>';
+        } else if (field.type === 'static_multiselect') {
+          var msOpts = (field.optionsKey && ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[field.optionsKey]) || [];
+          var msVal = val;
+          if (typeof msVal === 'string') { try { msVal = JSON.parse(msVal); } catch(e) { msVal = msVal ? [msVal] : []; } }
+          if (!Array.isArray(msVal)) msVal = [];
+          var checkboxes = msOpts.map(function(opt) {
+            var checked = msVal.indexOf(opt) !== -1 ? ' checked' : '';
+            return '<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-50 px-2 rounded">' +
+              '<input type="checkbox" data-ms-field="' + field.key + '" value="' + escapeHtml(opt) + '"' + checked + ' class="rounded border-gray-300 text-gray-900 focus:ring-gray-400">' +
+              '<span class="text-sm text-gray-900">' + escapeHtml(opt) + '</span></label>';
+          }).join('');
+          inputHtml = '<div class="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">' + checkboxes + '</div>';
+        } else if (field.type === 'taxonomy_multiselect') {
+          var tmOpts = (ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[field.key]) || [];
+          var tmVal = val;
+          if (typeof tmVal === 'string') { try { tmVal = JSON.parse(tmVal); } catch(e) { tmVal = tmVal ? [tmVal] : []; } }
+          if (!Array.isArray(tmVal)) tmVal = [];
+          var tmChecks = tmOpts.map(function(opt) {
+            var checked = tmVal.indexOf(opt) !== -1 ? ' checked' : '';
+            return '<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-50 px-2 rounded">' +
+              '<input type="checkbox" data-ms-field="' + field.key + '" value="' + escapeHtml(opt) + '"' + checked + ' class="rounded border-gray-300 text-gray-900 focus:ring-gray-400">' +
+              '<span class="text-sm text-gray-900">' + escapeHtml(opt) + '</span></label>';
+          }).join('');
+          inputHtml = '<div class="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">' + tmChecks + '</div>';
+        } else if (field.type === 'drive_picker') {
+          var dpVal = val || '';
+          var dpDisplay = '';
+          if (dpVal) {
+            try { var dpObj = JSON.parse(dpVal); dpDisplay = dpObj.name || dpObj.url || dpVal; } catch(e) { dpDisplay = dpVal; }
+          }
+          inputHtml = '<div class="flex items-center gap-2">' +
+            '<input id="editSetting_' + field.key + '" type="text" value="' + escapeHtml(typeof dpVal === 'object' ? JSON.stringify(dpVal) : String(dpVal)) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" readonly placeholder="No file selected">' +
+            '<button type="button" onclick="ProjectPage._uploadSettingFile(\'' + field.key + '\',false)" class="flex-shrink-0 px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-upload text-xs mr-1"></i>Upload</button>' +
+            '<button type="button" onclick="ProjectPage._linkSettingUrl(\'' + field.key + '\',false)" class="flex-shrink-0 px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-link text-xs mr-1"></i>URL</button>' +
+            '</div>';
+        } else if (field.type === 'drive_picker_multi') {
+          var dpmVal = val;
+          if (typeof dpmVal === 'string') { try { dpmVal = JSON.parse(dpmVal); } catch(e) { dpmVal = []; } }
+          if (!Array.isArray(dpmVal)) dpmVal = dpmVal ? [dpmVal] : [];
+          var dpmTags = dpmVal.map(function(f, idx) {
+            var fname = typeof f === 'object' ? (f.name || f.url || 'File') : String(f);
+            return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+              escapeHtml(fname) +
+              '<button type="button" onclick="ProjectPage._removeDriveFile(\'' + field.key + '\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+          }).join('') || '<span class="text-xs text-gray-400">No files selected</span>';
+          inputHtml = '<div id="dpm_tags_' + field.key + '" class="flex flex-wrap mb-2">' + dpmTags + '</div>' +
+            '<input type="hidden" id="editSetting_' + field.key + '" value="' + escapeHtml(JSON.stringify(dpmVal)) + '">' +
+            '<div class="flex items-center gap-2">' +
+              '<button type="button" onclick="ProjectPage._uploadSettingFile(\'' + field.key + '\',true)" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-upload text-xs mr-1"></i>Upload Files</button>' +
+              '<button type="button" onclick="ProjectPage._linkSettingUrl(\'' + field.key + '\',true)" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-link text-xs mr-1"></i>Add URL</button>' +
+            '</div>';
+        } else if (field.type === 'data_assets') {
+          inputHtml = ProjectPage._buildRelatedDataAssets() || '<span class="text-gray-400 text-sm py-2 block">No linked data assets</span>';
+          return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + '</div>';
         } else if (field.type === 'userlist') {
           return '';
+        } else if (field.type === 'computed_doc') {
+          var dc = ProjectPage._computeDocCompleteness();
+          var badgeColor = dc.pct >= 100 ? 'bg-green-100 text-green-800' : dc.pct >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+          var missingHtml = dc.missing.length ? '<p class="text-xs text-gray-400 mt-1">Missing: ' + dc.missing.map(function(m) { return '<em>' + escapeHtml(m) + '</em>'; }).join(', ') + '</p>' : '';
+          inputHtml = '<div class="py-2"><span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ' + badgeColor + '">' + dc.pct + '% (' + dc.filled + '/' + dc.total + ')</span>' + missingHtml + '</div>';
         } else {
           inputHtml = '<input id="editSetting_' + field.key + '" type="' + (field.type === 'url' ? 'url' : 'text') + '" value="' + escapeHtml(String(val || '')) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
         }
         return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + '</div>';
       }).filter(Boolean).join('');
 
-      return '<div class="bg-white border border-gray-200 rounded-lg p-6 max-w-2xl">' +
+      return '<div class="bg-white border border-gray-200 rounded-lg p-6 w-full">' +
         '<h2 class="text-base font-semibold text-gray-900 mb-5">Edit ' + groupLabels[groupKey] + '</h2>' +
         '<div class="space-y-4">' + fields + '</div>' +
         '<div class="flex items-center gap-3 mt-6">' +
@@ -334,11 +569,69 @@ var ProjectPage = {
         if (val) {
           var urlStr = String(val);
           var displayUrl = urlStr.length > 60 ? urlStr.substring(0, 57) + '...' : urlStr;
-          display = '<a href="' + escapeHtml(urlStr) + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 flex items-center gap-1 text-sm">' +
-            escapeHtml(displayUrl) + '<i class="fas fa-external-link-alt text-xs text-gray-400"></i></a>';
+          display = '<a href="' + escapeHtml(urlStr) + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 inline-flex items-center gap-1 text-sm break-all">' +
+            escapeHtml(displayUrl) + '<i class="fas fa-external-link-alt text-xs text-gray-400 flex-shrink-0"></i></a>';
         } else {
           display = '<span class="text-gray-400 text-sm">-</span>';
         }
+      } else if (field.type === 'static_select') {
+        display = val ? '<span class="text-sm text-gray-900">' + escapeHtml(String(val)) + '</span>' : '<span class="text-gray-400 text-sm">-</span>';
+      } else if (field.type === 'static_multiselect') {
+        var msArr = val;
+        if (typeof msArr === 'string') { try { msArr = JSON.parse(msArr); } catch(e) { msArr = msArr ? [msArr] : []; } }
+        if (!Array.isArray(msArr)) msArr = [];
+        if (msArr.length) {
+          display = msArr.map(function(v) {
+            return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(v) + '</span>';
+          }).join('');
+        } else {
+          display = '<span class="text-gray-400 text-sm">None</span>';
+        }
+      } else if (field.type === 'taxonomy_multiselect') {
+        var tmArr = val;
+        if (typeof tmArr === 'string') { try { tmArr = JSON.parse(tmArr); } catch(e) { tmArr = tmArr ? [tmArr] : []; } }
+        if (!Array.isArray(tmArr)) tmArr = [];
+        if (tmArr.length) {
+          display = tmArr.map(function(v) {
+            return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(v) + '</span>';
+          }).join('');
+        } else {
+          display = '<span class="text-gray-400 text-sm">-</span>';
+        }
+      } else if (field.type === 'drive_picker') {
+        if (val) {
+          var dpObj = val;
+          if (typeof dpObj === 'string') { try { dpObj = JSON.parse(dpObj); } catch(e) { dpObj = null; } }
+          if (dpObj && typeof dpObj === 'object' && dpObj.url) {
+            display = '<a href="' + escapeHtml(dpObj.url) + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 inline-flex items-center gap-1 text-sm break-all">' +
+              '<i class="fas fa-file text-xs text-gray-400 mr-1"></i>' + escapeHtml(dpObj.name || 'File') + '<i class="fas fa-external-link-alt text-xs text-gray-400 flex-shrink-0 ml-1"></i></a>';
+          } else {
+            var dpStr = String(val);
+            display = '<a href="' + escapeHtml(dpStr) + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 inline-flex items-center gap-1 text-sm break-all">' +
+              escapeHtml(dpStr.length > 60 ? dpStr.substring(0, 57) + '...' : dpStr) + '<i class="fas fa-external-link-alt text-xs text-gray-400 flex-shrink-0"></i></a>';
+          }
+        } else {
+          display = '<span class="text-gray-400 text-sm">-</span>';
+        }
+      } else if (field.type === 'drive_picker_multi') {
+        var dpmArr = val;
+        if (typeof dpmArr === 'string') { try { dpmArr = JSON.parse(dpmArr); } catch(e) { dpmArr = []; } }
+        if (!Array.isArray(dpmArr)) dpmArr = dpmArr ? [dpmArr] : [];
+        if (dpmArr.length) {
+          display = dpmArr.map(function(f) {
+            var fObj = typeof f === 'object' ? f : { url: f, name: f };
+            return '<a href="' + escapeHtml(fObj.url || '#') + '" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1 hover:bg-gray-200">' +
+              '<i class="fas fa-file text-xs text-gray-400"></i>' + escapeHtml(fObj.name || 'File') + '<i class="fas fa-external-link-alt text-xs text-gray-300 ml-0.5"></i></a>';
+          }).join('');
+        } else {
+          display = '<span class="text-gray-400 text-sm">-</span>';
+        }
+      } else if (field.type === 'data_assets') {
+        var daHtml = ProjectPage._buildRelatedDataAssets();
+        if (daHtml) {
+          return '<div class="px-4 py-3"><div class="flex-1 min-w-0">' + daHtml + '</div></div>';
+        }
+        display = '<span class="text-gray-400 text-sm">No linked data assets</span>';
       } else if (field.type === 'userlist') {
         var users = Array.isArray(val) ? val : [];
         if (users.length) {
@@ -348,6 +641,12 @@ var ProjectPage = {
         } else {
           display = '<span class="text-gray-400 text-sm">None</span>';
         }
+      } else if (field.type === 'computed_doc') {
+        var dc = ProjectPage._computeDocCompleteness();
+        var badgeColor = dc.pct >= 100 ? 'bg-green-100 text-green-800' : dc.pct >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+        var reqLabels = dc.allLabels || [];
+        var reqHtml = reqLabels.length ? '<p class="text-xs text-gray-500 mt-2">Requirements: ' + reqLabels.map(function(r) { return '<em class="' + (dc.missing.indexOf(r) !== -1 ? 'text-red-400' : 'text-green-600') + '">' + escapeHtml(r) + '</em>'; }).join(', ') + '</p>' : '';
+        display = '<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ' + badgeColor + '">' + dc.pct + '% (' + dc.filled + '/' + dc.total + ')</span>' + reqHtml;
       } else if (field.type === 'textarea') {
         display = val ? '<p class="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">' + escapeHtml(String(val)) + '</p>' : '<span class="text-gray-400 text-sm">-</span>';
       } else if (field.type === 'date') {
@@ -367,7 +666,7 @@ var ProjectPage = {
         '<div class="flex-1 min-w-0">' + display + '</div></div>';
     }).join('');
 
-    return '<div class="max-w-2xl">' +
+    return '<div class="w-full">' +
       '<div class="flex items-center justify-between mb-4">' +
       '<h2 class="text-base font-semibold text-gray-900">' + groupLabels[groupKey] + '</h2>' +
       '<button onclick="_pc(\'ProjectPage\',\'startEditingTab\',\'' + groupKey + '\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">' +
@@ -385,7 +684,21 @@ var ProjectPage = {
     var schema = this._settingsSchema[groupKey] || [];
     var settings = this._getSettings();
     schema.forEach(function(field) {
-      if (field.type === 'userlist') return;
+      if (field.type === 'userlist' || field.type === 'computed_doc' || field.type === 'readonly' || field.type === 'data_assets') return;
+      if (field.type === 'static_multiselect' || field.type === 'taxonomy_multiselect') {
+        var checkboxes = document.querySelectorAll('input[data-ms-field="' + field.key + '"]');
+        var selected = [];
+        checkboxes.forEach(function(cb) { if (cb.checked) selected.push(cb.value); });
+        settings[field.key] = selected;
+        return;
+      }
+      if (field.type === 'drive_picker' || field.type === 'drive_picker_multi') {
+        var dpEl = document.getElementById('editSetting_' + field.key);
+        if (dpEl) {
+          try { settings[field.key] = JSON.parse(dpEl.value); } catch(e) { settings[field.key] = dpEl.value || ''; }
+        }
+        return;
+      }
       var el = document.getElementById('editSetting_' + field.key);
       if (!el) return;
       if (field.type === 'boolean') {
@@ -417,6 +730,15 @@ var ProjectPage = {
       .updateProjectDetails(payload);
   },
 
+  resolveUserName(emailOrName) {
+    if (!emailOrName) return '-';
+    if (State.users) {
+      var match = State.users.find(function(u) { return u.email && u.email.toLowerCase() === emailOrName.toLowerCase(); });
+      if (match && match.name) return match.name;
+    }
+    return emailOrName;
+  },
+
   getSecondaryUsers(project) {
     try {
       if (!project || !project.settings) return [];
@@ -427,7 +749,8 @@ var ProjectPage = {
 
   renderSecondaryUserTags(users) {
     if (!users || !users.length) return '<span class="text-gray-400 text-sm">None assigned</span>';
-    return users.map(function(email) { return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(email) + '</span>'; }).join('');
+    var self = this;
+    return users.map(function(email) { return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(self.resolveUserName(email)) + '</span>'; }).join('');
   },
 
   _renderEditSecondaryUserTags() {
@@ -475,72 +798,327 @@ var ProjectPage = {
       '<button type="button" onclick="_pc(\'ProjectPage\',\'addEditSecondaryUser\')" class="mt-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Add User</button>';
   },
 
-  _buildOverview() {
+  _resolveAiInvolved(val) {
+    if (val === true || val === 'true' || val === 'TRUE') return 'Yes - AI used in Development';
+    if (val === false || val === 'false' || val === 'FALSE' || !val) return '';
+    return String(val);
+  },
+
+  _parseMultiVal(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') { try { var parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : [val]; } catch(e) { return val ? [val] : []; } }
+    return [];
+  },
+
+  _buildDetailsTab() {
     var p = this.selectedProject;
-    if (this.isEditing && this.editingTab === 'overview') {
-      var tags = this.parseJsonField(p.tags);
-      this._editSecondaryUsers = this.getSecondaryUsers(p);
-      var allUsers = (typeof State !== 'undefined' && State.users) ? State.users : [];
-      var ownerOptions = allUsers.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '"' + ((u.email || u.id) === p.ownerId ? ' selected' : '') + '>' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('');
-      return '<div class="bg-white border border-gray-200 rounded-lg p-6 max-w-2xl">' +
-        '<h2 class="text-base font-semibold text-gray-900 mb-5">Edit Project</h2>' +
-        '<div class="space-y-4">' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Name</label>' +
-        '<input id="editProjectName" type="text" value="' + escapeHtml(p.name || '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Primary Owner</label>' +
-        '<select id="editProjectOwner" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="">Unassigned</option>' + ownerOptions + '</select></div>' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Secondary / Surge Users</label>' +
-        '<div id="editSecondaryUserTags" class="flex flex-wrap mb-2">' + this._renderEditSecondaryUserTags() + '</div>' +
-        '<div id="editSecondaryUserDropdownWrap">' + this._buildSecondaryUserDropdown() + '</div></div>' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Description</label>' +
-        '<textarea id="editProjectDesc" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none">' + escapeHtml(p.description || '') + '</textarea></div>' +
-        '<div class="grid grid-cols-2 gap-4">' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Start Date</label>' +
-        '<input id="editProjectStart" type="date" value="' + (p.startDate ? p.startDate.substring(0, 10) : '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">End Date</label>' +
-        '<input id="editProjectEnd" type="date" value="' + (p.endDate ? p.endDate.substring(0, 10) : '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div></div>' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Version</label>' +
-        '<input id="editProjectVersion" type="text" value="' + escapeHtml(p.version || '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Repository URL</label>' +
-        '<input id="editProjectRepo" type="url" value="' + escapeHtml(p.repoUrl || '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
-        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Tags (comma separated)</label>' +
-        '<input id="editProjectTags" type="text" value="' + escapeHtml(tags.join(', ')) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
-        '</div>' +
-        '<div class="flex items-center gap-3 mt-6">' +
-        '<button onclick="_pc(\'ProjectPage\',\'saveProject\')" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Changes</button>' +
-        '<button onclick="_pc(\'ProjectPage\',\'cancelEditing\')" class="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
-        '</div></div>';
+    var settings = this._getSettings();
+    var isArchived = (p.status || '').toLowerCase() === 'archived';
+
+    if (this.isEditing && this.editingTab === 'details') {
+      return this._buildDetailsEdit(p, settings);
     }
-    var p2 = this.selectedProject;
-    var tags = this.parseJsonField(p2.tags);
-    var tagBadges = tags.length ? tags.map(function(t) { return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200">' + escapeHtml(t.trim()) + '</span>'; }).join(' ') : '<span class="text-gray-400 text-sm">-</span>';
-    var secondaryUsers = this.getSecondaryUsers(p2);
-    var isArchived = (p2.status || '').toLowerCase() === 'archived';
-    return '<div class="max-w-2xl">' +
+
+    var self = this;
+    var secondaryUsers = this.getSecondaryUsers(p);
+    var linkedIds = this._parseMultiVal(settings.linkedProjectIds || settings.linkedProjectId);
+    var backupTech = this._parseMultiVal(settings.backupTechOwners);
+    var intendedU = this._parseMultiVal(settings.intendedUsers);
+    var aiVal = this._resolveAiInvolved(settings.isAiInvolved);
+
+    var linkedHtml = linkedIds.length ? linkedIds.map(function(lid) {
+      var proj = self._projectOptions.find(function(po) { return po.id === lid; });
+      var label = proj ? proj.name : lid;
+      return '<a onclick="_pc(\'ProjectPage\',\'selectProject\',\'' + escapeHtml(lid) + '\')" class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1 cursor-pointer hover:bg-gray-200">' + escapeHtml(label) + '</a>';
+    }).join('') : '<span class="text-gray-400 text-sm">-</span>';
+
+    var backupTechHtml = backupTech.length ? backupTech.map(function(n) {
+      return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(n) + '</span>';
+    }).join('') : '<span class="text-gray-400 text-sm">-</span>';
+
+    var intendedHtml = intendedU.length ? intendedU.map(function(u) {
+      return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(u) + '</span>';
+    }).join('') : '<span class="text-gray-400 text-sm">-</span>';
+
+    var r = function(label, val) {
+      return '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-40 flex-shrink-0 mt-0.5">' + label + '</span><div class="flex-1 min-w-0">' + val + '</div></div>';
+    };
+    var tv = function(v) { return v ? '<span class="text-sm text-gray-900">' + escapeHtml(String(v)) + '</span>' : '<span class="text-gray-400 text-sm">-</span>'; };
+    var dv = function(v) { return self.formatDate(v); };
+
+    var projectCode = settings.projectCode || '';
+    var projectCodeHtml = projectCode
+      ? '<span class="text-sm text-gray-900 font-mono font-semibold">' + escapeHtml(projectCode) + '</span>'
+      : '<span class="text-gray-400 text-sm">Not generated</span> ' +
+        '<button onclick="_pc(\'ProjectPage\',\'generateProjectCode\')" class="ml-2 px-2 py-0.5 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 transition-colors"><i class="fas fa-cog text-xs mr-1"></i>Generate</button>';
+
+    var projectStatusLabel = (p.status || '').charAt(0).toUpperCase() + (p.status || '').slice(1);
+    var projectStatusHtml = projectStatusLabel
+      ? '<span class="inline-flex items-center gap-1.5 text-sm text-gray-900"><span class="w-2 h-2 rounded-full ' + self._statusDotColor(p.status) + '"></span>' + escapeHtml(projectStatusLabel) + '</span>'
+      : '<span class="text-gray-400 text-sm">-</span>';
+
+    var pane1 =
+      '<div class="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' +
+      '<div class="px-4 py-2 bg-gray-50 rounded-t-lg"><span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Project Information</span></div>' +
+      r('Project ID', projectCodeHtml) +
+      r('Primary Owner', tv(this.resolveUserName(p.ownerId))) +
+      r('Item Created Date', '<span class="text-sm text-gray-900">' + dv(p.createdAt) + '</span>') +
+      r('Surge Users', '<div class="flex flex-wrap">' + this.renderSecondaryUserTags(secondaryUsers) + '</div>') +
+      r('Linked Project ID(s)', '<div class="flex flex-wrap">' + linkedHtml + '</div>') +
+      r('Primary Tech Owner', tv(settings.primaryTechOwner)) +
+      r('Backup Tech Owner(s)', '<div class="flex flex-wrap">' + backupTechHtml + '</div>') +
+      r('Gov Project Owners', tv(settings.govProjectOwners)) +
+      r('Project Status', projectStatusHtml) +
+      r('Development Status', tv(settings.developmentPhase)) +
+      r('Development Priority', tv(settings.developmentPriority)) +
+      '</div>';
+
+    var pane2 =
+      '<div class="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' +
+      '<div class="px-4 py-2 bg-gray-50 rounded-t-lg"><span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Timeline</span></div>' +
+      r('Gov Request Recv Date', '<span class="text-sm text-gray-900">' + dv(settings.govRequestDate) + '</span>') +
+      r('Requested By', tv(settings.requestedBy)) +
+      r('Project Start Date', '<span class="text-sm text-gray-900">' + dv(p.startDate) + '</span>') +
+      r('First Delivery Date', '<span class="text-sm text-gray-900">' + dv(settings.firstDeployDate) + '</span>') +
+      r('Project Retired Date', '<span class="text-sm text-gray-900">' + dv(settings.projectRetiredDate) + '</span>') +
+      '</div>';
+
+    var bottomSection =
+      '<div class="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100 mt-6">' +
+      '<div class="px-4 py-2 bg-gray-50 rounded-t-lg"><span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Classification</span></div>' +
+      r('AI Involved', tv(aiVal)) +
+      r('Intended User(s)', '<div class="flex flex-wrap">' + intendedHtml + '</div>') +
+      r('Workstream', tv(settings.workstream || p.workstream)) +
+      r('Project Category', tv(settings.projectCategory)) +
+      r('Project Type', tv(settings.projectType)) +
+      r('SDMs Supported', tv(settings.sdmSupported)) +
+      '</div>';
+
+    return '<div class="w-full">' +
       '<div class="flex items-start justify-between mb-6"><div>' +
       '<div class="flex items-center gap-3">' +
-      '<h2 class="text-xl font-bold text-gray-900">' + escapeHtml(p2.name || 'Untitled Project') + '</h2>' +
-      (p2.version ? '<span class="bg-gray-900 text-white text-xs px-2 py-0.5 rounded-full">' + escapeHtml(p2.version) + '</span>' : '') +
+      '<h2 class="text-xl font-bold text-gray-900">' + escapeHtml(p.name || 'Untitled Project') + '</h2>' +
+      (p.version ? '<span class="bg-gray-900 text-white text-xs px-2 py-0.5 rounded-full">' + escapeHtml(p.version) + '</span>' : '') +
       '</div>' +
-      (p2.description ? '<p class="text-sm text-gray-600 mt-2 leading-relaxed">' + escapeHtml(p2.description) + '</p>' : '') +
+      (p.description ? '<p class="text-sm text-gray-600 mt-2 leading-relaxed">' + escapeHtml(p.description) + '</p>' : '') +
       '</div>' +
       '<div class="flex items-center gap-2 flex-shrink-0 ml-4">' +
-      '<button onclick="_pc(\'ProjectPage\',\'startEditingTab\',\'overview\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-pencil-alt text-xs"></i> Edit</button>' +
+      '<button onclick="_pc(\'ProjectPage\',\'startEditingTab\',\'details\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-pencil-alt text-xs"></i> Edit</button>' +
       (!isArchived ? '<button onclick="_pc(\'ProjectPage\',\'archiveProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-amber-300 text-amber-700 text-sm rounded-lg hover:bg-amber-50 transition-colors"><i class="fas fa-archive text-xs"></i> Archive</button>'
         : '<button onclick="_pc(\'ProjectPage\',\'unarchiveProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-box-open text-xs"></i> Unarchive</button>') +
       '<button onclick="_pc(\'ProjectPage\',\'deleteProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-red-300 text-red-600 text-sm rounded-lg hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i> Delete</button>' +
       '</div></div>' +
-      '<div class="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' +
-      '<div class="px-4 py-3 flex items-center gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32">Primary Owner</span><span class="text-sm text-gray-900">' + escapeHtml(p2.ownerId || '-') + '</span></div>' +
-      '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32 mt-0.5">Created At</span><span class="text-sm text-gray-900">' + this.formatDate(p2.createdAt) + '</span></div>' +
-      '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32 mt-0.5">Surge Users</span><div class="flex flex-wrap">' + this.renderSecondaryUserTags(secondaryUsers) + '</div></div>' +
-      '<div class="px-4 py-3 flex items-center gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32">Start Date</span><span class="text-sm text-gray-900">' + this.formatDate(p2.startDate) + '</span></div>' +
-      '<div class="px-4 py-3 flex items-center gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32">End Date</span><span class="text-sm text-gray-900">' + this.formatDate(p2.endDate) + '</span></div>' +
-      '<div class="px-4 py-3 flex items-center gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32">Repository</span><span class="text-sm">' +
-        (p2.repoUrl ? '<a href="' + escapeHtml(p2.repoUrl) + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 flex items-center gap-1">' + escapeHtml(p2.repoUrl) + '<i class="fas fa-external-link-alt text-xs text-gray-400"></i></a>' : '<span class="text-gray-400">-</span>') +
-      '</span></div>' +
-      '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-32 mt-0.5">Tags</span><div class="flex flex-wrap gap-1.5">' + tagBadges + '</div></div>' +
-      '</div>' + this._buildRelatedProjects() + '</div>';
+      '<div class="grid grid-cols-2 gap-6">' + pane1 + pane2 + '</div>' +
+      bottomSection +
+      this._buildRelatedProjects() + '</div>';
+  },
+
+  _buildDetailsEdit(p, settings) {
+    var self = this;
+    this._editSecondaryUsers = this.getSecondaryUsers(p);
+    var allUsers = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var ownerOptions = allUsers.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '"' + ((u.email || u.id) === p.ownerId ? ' selected' : '') + '>' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('');
+
+    var cls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400';
+    var lbl = function(text) { return '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + text + '</label>'; };
+
+    var buildSelect = function(id, optionsKey, currentVal) {
+      var opts = (optionsKey && self._taxonomyValues && self._taxonomyValues[optionsKey]) || [];
+      var html = '<option value="">-- Select --</option>';
+      opts.forEach(function(opt) {
+        html += '<option value="' + escapeHtml(opt) + '"' + (opt === String(currentVal || '') ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+      });
+      if (currentVal && opts.indexOf(String(currentVal)) === -1) {
+        html += '<option value="' + escapeHtml(String(currentVal)) + '" selected>' + escapeHtml(String(currentVal)) + '</option>';
+      }
+      return '<select id="' + id + '" class="' + cls + ' bg-white">' + html + '</select>';
+    };
+
+    var buildTaxonomySelect = function(id, key, currentVal) {
+      var opts = (self._taxonomyValues && self._taxonomyValues[key]) || [];
+      var html = '<option value="">-- Select --</option>';
+      opts.forEach(function(opt) {
+        html += '<option value="' + escapeHtml(opt) + '"' + (opt === String(currentVal || '') ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+      });
+      if (currentVal && opts.indexOf(String(currentVal)) === -1) {
+        html += '<option value="' + escapeHtml(String(currentVal)) + '" selected>' + escapeHtml(String(currentVal)) + '</option>';
+      }
+      return '<select id="' + id + '" class="' + cls + ' bg-white">' + html + '</select>';
+    };
+
+    var buildMultiCheck = function(fieldKey, optionsKey, currentArr) {
+      var opts = (optionsKey && self._taxonomyValues && self._taxonomyValues[optionsKey]) || [];
+      var arr = self._parseMultiVal(currentArr);
+      return '<div class="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">' +
+        opts.map(function(opt) {
+          var checked = arr.indexOf(opt) !== -1 ? ' checked' : '';
+          return '<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-50 px-2 rounded">' +
+            '<input type="checkbox" data-ms-field="' + fieldKey + '" value="' + escapeHtml(opt) + '"' + checked + ' class="rounded border-gray-300 text-gray-900 focus:ring-gray-400">' +
+            '<span class="text-sm text-gray-900">' + escapeHtml(opt) + '</span></label>';
+        }).join('') + '</div>';
+    };
+
+    var buildProjectPicker = function() {
+      var linked = self._parseMultiVal(settings.linkedProjectIds || settings.linkedProjectId);
+      self._editLinkedProjects = linked.slice();
+      var tags = linked.map(function(lid, idx) {
+        var proj = self._projectOptions.find(function(po) { return po.id === lid; });
+        var label = proj ? proj.name : lid;
+        return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+          escapeHtml(label) +
+          '<button type="button" onclick="_pc(\'ProjectPage\',\'removeLinkedProject\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+      }).join('') || '<span class="text-xs text-gray-400">None linked</span>';
+      var available = self._projectOptions.filter(function(po) { return po.id !== p.id && linked.indexOf(po.id) === -1; });
+      var dropdown = available.length ?
+        '<select id="editLinkedProjectSelect" class="' + cls + ' bg-white mt-2"><option value="">Select a project to link...</option>' +
+        available.map(function(po) { return '<option value="' + escapeHtml(po.id) + '">' + escapeHtml(po.name) + '</option>'; }).join('') + '</select>' +
+        '<button type="button" onclick="_pc(\'ProjectPage\',\'addLinkedProject\')" class="mt-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Add</button>'
+        : '<p class="text-xs text-gray-400 mt-2">No available projects</p>';
+      return '<div id="editLinkedProjectTags" class="flex flex-wrap">' + tags + '</div>' + '<div id="editLinkedProjectDropdownWrap">' + dropdown + '</div>';
+    };
+
+    var aiVal = this._resolveAiInvolved(settings.isAiInvolved);
+
+    var pane1 =
+      '<div class="space-y-4">' +
+      '<div>' + lbl('Project Name') + '<input id="editProjectName" type="text" value="' + escapeHtml(p.name || '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('Primary Owner') + '<select id="editProjectOwner" class="' + cls + ' bg-white"><option value="">Unassigned</option>' + ownerOptions + '</select></div>' +
+      '<div>' + lbl('Secondary / Surge Users') +
+        '<div id="editSecondaryUserTags" class="flex flex-wrap mb-2">' + this._renderEditSecondaryUserTags() + '</div>' +
+        '<div id="editSecondaryUserDropdownWrap">' + this._buildSecondaryUserDropdown() + '</div></div>' +
+      '<div>' + lbl('Description') + '<textarea id="editProjectDesc" rows="3" class="' + cls + ' resize-none">' + escapeHtml(p.description || '') + '</textarea></div>' +
+      '<div>' + lbl('Linked Project ID(s)') + buildProjectPicker() + '</div>' +
+      '<div>' + lbl('Primary Technical Owner') + buildSelect('editSetting_primaryTechOwner', 'biSmes', settings.primaryTechOwner) + '</div>' +
+      '<div>' + lbl('Backup Technical Owner(s)') + buildMultiCheck('backupTechOwners', 'biSmes', settings.backupTechOwners) + '</div>' +
+      '<div>' + lbl('Government Project Owners') + '<input id="editSetting_govProjectOwners" type="text" value="' + escapeHtml(settings.govProjectOwners || '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('Project Status') +
+        '<select id="editProjectStatus" class="' + cls + ' bg-white">' +
+          ['active','completed','paused','archived'].map(function(s) {
+            var label = s.charAt(0).toUpperCase() + s.slice(1);
+            return '<option value="' + s + '"' + (s === String(p.status || '').toLowerCase() ? ' selected' : '') + '>' + label + '</option>';
+          }).join('') +
+        '</select></div>' +
+      '<div>' + lbl('Development Status') + buildSelect('editSetting_developmentPhase', 'developmentPhase', settings.developmentPhase) + '</div>' +
+      '<div>' + lbl('Development Priority') + buildSelect('editSetting_developmentPriority', 'developmentPriority', settings.developmentPriority) + '</div>' +
+      '</div>';
+
+    var pane2 =
+      '<div class="space-y-4">' +
+      '<div>' + lbl('Version') + '<input id="editProjectVersion" type="text" value="' + escapeHtml(p.version || '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('Repository URL') + '<input id="editProjectRepo" type="url" value="' + escapeHtml(p.repoUrl || '') + '" class="' + cls + '"></div>' +
+      '<div class="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-3">' +
+      '<div class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Timeline</div>' +
+      '<div>' + lbl('Initial Gov Request Received Date') + '<input id="editSetting_govRequestDate" type="date" value="' + (settings.govRequestDate ? String(settings.govRequestDate).substring(0, 10) : '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('Project Start Date') + '<input id="editProjectStart" type="date" value="' + (p.startDate ? p.startDate.substring(0, 10) : '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('First Delivery / Prod Deployment Date') + '<input id="editSetting_firstDeployDate" type="date" value="' + (settings.firstDeployDate ? String(settings.firstDeployDate).substring(0, 10) : '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('Project Retired Date') + '<input id="editSetting_projectRetiredDate" type="date" value="' + (settings.projectRetiredDate ? String(settings.projectRetiredDate).substring(0, 10) : '') + '" class="' + cls + '"></div>' +
+      '</div>' +
+      '<div>' + lbl('Requested By') + '<input id="editSetting_requestedBy" type="text" value="' + escapeHtml(settings.requestedBy || '') + '" class="' + cls + '"></div>' +
+      '</div>';
+
+    var bottomSection =
+      '<div class="space-y-4 mt-6">' +
+      '<div>' + lbl('AI Involved') + buildSelect('editSetting_isAiInvolved', 'aiInvolved', aiVal) + '</div>' +
+      '<div>' + lbl('Intended User(s)') + buildMultiCheck('intendedUsers', 'intendedUsers', settings.intendedUsers) + '</div>' +
+      '<div class="grid grid-cols-2 gap-4">' +
+      '<div>' + lbl('Workstream') + buildTaxonomySelect('editSetting_workstream', 'workstream', settings.workstream || p.workstream) + '</div>' +
+      '<div>' + lbl('Project Category') + buildTaxonomySelect('editSetting_projectCategory', 'projectCategory', settings.projectCategory) + '</div>' +
+      '<div>' + lbl('Project Type') + buildSelect('editSetting_projectType', 'projectTypeCode', settings.projectType) + '</div>' +
+      '<div>' + lbl('SDMs Supported') + buildTaxonomySelect('editSetting_sdmSupported', 'sdmSupported', settings.sdmSupported) + '</div>' +
+      '</div></div>';
+
+    return '<div class="bg-white border border-gray-200 rounded-lg p-6 w-full">' +
+      '<h2 class="text-base font-semibold text-gray-900 mb-5">Edit Details</h2>' +
+      '<div class="grid grid-cols-2 gap-6">' + pane1 + pane2 + '</div>' +
+      bottomSection +
+      '<div class="flex items-center gap-3 mt-6">' +
+      '<button onclick="_pc(\'ProjectPage\',\'saveProject\')" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Changes</button>' +
+      '<button onclick="_pc(\'ProjectPage\',\'cancelEditing\')" class="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
+      '</div></div>';
+  },
+
+  _editLinkedProjects: [],
+
+  addLinkedProject() {
+    var sel = document.getElementById('editLinkedProjectSelect');
+    if (!sel || !sel.value) return;
+    if (this._editLinkedProjects.indexOf(sel.value) === -1) {
+      this._editLinkedProjects.push(sel.value);
+    }
+    this.renderProjectDetail();
+  },
+
+  removeLinkedProject(idx) {
+    this._editLinkedProjects.splice(idx, 1);
+    this.renderProjectDetail();
+  },
+
+  _addDriveFiles(fieldKey, files) {
+    var el = document.getElementById('editSetting_' + fieldKey);
+    if (!el) return;
+    var current = [];
+    try { current = JSON.parse(el.value); } catch(e) { current = []; }
+    if (!Array.isArray(current)) current = [];
+    files.forEach(function(f) { current.push(f); });
+    el.value = JSON.stringify(current);
+    this._refreshDriveFileTags(fieldKey, current);
+  },
+
+  _removeDriveFile(fieldKey, idx) {
+    var el = document.getElementById('editSetting_' + fieldKey);
+    if (!el) return;
+    var current = [];
+    try { current = JSON.parse(el.value); } catch(e) { current = []; }
+    if (!Array.isArray(current)) current = [];
+    current.splice(idx, 1);
+    el.value = JSON.stringify(current);
+    this._refreshDriveFileTags(fieldKey, current);
+  },
+
+  _refreshDriveFileTags(fieldKey, files) {
+    var container = document.getElementById('dpm_tags_' + fieldKey);
+    if (!container) return;
+    if (!files.length) {
+      container.innerHTML = '<span class="text-xs text-gray-400">No files selected</span>';
+      return;
+    }
+    container.innerHTML = files.map(function(f, idx) {
+      var fname = typeof f === 'object' ? (f.name || f.url || 'File') : String(f);
+      return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+        escapeHtml(fname) +
+        '<button type="button" onclick="ProjectPage._removeDriveFile(\'' + fieldKey + '\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+    }).join('');
+  },
+
+  _buildRelatedDataAssets() {
+    if (!this.selectedProject) return '';
+    var projectId = this.selectedProject.id;
+    var dataAssets = (typeof State !== 'undefined' ? State.dataAssets : null) || [];
+    var related = dataAssets.filter(function(da) {
+      var rp = (da.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      return rp.indexOf(projectId) !== -1;
+    });
+    if (related.length === 0) return '';
+    var statusColor = function(status) {
+      var map = { 'Active': '#22c55e', 'Inactive': '#9ca3af', 'Deprecated': '#ef4444', 'In Development': '#3b82f6' };
+      return map[status] || '#9ca3af';
+    };
+    var items = related.map(function(da) {
+      return '<div class="flex items-center gap-3 py-2 px-4 hover:bg-gray-50 cursor-pointer rounded transition-colors" ' +
+        'onclick="if(typeof switchView===\'function\'){switchView(\'dataassets\');setTimeout(function(){if(typeof DataAssetPage!==\'undefined\')DataAssetPage.selectAsset(\'' + escapeHtml(da.id) + '\');},200);}">' +
+        '<span class="w-2 h-2 rounded-full flex-shrink-0" style="background-color:' + statusColor(da.status) + '"></span>' +
+        '<span class="text-sm text-gray-900">' + escapeHtml(da.assetName || '-') + '</span>' +
+        '<span class="text-xs text-gray-400 ml-auto">' + escapeHtml(da.assetOwner || '') + '</span>' +
+        '</div>';
+    }).join('');
+    return '<div class="mt-6 bg-white border border-gray-200 rounded-lg overflow-hidden">' +
+      '<div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">' +
+      '<i class="fas fa-database text-gray-400 text-xs"></i>' +
+      '<span class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Related Data Assets</span>' +
+      '<span class="text-xs text-gray-400 ml-auto">' + related.length + '</span>' +
+      '</div>' +
+      '<div class="divide-y divide-gray-50">' + items + '</div></div>';
   },
 
   _buildRelatedProjects() {
@@ -616,11 +1194,12 @@ var ProjectPage = {
         (r.summary ? '<p class="text-sm font-medium text-gray-800 mt-2">' + escapeHtml(r.summary) + '</p>' : '') +
         bodyHtml + '</div>';
     }).join('') : '<div class="text-center py-10 text-gray-400"><i class="fas fa-tag text-2xl mb-2 text-gray-300 block"></i><p class="text-sm">No releases yet</p></div>';
-    return '<div class="max-w-2xl"><div class="flex items-center justify-between mb-4">' +
+    return '<div class="w-full"><div class="flex items-center justify-between mb-4">' +
       '<h2 class="text-base font-semibold text-gray-900">Release Notes</h2><div class="flex items-center gap-2">' +
+      (releases.length ? '<button onclick="_pc(\'ProjectPage\',\'toggleEmailRelease\',true)" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-envelope text-xs"></i> Send As Email</button>' : '') +
       (releases.length ? '<button onclick="_pc(\'ProjectPage\',\'_downloadReleases\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-download text-xs"></i> Download</button>' : '') +
       (!this.showAddRelease ? '<button onclick="_pc(\'ProjectPage\',\'toggleAddRelease\',true)" class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"><i class="fas fa-plus text-xs"></i> Add Release</button>' : '') +
-      '</div></div>' + addForm + list + '</div>';
+      '</div></div>' + addForm + (this.showEmailRelease ? this._buildEmailReleaseModal() : '') + list + '</div>';
   },
 
   _buildUpdates() {
@@ -663,7 +1242,7 @@ var ProjectPage = {
           '<span class="text-xs text-gray-400 ml-auto">' + self.formatDate(e.date) + '</span></div>' +
           '<p class="text-sm text-gray-700 leading-relaxed">' + escapeHtml(e.message || '') + '</p></div></div>';
       }).join('') + '</div>' : '<div class="text-center py-10 text-gray-400"><i class="fas fa-stream text-2xl mb-2 text-gray-300 block"></i><p class="text-sm">No updates yet</p></div>';
-    return '<div class="max-w-2xl"><div class="flex items-center justify-between mb-4">' +
+    return '<div class="w-full"><div class="flex items-center justify-between mb-4">' +
       '<h2 class="text-base font-semibold text-gray-900">Changelog</h2>' +
       (!this.showAddUpdate ? '<button onclick="_pc(\'ProjectPage\',\'toggleAddUpdate\',true)" class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"><i class="fas fa-plus text-xs"></i> Add Update</button>' : '') +
       '</div>' + addForm + timeline + '</div>';
@@ -671,10 +1250,94 @@ var ProjectPage = {
 
   toggleAddRelease(show) { this.showAddRelease = show; this.renderProjectDetail(); },
   toggleAddUpdate(show) { this.showAddUpdate = show; this.renderProjectDetail(); },
+  toggleEmailRelease(show) { this.showEmailRelease = show; this.renderProjectDetail(); },
+
+  _buildEmailReleaseModal() {
+    var p = this.selectedProject;
+    var releases = this.parseJsonField(p.releaseNotes);
+    var versionOpts = releases.map(function(r) {
+      return '<option value="' + escapeHtml(r.version || '') + '">' + escapeHtml(r.version || '?') + ' — ' + escapeHtml(r.summary || r.type || '') + '</option>';
+    }).join('');
+    var allUsers = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var userCheckboxes = allUsers.filter(function(u) { return u.email && u.active !== false; }).map(function(u) {
+      var label = u.name ? escapeHtml(u.name) + ' (' + escapeHtml(u.email) + ')' : escapeHtml(u.email);
+      return '<label class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">' +
+        '<input type="checkbox" class="releaseEmailRecipient rounded border-gray-300 text-gray-900 focus:ring-gray-400" value="' + escapeHtml(u.email) + '">' +
+        '<span class="text-sm text-gray-700">' + label + '</span></label>';
+    }).join('');
+    var defaultIntro = 'Hi team,\n\nPlease find the latest release notes for ' + (p.name || 'this project') + ' below. Let us know if you have any questions.';
+    return '<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">' +
+      '<h3 class="text-sm font-semibold text-gray-900 mb-3"><i class="fas fa-envelope text-gray-400 mr-1.5"></i>Send Release Notes via Email</h3>' +
+      '<div class="space-y-3">' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Release Version</label>' +
+      '<select id="emailReleaseVersion" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' + versionOpts + '</select></div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Recipients</label>' +
+      '<div class="border border-gray-300 rounded-lg bg-white max-h-40 overflow-y-auto p-2">' +
+      (userCheckboxes || '<p class="text-sm text-gray-400 p-2">No users found</p>') + '</div>' +
+      '<div class="mt-2"><label class="block text-xs font-medium text-gray-500 mb-1">Additional emails <span class="normal-case text-gray-400 font-normal">(comma-separated)</span></label>' +
+      '<input id="emailReleaseExtraRecipients" type="text" placeholder="stakeholder@company.com, team@company.com" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div></div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Intro Message</label>' +
+      '<textarea id="emailReleaseIntro" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none">' + escapeHtml(defaultIntro) + '</textarea></div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Screenshot / GIF <span class="normal-case text-gray-400 font-normal">(paste Google Drive link — animated GIFs supported)</span></label>' +
+      '<input id="emailReleaseScreenshot" type="url" placeholder="https://drive.google.com/file/d/..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
+      '<div class="flex items-center gap-3 pt-1">' +
+      '<button onclick="_pc(\'ProjectPage\',\'sendReleaseEmail\')" class="flex items-center gap-2 px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"><i class="fas fa-paper-plane text-xs"></i> Send Email</button>' +
+      '<button onclick="_pc(\'ProjectPage\',\'toggleEmailRelease\',false)" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button></div>' +
+      '</div></div>';
+  },
+
+  sendReleaseEmail() {
+    var version = (document.getElementById('emailReleaseVersion') || {}).value || '';
+    var introText = (document.getElementById('emailReleaseIntro') || {}).value || '';
+    var screenshotUrl = (document.getElementById('emailReleaseScreenshot') || {}).value || '';
+    var extraEmails = (document.getElementById('emailReleaseExtraRecipients') || {}).value || '';
+
+    var recipients = [];
+    var checkboxes = document.querySelectorAll('.releaseEmailRecipient:checked');
+    checkboxes.forEach(function(cb) { if (cb.value) recipients.push(cb.value); });
+    if (extraEmails.trim()) {
+      extraEmails.split(',').forEach(function(e) {
+        var trimmed = e.trim();
+        if (trimmed && trimmed.indexOf('@') !== -1) recipients.push(trimmed);
+      });
+    }
+
+    if (!recipients.length) { toast('Select at least one recipient', 'error'); return; }
+    if (!version) { toast('Select a release version', 'error'); return; }
+
+    var senderName = 'COLONY';
+    if (typeof State !== 'undefined' && State.user && State.user.name) senderName = State.user.name + ' via COLONY';
+
+    var payload = {
+      recipients: recipients,
+      version: version,
+      introText: introText.trim(),
+      screenshotUrl: screenshotUrl.trim(),
+      senderName: senderName
+    };
+
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (!result.success) { toast(result.error || 'Failed to send', 'error'); return; }
+        var msg = 'Email sent to ' + result.sent.length + ' recipient' + (result.sent.length !== 1 ? 's' : '');
+        if (result.failed && result.failed.length) msg += ' (' + result.failed.length + ' failed)';
+        toast(msg, result.failed && result.failed.length ? 'warning' : 'success');
+        ProjectPage.showEmailRelease = false;
+        ProjectPage.renderProjectDetail();
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        console.error('sendReleaseEmail failed:', error);
+        toast('Failed to send email', 'error');
+      })
+      .sendReleaseNotesEmail(this.selectedProject.id, payload);
+  },
 
   startEditing() {
     this.isEditing = true;
-    this.editingTab = 'overview';
+    this.editingTab = 'details';
     this.renderProjectDetail();
   },
 
@@ -688,17 +1351,51 @@ var ProjectPage = {
     var name = (document.getElementById('editProjectName') || {}).value || '';
     var description = (document.getElementById('editProjectDesc') || {}).value || '';
     var startDate = (document.getElementById('editProjectStart') || {}).value || '';
-    var endDate = (document.getElementById('editProjectEnd') || {}).value || '';
+    var endEl = document.getElementById('editProjectEnd');
+    var endDate = endEl ? endEl.value : (this.selectedProject && this.selectedProject.endDate) || '';
     var version = (document.getElementById('editProjectVersion') || {}).value || '';
     var repoUrl = (document.getElementById('editProjectRepo') || {}).value || '';
-    var tagsRaw = (document.getElementById('editProjectTags') || {}).value || '';
-    var tags = tagsRaw.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
     var ownerId = (document.getElementById('editProjectOwner') || {}).value || '';
+    var statusEl = document.getElementById('editProjectStatus');
+    var status = statusEl ? statusEl.value : (this.selectedProject && this.selectedProject.status) || '';
     if (!name.trim()) { toast('Project name is required', 'error'); return; }
     var existingSettings = this._getSettings();
     existingSettings.secondaryUsers = this._editSecondaryUsers.slice();
+    existingSettings.linkedProjectIds = this._editLinkedProjects.slice();
+    var detailsSettingsFields = [
+      { id: 'editSetting_primaryTechOwner', key: 'primaryTechOwner' },
+      { id: 'editSetting_govProjectOwners', key: 'govProjectOwners' },
+      { id: 'editSetting_developmentPriority', key: 'developmentPriority' },
+      { id: 'editSetting_developmentPhase', key: 'developmentPhase' },
+      { id: 'editSetting_govRequestDate', key: 'govRequestDate' },
+      { id: 'editSetting_requestedBy', key: 'requestedBy' },
+      { id: 'editSetting_firstDeployDate', key: 'firstDeployDate' },
+      { id: 'editSetting_projectRetiredDate', key: 'projectRetiredDate' },
+      { id: 'editSetting_isAiInvolved', key: 'isAiInvolved' },
+      { id: 'editSetting_workstream', key: 'workstream' },
+      { id: 'editSetting_projectCategory', key: 'projectCategory' },
+      { id: 'editSetting_projectType', key: 'projectType' },
+      { id: 'editSetting_sdmSupported', key: 'sdmSupported' }
+    ];
+    detailsSettingsFields.forEach(function(f) {
+      var el = document.getElementById(f.id);
+      if (el) existingSettings[f.key] = el.value || '';
+    });
+    var backupTechChecks = document.querySelectorAll('input[data-ms-field="backupTechOwners"]');
+    var backupTechArr = [];
+    backupTechChecks.forEach(function(cb) { if (cb.checked) backupTechArr.push(cb.value); });
+    existingSettings.backupTechOwners = backupTechArr;
+    var intendedChecks = document.querySelectorAll('input[data-ms-field="intendedUsers"]');
+    var intendedArr = [];
+    intendedChecks.forEach(function(cb) { if (cb.checked) intendedArr.push(cb.value); });
+    existingSettings.intendedUsers = intendedArr;
+    var tags = [];
+    if (existingSettings.workstream) tags.push(existingSettings.workstream);
+    if (existingSettings.projectCategory) tags.push(existingSettings.projectCategory);
+    if (existingSettings.projectType) tags.push(existingSettings.projectType);
+    if (existingSettings.sdmSupported) tags.push(existingSettings.sdmSupported);
     var settings = JSON.stringify(existingSettings);
-    var payload = { id: this.selectedProject.id, name: name, description: description, startDate: startDate, endDate: endDate, version: version, repoUrl: repoUrl, tags: JSON.stringify(tags), ownerId: ownerId, settings: settings };
+    var payload = { id: this.selectedProject.id, name: name, description: description, status: status, startDate: startDate, endDate: endDate, version: version, repoUrl: repoUrl, tags: JSON.stringify(tags), ownerId: ownerId, settings: settings };
     showLoading(true);
     google.script.run
       .withSuccessHandler((result) => {
@@ -719,6 +1416,191 @@ var ProjectPage = {
         toast('Failed to save project', 'error');
       })
       .updateProjectDetails(payload);
+  },
+
+  generateProjectCode() {
+    if (!this.selectedProject) return;
+    var settings = this._getSettings();
+    if (settings.projectCode) {
+      toast('Project ID already generated: ' + settings.projectCode, 'info');
+      return;
+    }
+    var p = this.selectedProject;
+    var missing = this._pidMissingFields(p, settings);
+    if (missing.length > 0) {
+      this._openPidRequirementsModal(missing);
+      return;
+    }
+    this._runGenerateProjectCode();
+  },
+
+  _pidMissingFields(project, settings) {
+    var missing = [];
+    var startDate = project.startDate || settings.govRequestDate;
+    if (!startDate || startDate === 'TBD') missing.push('startDate');
+    var workstream = settings.workstream || project.workstream || '';
+    if (!workstream) missing.push('workstream');
+    var projectType = settings.projectType || project.projectType || '';
+    if (!projectType) missing.push('projectType');
+    var contract = settings.contractInitial || '';
+    if (!contract) missing.push('contractInitial');
+    return missing;
+  },
+
+  _openPidRequirementsModal(missing) {
+    var existing = document.getElementById('pidRequirementsModal');
+    if (existing) existing.remove();
+
+    var workstreamOpts = ['Business Intelligence', 'Business Development', 'Financial Management', 'Workforce Management', 'Customer Experience', 'Quality Management', 'Contractor Use'];
+    var projectTypeOpts = ['Web Application', 'Data Pipeline', 'Database', 'Data Visualization'];
+    var contractOpts = ['AMPS', 'Forward', 'SQuAT'];
+
+    var p = this.selectedProject;
+    var settings = this._getSettings();
+    var currentStartDate = (p.startDate && p.startDate !== 'TBD') ? String(p.startDate).substring(0, 10) : (settings.govRequestDate ? String(settings.govRequestDate).substring(0, 10) : '');
+    var currentWorkstream = settings.workstream || p.workstream || '';
+    var currentProjectType = settings.projectType || p.projectType || '';
+    var currentContract = settings.contractInitial || '';
+
+    var fieldHtml = '';
+    var needStart = missing.indexOf('startDate') !== -1;
+    var needWorkstream = missing.indexOf('workstream') !== -1;
+    var needProjectType = missing.indexOf('projectType') !== -1;
+    var needContract = missing.indexOf('contractInitial') !== -1;
+
+    var cls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400';
+    var lbl = function(text) { return '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + text + '</label>'; };
+    var buildSelect = function(id, opts, cur) {
+      return '<select id="' + id + '" class="' + cls + ' bg-white">' +
+        '<option value="">-- Select --</option>' +
+        opts.map(function(o) { return '<option value="' + escapeHtml(o) + '"' + (o === cur ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; }).join('') +
+        '</select>';
+    };
+
+    if (needStart) {
+      fieldHtml += '<div>' + lbl('Project Start Date') + '<input id="pidFieldStartDate" type="date" value="' + escapeHtml(currentStartDate) + '" class="' + cls + '"></div>';
+    }
+    if (needWorkstream) {
+      fieldHtml += '<div>' + lbl('Workstream') + buildSelect('pidFieldWorkstream', workstreamOpts, currentWorkstream) + '</div>';
+    }
+    if (needProjectType) {
+      fieldHtml += '<div>' + lbl('Project Type') + buildSelect('pidFieldProjectType', projectTypeOpts, currentProjectType) + '</div>';
+    }
+    if (needContract) {
+      fieldHtml += '<div>' + lbl('Contract of Initial Development') + buildSelect('pidFieldContractInitial', contractOpts, currentContract) + '</div>';
+    }
+
+    var modal = document.createElement('div');
+    modal.id = 'pidRequirementsModal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10060]';
+    modal.innerHTML = '<div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onclick="event.stopPropagation()">' +
+      '<div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">' +
+      '<div><h2 class="text-base font-semibold text-gray-900">Missing Info for Project ID</h2>' +
+      '<p class="text-xs text-gray-500 mt-0.5">Fill the fields below to generate the Project ID.</p></div>' +
+      '<button onclick="_pc(\'ProjectPage\',\'_closePidRequirementsModal\')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>' +
+      '</div>' +
+      '<div class="p-5 space-y-4">' + fieldHtml + '</div>' +
+      '<div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">' +
+      '<button onclick="_pc(\'ProjectPage\',\'_closePidRequirementsModal\')" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">Cancel</button>' +
+      '<button onclick="_pc(\'ProjectPage\',\'_savePidRequirements\')" class="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700"><i class="fas fa-cog text-xs mr-1"></i>Save &amp; Generate</button>' +
+      '</div></div>';
+    modal.onclick = function(e) { if (e.target === modal) ProjectPage._closePidRequirementsModal(); };
+    document.body.appendChild(modal);
+  },
+
+  _closePidRequirementsModal() {
+    var el = document.getElementById('pidRequirementsModal');
+    if (el) el.remove();
+  },
+
+  _savePidRequirements() {
+    var p = this.selectedProject;
+    if (!p) return;
+    var settings = this._getSettings();
+    var updates = {};
+    var settingsChanged = false;
+
+    var startEl = document.getElementById('pidFieldStartDate');
+    if (startEl) {
+      if (!startEl.value) { toast('Project Start Date is required', 'error'); return; }
+      updates.startDate = startEl.value;
+    }
+    var wsEl = document.getElementById('pidFieldWorkstream');
+    if (wsEl) {
+      if (!wsEl.value) { toast('Workstream is required', 'error'); return; }
+      settings.workstream = wsEl.value;
+      updates.workstream = wsEl.value;
+      settingsChanged = true;
+    }
+    var ptEl = document.getElementById('pidFieldProjectType');
+    if (ptEl) {
+      if (!ptEl.value) { toast('Project Type is required', 'error'); return; }
+      settings.projectType = ptEl.value;
+      updates.projectType = ptEl.value;
+      settingsChanged = true;
+    }
+    var cEl = document.getElementById('pidFieldContractInitial');
+    if (cEl) {
+      if (!cEl.value) { toast('Contract of Initial Development is required', 'error'); return; }
+      settings.contractInitial = cEl.value;
+      settingsChanged = true;
+    }
+
+    if (settingsChanged) updates.settings = JSON.stringify(settings);
+    updates.id = p.id;
+
+    var self = this;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          showLoading(false);
+          toast((result && result.error) || 'Failed to save', 'error');
+          return;
+        }
+        Object.assign(self.selectedProject, updates);
+        if (updates.settings) self.selectedProject.settings = updates.settings;
+        var idx = self.projects.findIndex(function(pr) { return pr.id === self.selectedProject.id; });
+        if (idx !== -1) Object.assign(self.projects[idx], updates);
+        self._closePidRequirementsModal();
+        self._runGenerateProjectCode();
+      })
+      .withFailureHandler(function(err) {
+        showLoading(false);
+        console.error('Save PID requirements failed:', err);
+        toast('Failed to save project info', 'error');
+      })
+      .updateProjectDetails(updates);
+  },
+
+  _runGenerateProjectCode() {
+    showLoading(true);
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (!result.success) {
+          if (result.missing && result.missing.length > 0) {
+            self._openPidRequirementsModal(result.missing);
+            return;
+          }
+          toast(result.error || 'Failed to generate Project ID', 'error');
+          return;
+        }
+        var s = self._getSettings();
+        s.projectCode = result.projectCode;
+        self.selectedProject.settings = JSON.stringify(s);
+        var idx = self.projects.findIndex(function(p) { return p.id === self.selectedProject.id; });
+        if (idx !== -1) self.projects[idx].settings = self.selectedProject.settings;
+        self.renderProjectDetail();
+        toast('Project ID generated: ' + result.projectCode, 'success');
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        console.error('generateProjectCode failed:', error);
+        toast('Failed to generate Project ID', 'error');
+      })
+      .generateProjectCode(this.selectedProject.id);
   },
 
   async archiveProject() {
@@ -903,6 +1785,41 @@ var ProjectPage = {
     } catch (e) { return dateStr; }
   },
 
+  exportProjectsCsv() {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (!result || !result.success) {
+          toast((result && result.error) || 'Export failed', 'error');
+          return;
+        }
+        var ts = (result.generatedAt || new Date().toISOString()).replace(/[:.]/g, '-').substring(0, 19);
+        var dl = function(filename, content) {
+          var blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        };
+        dl('colony-projects-' + ts + '.csv', result.projectCsv || '');
+        if (result.dataAssetCsv) {
+          dl('colony-data-assets-' + ts + '.csv', result.dataAssetCsv);
+        }
+        toast('Exported ' + result.projectCount + ' projects, ' + result.dataAssetCount + ' data assets', 'success');
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        console.error('Export CSV failed:', error);
+        toast('Export failed: ' + (error.message || 'unknown'), 'error');
+      })
+      .exportProjectsAndDataAssetsCsv();
+  },
+
   importFromWorklog() {
     showLoading(true);
     google.script.run
@@ -957,6 +1874,511 @@ var ProjectPage = {
         toast('Import failed: ' + error.message, 'error');
       })
       .importWorkLogProjects(workbookId);
+  },
+
+  _buildPingBar() {
+    var role = (typeof State !== 'undefined' && State.user && State.user.role) ? String(State.user.role).toLowerCase() : '';
+    if (role !== 'admin' && role !== 'manager') return '';
+    if (!this.selectedProject) return '';
+    return '<div class="px-6 py-2 flex items-center justify-end gap-2 bg-gray-50 border-b border-gray-200">' +
+      '<label class="text-xs text-gray-500">Ping Owner for:</label>' +
+      '<select id="projPingReason" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400">' +
+        '<option value="Requirements Gathering">Requirements Gathering</option>' +
+        '<option value="Incomplete Documentation">Incomplete Documentation</option>' +
+        '<option value="Update">Update</option>' +
+      '</select>' +
+      '<button onclick="_pc(\'ProjectPage\',\'pingOwner\')" class="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">' +
+        '<i class="fas fa-bell mr-1"></i> Ping Owner' +
+      '</button></div>';
+  },
+
+  pingOwner() {
+    if (!this.selectedProject) return;
+    var reason = (document.getElementById('projPingReason') || {}).value || 'Update';
+    var projectId = this.selectedProject.id;
+    var self = this;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (!result || !result.success) {
+          toast((result && result.error) || 'Failed to load ping context', 'error');
+          return;
+        }
+        self._openPingOwnerModal(result);
+      })
+      .withFailureHandler(function(err) {
+        showLoading(false);
+        console.error('getPingOwnerContext failed:', err);
+        toast('Failed to load ping context', 'error');
+      })
+      .getPingOwnerContext(projectId, reason);
+  },
+
+  _openPingOwnerModal(context) {
+    var existing = document.getElementById('pingOwnerModal');
+    if (existing) existing.remove();
+
+    var project = context.project || {};
+    var users = context.users || [];
+    var currentUserEmail = (typeof State !== 'undefined' && State.user && State.user.email) ? String(State.user.email).toLowerCase() : '';
+    var ownerEmail = String(project.ownerId || '').toLowerCase();
+    var ccUsers = users.filter(function(u) {
+      var e = (u.email || '').toLowerCase();
+      return e && e !== ownerEmail;
+    });
+
+    var ccOptions = ccUsers.map(function(u) {
+      var isSelf = (u.email || '').toLowerCase() === currentUserEmail;
+      return '<label class="flex items-center gap-2 text-sm text-gray-700 py-1 px-2 hover:bg-gray-50 cursor-pointer">' +
+        '<input type="checkbox" value="' + escapeHtml(u.email) + '" class="rounded pingcc-box">' +
+        '<span class="flex-1 truncate">' + escapeHtml(u.name || u.email) + (isSelf ? ' <span class="text-xs text-gray-400">(you)</span>' : '') + '</span>' +
+        '<span class="text-xs text-gray-400">' + escapeHtml(u.email) + '</span>' +
+        '</label>';
+    }).join('');
+
+    var prefill = context.message || '';
+    var reason = context.reason || 'Update';
+
+    var modal = document.createElement('div');
+    modal.id = 'pingOwnerModal';
+    modal.className = 'fixed inset-0 z-50 flex items-start justify-center bg-black/50 overflow-y-auto py-8';
+    modal.innerHTML =
+      '<div class="bg-white rounded-xl shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[90vh]">' +
+        '<div class="flex items-center justify-between px-6 py-4 border-b">' +
+          '<div>' +
+            '<h2 class="text-lg font-semibold text-gray-900"><i class="fas fa-bell mr-2 text-amber-500"></i>Ping Owner</h2>' +
+            '<p class="text-xs text-gray-500 mt-0.5">' + escapeHtml(project.name || project.id || '') + ' &middot; ' + escapeHtml(reason) + '</p>' +
+          '</div>' +
+          '<button id="pingOwnerClose" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>' +
+        '</div>' +
+        '<div class="overflow-y-auto px-6 py-4 flex-1 space-y-4">' +
+          '<div>' +
+            '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">To</label>' +
+            '<div class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700">' +
+              (ownerEmail ? escapeHtml(project.ownerId) : '<span class="text-red-600">This project has no owner assigned</span>') +
+            '</div>' +
+          '</div>' +
+          '<div>' +
+            '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">CC <span class="text-gray-400 normal-case font-normal">(optional)</span></label>' +
+            '<div id="pingOwnerCcList" class="border border-gray-300 rounded-lg max-h-40 overflow-y-auto bg-white">' +
+              (ccOptions || '<div class="text-xs text-gray-400 p-3">No other users available</div>') +
+            '</div>' +
+            '<div class="flex items-center gap-2 mt-1">' +
+              '<input id="pingOwnerCcFilter" type="text" placeholder="Filter users..." class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-gray-400">' +
+              '<span id="pingOwnerCcCount" class="text-xs text-gray-500">0 selected</span>' +
+            '</div>' +
+          '</div>' +
+          '<div>' +
+            '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Reason</label>' +
+            '<div class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700">' + escapeHtml(reason) + '</div>' +
+          '</div>' +
+          '<div>' +
+            '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Message</label>' +
+            '<textarea id="pingOwnerMessage" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 resize-y">' + escapeHtml(prefill) + '</textarea>' +
+            '<p class="text-xs text-gray-400 mt-1">The message body will be included in the email and in-app notification, along with a link back to the project.</p>' +
+          '</div>' +
+        '</div>' +
+        '<div class="flex items-center justify-end gap-2 px-6 py-3 border-t bg-gray-50">' +
+          '<button id="pingOwnerCancel" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>' +
+          '<button id="pingOwnerSend" class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700"' + (ownerEmail ? '' : ' disabled') + '>' +
+            '<i class="fas fa-paper-plane mr-1"></i> Send Ping' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+
+    var close = function() { modal.remove(); };
+    document.getElementById('pingOwnerClose').onclick = close;
+    document.getElementById('pingOwnerCancel').onclick = close;
+
+    var updateCount = function() {
+      var count = modal.querySelectorAll('.pingcc-box:checked').length;
+      var countEl = document.getElementById('pingOwnerCcCount');
+      if (countEl) countEl.textContent = count + ' selected';
+    };
+    modal.querySelectorAll('.pingcc-box').forEach(function(cb) {
+      cb.addEventListener('change', updateCount);
+    });
+
+    var filterInput = document.getElementById('pingOwnerCcFilter');
+    if (filterInput) {
+      filterInput.addEventListener('input', function() {
+        var q = filterInput.value.toLowerCase().trim();
+        modal.querySelectorAll('#pingOwnerCcList label').forEach(function(lbl) {
+          var text = lbl.textContent.toLowerCase();
+          lbl.style.display = (!q || text.indexOf(q) !== -1) ? '' : 'none';
+        });
+      });
+    }
+
+    var self = this;
+    document.getElementById('pingOwnerSend').onclick = function() {
+      if (!ownerEmail) { toast('This project has no owner to ping.', 'error'); return; }
+      var message = (document.getElementById('pingOwnerMessage').value || '').trim();
+      if (!message) { toast('Message cannot be empty', 'warning'); return; }
+      var cc = [];
+      modal.querySelectorAll('.pingcc-box:checked').forEach(function(cb) { cc.push(cb.value); });
+      var sendBtn = document.getElementById('pingOwnerSend');
+      if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending...'; }
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> Send Ping'; }
+          if (result && result.success) {
+            var ccNote = (result.cc && result.cc.length > 0) ? ' (cc: ' + result.cc.length + ')' : '';
+            toast('Ping sent to ' + (project.ownerId || 'owner') + ccNote, 'success');
+            close();
+          } else {
+            toast((result && result.error) || 'Failed to send ping', 'error');
+          }
+        })
+        .withFailureHandler(function(err) {
+          if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> Send Ping'; }
+          console.error('pingProjectOwner failed:', err);
+          toast('Failed to send ping', 'error');
+        })
+        .pingProjectOwner(project.id || self.selectedProject.id, reason, { message: message, cc: cc });
+    };
+  },
+
+  _getReqTemplates() {
+    return (typeof State !== 'undefined' && State.config && State.config.reqTemplates) || [];
+  },
+
+  _getReqData() {
+    var settings = this._getSettings();
+    var req = settings.requirements;
+    if (!req || typeof req !== 'object') return { templates: [] };
+    if (!Array.isArray(req.templates)) req.templates = [];
+    return req;
+  },
+
+  _buildRequirementsTab() {
+    var templates = this._getReqTemplates();
+    if (!templates.length) {
+      return '<div class="text-center py-12 text-gray-400"><i class="fas fa-clipboard-list text-4xl mb-3 block text-gray-300"></i>' +
+        '<p class="text-sm font-medium">Requirements templates not loaded</p>' +
+        '<p class="text-xs mt-1">Refresh the page to fetch template definitions.</p></div>';
+    }
+    var req = this._getReqData();
+    var started = req.templates || [];
+
+    if (this._editingReqTemplateId) {
+      return this._buildRequirementsEditor(this._editingReqTemplateId);
+    }
+
+    var startedHtml = '';
+    if (started.length === 0) {
+      startedHtml = '<div class="text-center py-8 text-gray-400 border border-dashed border-gray-200 rounded-lg">' +
+        '<i class="fas fa-clipboard-list text-3xl mb-2 block text-gray-300"></i>' +
+        '<p class="text-sm">No requirements gathered yet.</p>' +
+        '<p class="text-xs mt-1 text-gray-400">Pick a template below to get started.</p></div>';
+    } else {
+      startedHtml = '<div class="space-y-2">' + started.map(function(entry) {
+        var tmpl = templates.find(function(t) { return t.id === entry.templateId; });
+        var label = tmpl ? tmpl.name : (entry.name || entry.templateId);
+        var statusClass = entry.status === 'complete' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700';
+        return '<div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white">' +
+          '<div><div class="text-sm font-semibold text-gray-900">' + escapeHtml(label) + '</div>' +
+          '<div class="text-xs text-gray-500 mt-0.5">Updated ' + escapeHtml(entry.updatedAt || entry.startedAt || '') + '</div></div>' +
+          '<div class="flex items-center gap-2">' +
+            '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ' + statusClass + '">' + escapeHtml(entry.status || 'draft') + '</span>' +
+            '<button onclick="_pc(\'ProjectPage\',\'editReqTemplate\',\'' + escapeHtml(entry.templateId) + '\')" class="px-2 py-1 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50">Edit</button>' +
+          '</div></div>';
+      }).join('') + '</div>';
+    }
+
+    var pickerCards = templates.map(function(t) {
+      var already = started.find(function(s) { return s.templateId === t.id; });
+      var buttonLabel = already ? 'Resume' : 'Start';
+      return '<div class="border border-gray-200 rounded-lg p-4 bg-white hover:border-gray-400 transition-colors">' +
+        '<div class="flex items-start justify-between gap-3">' +
+        '<div><div class="text-sm font-semibold text-gray-900">' + escapeHtml(t.name) + '</div>' +
+        '<div class="text-xs text-gray-500 mt-1">' + escapeHtml(t.description || '') + '</div></div>' +
+        '<button onclick="_pc(\'ProjectPage\',\'startReqTemplate\',\'' + escapeHtml(t.id) + '\')" class="flex-shrink-0 px-3 py-1.5 text-xs bg-gray-900 text-white rounded hover:bg-gray-700">' + buttonLabel + '</button>' +
+        '</div></div>';
+    }).join('');
+
+    return '<div class="space-y-6">' +
+      '<div><h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Progress</h3>' + startedHtml + '</div>' +
+      '<div><h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Templates</h3>' +
+      '<div class="grid grid-cols-2 gap-3">' + pickerCards + '</div></div>' +
+      '</div>';
+  },
+
+  startReqTemplate(templateId) {
+    this._editingReqTemplateId = templateId;
+    this.renderProjectDetail();
+  },
+
+  editReqTemplate(templateId) {
+    this._editingReqTemplateId = templateId;
+    this.renderProjectDetail();
+  },
+
+  cancelReqTemplate() {
+    this._editingReqTemplateId = null;
+    this.renderProjectDetail();
+  },
+
+  _buildRequirementsEditor(templateId) {
+    var templates = this._getReqTemplates();
+    var tmpl = templates.find(function(t) { return t.id === templateId; });
+    if (!tmpl) return '<div class="text-sm text-red-600">Template not found: ' + escapeHtml(templateId) + '</div>';
+    var req = this._getReqData();
+    var existing = (req.templates || []).find(function(e) { return e.templateId === templateId; });
+    var existingData = (existing && existing.data) || {};
+    var tv = this._taxonomyValues || {};
+
+    var fieldsHtml = tmpl.fields.map(function(field) {
+      var val = existingData[field.key];
+      var inputHtml = '';
+      var id = 'reqField_' + field.key;
+      if (field.type === 'textarea') {
+        inputHtml = '<textarea id="' + id + '" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 resize-y">' + escapeHtml(String(val || '')) + '</textarea>';
+      } else if (field.type === 'taxonomy_select') {
+        var opts = (tv[field.key] || []).map(function(o) { return '<option value="' + escapeHtml(o) + '"' + (o === val ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; }).join('');
+        inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"><option value="">-- Select --</option>' + opts + '</select>';
+      } else if (field.type === 'taxonomy_multiselect') {
+        var list = Array.isArray(val) ? val : (val ? String(val).split(',').map(function(s) { return s.trim(); }) : []);
+        var mopts = (tv[field.key] || []).map(function(o) {
+          var checked = list.indexOf(o) !== -1 ? 'checked' : '';
+          return '<label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" value="' + escapeHtml(o) + '" ' + checked + ' data-reqmulti="' + id + '" class="rounded">' + escapeHtml(o) + '</label>';
+        }).join('');
+        inputHtml = '<div id="' + id + '" class="grid grid-cols-2 gap-2 p-3 border border-gray-200 rounded-lg bg-gray-50">' + (mopts || '<span class="text-xs text-gray-400">No options loaded</span>') + '</div>';
+      } else if (field.type === 'static_select') {
+        var staticOpts = (field.optionsKey && tv[field.optionsKey]) || [];
+        var sopts = staticOpts.map(function(o) { return '<option value="' + escapeHtml(o) + '"' + (o === val ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; }).join('');
+        inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"><option value="">-- Select --</option>' + sopts + '</select>';
+      } else if (field.type === 'drive_picker' || field.type === 'drive_picker_multi') {
+        var display = '';
+        if (field.type === 'drive_picker' && val) {
+          var valObj = typeof val === 'object' ? val : (function() { try { return JSON.parse(val); } catch (e) { return null; } })();
+          display = valObj && valObj.name ? escapeHtml(valObj.name) : '';
+        } else if (field.type === 'drive_picker_multi' && val) {
+          var arr = Array.isArray(val) ? val : (function() { try { return JSON.parse(val); } catch (e) { return []; } })();
+          display = arr.map(function(f) { return f && f.name ? escapeHtml(f.name) : ''; }).filter(Boolean).join(', ');
+        }
+        var isMulti = field.type === 'drive_picker_multi';
+        inputHtml = '<div class="flex items-center gap-2">' +
+          '<input id="' + id + '" type="hidden" value="' + escapeHtml(typeof val === 'string' ? val : JSON.stringify(val || (isMulti ? [] : ''))) + '">' +
+          '<span id="' + id + '_label" class="text-xs text-gray-500 flex-1 truncate">' + (display || 'No file(s) selected') + '</span>' +
+          '<button type="button" onclick="ProjectPage._pickReqFile(\'' + id + '\',' + (isMulti ? 'true' : 'false') + ')" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"><i class="fas fa-folder-open mr-1"></i>' + (isMulti ? 'Browse Files' : 'Browse') + '</button>' +
+          '</div>';
+      } else {
+        inputHtml = '<input id="' + id + '" type="text" value="' + escapeHtml(String(val || '')) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400">';
+      }
+      return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' +
+        escapeHtml(field.label) + (field.required ? ' <span class="text-red-500">*</span>' : '') +
+        '</label>' + inputHtml + '</div>';
+    }).join('');
+
+    return '<div class="space-y-4">' +
+      '<div class="flex items-center justify-between">' +
+      '<div><h3 class="text-base font-semibold text-gray-900">' + escapeHtml(tmpl.name) + '</h3>' +
+      '<p class="text-xs text-gray-500 mt-0.5">' + escapeHtml(tmpl.description || '') + '</p></div>' +
+      '<button onclick="_pc(\'ProjectPage\',\'cancelReqTemplate\')" class="text-sm text-gray-500 hover:text-gray-700"><i class="fas fa-arrow-left mr-1"></i> Back</button>' +
+      '</div>' +
+      '<div class="grid grid-cols-1 gap-3 p-4 border border-gray-200 rounded-lg bg-white">' + fieldsHtml + '</div>' +
+      '<div class="flex items-center justify-end gap-2">' +
+        '<button onclick="_pc(\'ProjectPage\',\'saveReqTemplate\',\'' + escapeHtml(templateId) + '\',\'draft\')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Save Draft</button>' +
+        '<button onclick="_pc(\'ProjectPage\',\'saveReqTemplate\',\'' + escapeHtml(templateId) + '\',\'complete\')" class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">Mark Complete</button>' +
+      '</div></div>';
+  },
+
+  _pickReqFile(inputId, multi) {
+    var self = this;
+    this._chooseFilesFromDisk(!!multi, function(files) {
+      if (!files || files.length === 0) return;
+      self._uploadFiles(files, function(uploaded) {
+        if (!uploaded || uploaded.length === 0) return;
+        var input = document.getElementById(inputId);
+        var label = document.getElementById(inputId + '_label');
+        if (!input) return;
+        if (multi) {
+          var existing = [];
+          try { existing = input.value ? JSON.parse(input.value) : []; } catch (e) { existing = []; }
+          if (!Array.isArray(existing)) existing = [];
+          var merged = existing.concat(uploaded);
+          input.value = JSON.stringify(merged);
+          var names = merged.map(function(f) { return f && f.name ? f.name : ''; }).filter(Boolean).join(', ');
+          if (label) label.textContent = names || 'No file(s) selected';
+        } else {
+          var first = uploaded[0];
+          input.value = JSON.stringify(first);
+          if (label) label.textContent = (first && first.name) || 'No file selected';
+        }
+      });
+    });
+  },
+
+  _chooseFilesFromDisk(multi, callback) {
+    var fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    if (multi) fileInput.multiple = true;
+    fileInput.style.position = 'fixed';
+    fileInput.style.left = '-9999px';
+    document.body.appendChild(fileInput);
+    fileInput.onchange = function() {
+      var files = Array.prototype.slice.call(fileInput.files || []);
+      document.body.removeChild(fileInput);
+      callback(files);
+    };
+    fileInput.click();
+  },
+
+  _uploadFiles(files, onComplete) {
+    var projectId = this.selectedProject && this.selectedProject.id;
+    if (!projectId) {
+      toast('No project selected', 'error');
+      onComplete([]);
+      return;
+    }
+
+    var MAX_BYTES = 10 * 1024 * 1024;
+    var uploaded = [];
+    var errors = [];
+    var processed = 0;
+    var total = files.length;
+
+    var done = function() {
+      processed++;
+      if (processed >= total) {
+        if (uploaded.length > 0) toast('Uploaded ' + uploaded.length + ' of ' + total + ' file(s)', 'success');
+        if (errors.length > 0) toast(errors.join(' · '), 'error');
+        onComplete(uploaded);
+      }
+    };
+
+    if (total === 0) { onComplete([]); return; }
+    toast('Uploading ' + total + ' file(s)...', 'info');
+
+    files.forEach(function(file) {
+      if (file.size > MAX_BYTES) {
+        errors.push(file.name + ': exceeds 10 MB limit');
+        done();
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var dataUrl = e.target.result || '';
+        var commaIdx = dataUrl.indexOf(',');
+        var base64 = commaIdx >= 0 ? dataUrl.substring(commaIdx + 1) : dataUrl;
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success && result.file) {
+              uploaded.push(result.file);
+            } else {
+              errors.push(file.name + ': ' + ((result && result.error) || 'upload failed'));
+            }
+            done();
+          })
+          .withFailureHandler(function(err) {
+            console.error('uploadFileToProject failed:', err);
+            errors.push(file.name + ': ' + (err.message || 'server error'));
+            done();
+          })
+          .uploadFileToProject(projectId, file.name, file.type || '', base64);
+      };
+      reader.onerror = function() {
+        errors.push(file.name + ': could not read file');
+        done();
+      };
+      reader.readAsDataURL(file);
+    });
+  },
+
+  _uploadSettingFile(fieldKey, multi) {
+    var self = this;
+    this._chooseFilesFromDisk(!!multi, function(files) {
+      if (!files || files.length === 0) return;
+      self._uploadFiles(files, function(uploaded) {
+        if (!uploaded || uploaded.length === 0) return;
+        if (multi) {
+          self._addDriveFiles(fieldKey, uploaded);
+        } else {
+          var el = document.getElementById('editSetting_' + fieldKey);
+          if (el) el.value = JSON.stringify(uploaded[0]);
+        }
+      });
+    });
+  },
+
+  _linkSettingUrl(fieldKey, multi) {
+    var self = this;
+    PromptModal('Paste file URL (Drive, external link, etc.):', 'https://...').then(function(url) {
+      if (!url || !String(url).trim()) return;
+      PromptModal('Label for this link (optional):', 'File name').then(function(label) {
+        var entry = { name: (label && String(label).trim()) || url, url: String(url).trim() };
+        if (multi) {
+          self._addDriveFiles(fieldKey, [entry]);
+        } else {
+          var el = document.getElementById('editSetting_' + fieldKey);
+          if (el) el.value = JSON.stringify(entry);
+        }
+      });
+    });
+  },
+
+  saveReqTemplate(templateId, statusOverride) {
+    var templates = this._getReqTemplates();
+    var tmpl = templates.find(function(t) { return t.id === templateId; });
+    if (!tmpl) { toast('Template not found', 'error'); return; }
+    var data = {};
+    tmpl.fields.forEach(function(field) {
+      var id = 'reqField_' + field.key;
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (field.type === 'taxonomy_multiselect') {
+        var checkboxes = el.querySelectorAll('input[type="checkbox"][data-reqmulti="' + id + '"]');
+        var values = [];
+        checkboxes.forEach(function(cb) { if (cb.checked) values.push(cb.value); });
+        if (values.length) data[field.key] = values;
+      } else if (field.type === 'drive_picker' || field.type === 'drive_picker_multi') {
+        var raw = el.value || '';
+        try { data[field.key] = JSON.parse(raw); } catch (e) { data[field.key] = raw; }
+      } else {
+        var v = (el.value || '').toString().trim();
+        if (v) data[field.key] = v;
+      }
+    });
+
+    var missing = tmpl.fields.filter(function(f) {
+      return f.required && (data[f.key] === undefined || data[f.key] === '' ||
+        (Array.isArray(data[f.key]) && data[f.key].length === 0));
+    });
+    if (statusOverride === 'complete' && missing.length > 0) {
+      toast('Missing required fields: ' + missing.map(function(f) { return f.label; }).join(', '), 'warning');
+      return;
+    }
+
+    var projectId = this.selectedProject && this.selectedProject.id;
+    if (!projectId) return;
+    showLoading(true);
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (result && result.success) {
+          toast(statusOverride === 'complete' ? 'Template completed' : 'Draft saved', 'success');
+          if (result.project) {
+            self.selectedProject = result.project;
+            for (var i = 0; i < self.projects.length; i++) {
+              if (self.projects[i].id === result.project.id) { self.projects[i] = result.project; break; }
+            }
+          }
+          if (statusOverride === 'complete') self._editingReqTemplateId = null;
+          self.renderProjectDetail();
+        } else {
+          toast((result && result.error) || 'Failed to save template', 'error');
+        }
+      })
+      .withFailureHandler(function(err) {
+        showLoading(false);
+        console.error('saveRequirementsTemplate failed:', err);
+        toast('Failed to save template', 'error');
+      })
+      .saveRequirementsTemplate(projectId, templateId, data, statusOverride);
   }
 };
 window.ProjectPage = ProjectPage;

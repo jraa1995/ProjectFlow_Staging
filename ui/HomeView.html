@@ -1,65 +1,78 @@
-<div id="homeView" class="h-full overflow-y-auto bg-gray-50">
-  <div class="p-6">
+<div id="homeView" class="h-full overflow-y-auto" style="background:var(--co-page-bg);">
+  <div class="max-w-[1200px] mx-auto px-8 py-10">
 
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex items-end justify-between mb-8">
       <div>
-        <h1 id="homeGreeting" class="text-2xl font-bold text-gray-900"></h1>
-        <p id="homeDate" class="text-sm text-gray-500 mt-0.5"></p>
+        <h1 id="homeGreeting" class="text-[28px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.02em;"></h1>
+        <p id="homeDate" class="text-[13px] mt-1" style="color:var(--co-ink-muted);"></p>
       </div>
     </div>
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white border border-gray-200 rounded-lg p-4">
-        <div id="homeStatOverdue" class="text-2xl font-bold text-gray-900">0</div>
-        <div class="text-sm text-gray-500 mt-1">Overdue</div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+      <div class="rounded-xl p-5 transition-all" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div id="homeStatOverdue" class="text-[32px] font-semibold leading-none tracking-tight" style="color:var(--co-ink);">0</div>
+        <div class="text-[12px] mt-2 uppercase tracking-wider" style="color:var(--co-gray-400);">Overdue</div>
       </div>
-      <div class="bg-white border border-gray-200 rounded-lg p-4">
-        <div id="homeStatDueWeek" class="text-2xl font-bold text-gray-900">0</div>
-        <div class="text-sm text-gray-500 mt-1">Due This Week</div>
+      <div class="rounded-xl p-5 transition-all" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div id="homeStatDueWeek" class="text-[32px] font-semibold leading-none tracking-tight" style="color:var(--co-ink);">0</div>
+        <div class="text-[12px] mt-2 uppercase tracking-wider" style="color:var(--co-gray-400);">Due This Week</div>
       </div>
-      <div class="bg-white border border-gray-200 rounded-lg p-4">
-        <div id="homeStatBlocking" class="text-2xl font-bold text-gray-900">0</div>
-        <div class="text-sm text-gray-500 mt-1">Blocking Others</div>
+      <div class="rounded-xl p-5 transition-all" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div id="homeStatBlocking" class="text-[32px] font-semibold leading-none tracking-tight" style="color:var(--co-ink);">0</div>
+        <div class="text-[12px] mt-2 uppercase tracking-wider" style="color:var(--co-gray-400);">Blocking Others</div>
       </div>
-      <div class="bg-white border border-gray-200 rounded-lg p-4">
-        <div id="homeStatOpen" class="text-2xl font-bold text-gray-900">0</div>
-        <div class="text-sm text-gray-500 mt-1">Open</div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      <div class="bg-white border border-gray-200 rounded-lg">
-        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-gray-700">Overdue Tasks</h2>
-          <a id="homeOverdueViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-xs text-gray-400 hover:text-gray-600">View all on board &rarr;</a>
-        </div>
-        <div id="homeOverdueList" class="divide-y divide-gray-100"></div>
-      </div>
-
-      <div class="bg-white border border-gray-200 rounded-lg">
-        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-gray-700">Due This Week</h2>
-          <a id="homeDueWeekViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-xs text-gray-400 hover:text-gray-600">View all on board &rarr;</a>
-        </div>
-        <div id="homeDueWeekList" class="divide-y divide-gray-100"></div>
+      <div class="rounded-xl p-5 transition-all" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div id="homeStatOpen" class="text-[32px] font-semibold leading-none tracking-tight" style="color:var(--co-ink);">0</div>
+        <div class="text-[12px] mt-2 uppercase tracking-wider" style="color:var(--co-gray-400);">Open</div>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      <div class="bg-white border border-gray-200 rounded-lg">
-        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-gray-700">Tasks I'm Blocking Others On</h2>
-          <a id="homeBlockingViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-xs text-gray-400 hover:text-gray-600">View all on board &rarr;</a>
+    <div id="homeBadgeStrip" class="hidden mb-8">
+      <div class="rounded-xl px-5 py-3.5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-trophy text-sm" style="color:var(--co-accent-500);"></i>
+            <span class="text-[13px] font-medium" style="color:var(--co-ink-soft);">Recent Badges</span>
+            <div id="homeBadgeIcons" class="flex gap-1.5"></div>
+          </div>
+          <button onclick="if(typeof BadgeShowcase!=='undefined')BadgeShowcase.open()" class="text-xs transition-colors" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)'" onmouseout="this.style.color='var(--co-gray-400)'">View all &rarr;</button>
         </div>
-        <div id="homeBlockingList" class="divide-y divide-gray-100"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+      <div class="rounded-xl overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div class="px-5 py-3.5 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+          <h2 class="text-[13px] font-semibold tracking-tight" style="color:var(--co-ink-soft);">Overdue Tasks</h2>
+          <a id="homeOverdueViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-[11px] font-medium transition-colors" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)'" onmouseout="this.style.color='var(--co-gray-400)'">View all &rarr;</a>
+        </div>
+        <div id="homeOverdueList" class="divide-y" style="--tw-divide-opacity:1;"></div>
       </div>
 
-      <div class="bg-white border border-gray-200 rounded-lg">
-        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-gray-700"><i class="fas fa-at text-gray-400 mr-1.5"></i>Recent Mentions</h2>
+      <div class="rounded-xl overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div class="px-5 py-3.5 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+          <h2 class="text-[13px] font-semibold tracking-tight" style="color:var(--co-ink-soft);">Due This Week</h2>
+          <a id="homeDueWeekViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-[11px] font-medium transition-colors" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)'" onmouseout="this.style.color='var(--co-gray-400)'">View all &rarr;</a>
         </div>
-        <div id="homeMentionsList" class="divide-y divide-gray-100">
-          <div class="px-4 py-6 text-sm text-gray-400 text-center"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</div>
+        <div id="homeDueWeekList" class="divide-y"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+      <div class="rounded-xl overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div class="px-5 py-3.5 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+          <h2 class="text-[13px] font-semibold tracking-tight" style="color:var(--co-ink-soft);">Tasks I'm Blocking Others On</h2>
+          <a id="homeBlockingViewAll" href="#" onclick="switchView('my'); return false;" class="hidden text-[11px] font-medium transition-colors" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)'" onmouseout="this.style.color='var(--co-gray-400)'">View all &rarr;</a>
+        </div>
+        <div id="homeBlockingList" class="divide-y"></div>
+      </div>
+
+      <div class="rounded-xl overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+        <div class="px-5 py-3.5 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+          <h2 class="text-[13px] font-semibold tracking-tight flex items-center gap-1.5" style="color:var(--co-ink-soft);"><i class="fas fa-at" style="color:var(--co-gray-400);font-size:11px;"></i>Recent Mentions</h2>
+        </div>
+        <div id="homeMentionsList" class="divide-y">
+          <div class="px-5 py-6 text-sm text-center" style="color:var(--co-gray-400);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</div>
         </div>
       </div>
     </div>
@@ -72,6 +85,7 @@ var HomePage = {
   init() {
     this.render();
     this.loadMentions();
+    this.renderBadgeStrip();
   },
 
   render() {
@@ -115,7 +129,8 @@ var HomePage = {
     var overdueEl = document.getElementById('homeStatOverdue');
     if (overdueEl) {
       overdueEl.textContent = overdue.length;
-      overdueEl.className = 'text-2xl font-bold ' + (overdue.length > 0 ? 'text-red-600' : 'text-gray-900');
+      overdueEl.className = 'text-[32px] font-semibold leading-none tracking-tight';
+      overdueEl.style.color = overdue.length > 0 ? '#dc2626' : 'var(--co-ink)';
     }
     var dueWeekEl = document.getElementById('homeStatDueWeek');
     if (dueWeekEl) dueWeekEl.textContent = dueThisWeek.length;
@@ -150,7 +165,11 @@ var HomePage = {
 
     el.innerHTML = slice.map(function(task) {
       var proj = projects.find(function(p) { return p.id === task.projectId; });
-      var projName = proj ? proj.name : (task.projectId || '');
+      var projName = proj ? proj.name : '';
+      if (!projName && task.projectId) {
+        var da = (State.dataAssets || []).find(function(a) { return a.id === task.projectId; });
+        projName = da ? da.assetName : (task.projectId || '');
+      }
       return HomePage._taskRow(task, projName);
     }).join('');
   },
@@ -253,6 +272,27 @@ var HomePage = {
     setTimeout(function() {
       if (typeof openTaskDetailPanel === 'function') openTaskDetailPanel(taskId);
     }, 200);
+  },
+
+  renderBadgeStrip() {
+    var strip = document.getElementById('homeBadgeStrip');
+    var icons = document.getElementById('homeBadgeIcons');
+    if (!strip || !icons) return;
+    google.script.run
+      .withSuccessHandler(function(profile) {
+        if (!profile || !profile.badges || !profile.badges.length) return;
+        strip.classList.remove('hidden');
+        var defs = {};
+        (profile.definitions || []).forEach(function(d) { defs[d.id] = d; });
+        var recent = profile.badges.slice().sort(function(a, b) {
+          return new Date(b.earnedAt) - new Date(a.earnedAt);
+        }).slice(0, 8);
+        icons.innerHTML = recent.map(function(b) {
+          var def = defs[b.id] || { icon: 'fa-trophy', color: '#737373', name: b.id };
+          return '<div class="w-7 h-7 rounded-full flex items-center justify-center text-xs cursor-pointer hover:scale-110 transition-transform" style="background:' + def.color + '15;color:' + def.color + ';" title="' + (def.name || '') + '" onclick="if(typeof BadgeShowcase!==\'undefined\')BadgeShowcase.open()"><i class="fas ' + def.icon + '"></i></div>';
+        }).join('');
+      })
+      .getBadgeProfile(null);
   }
 };
 </script>

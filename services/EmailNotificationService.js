@@ -8,13 +8,15 @@ class EmailNotificationService {
       }
 
       const emailContent = this.formatEmailContent(notification);
+      const ccList = Array.isArray(notification.ccRecipients) ? notification.ccRecipients.filter(Boolean) : [];
 
       const deliveryResult = this.sendEmailWithRetry(
         user.email,
         emailContent.subject,
         emailContent.htmlBody,
         emailContent.textBody,
-        3
+        3,
+        { cc: ccList }
       );
 
       this.logEmailDelivery(notification, user.email, 'success', deliveryResult);
@@ -22,6 +24,7 @@ class EmailNotificationService {
       return {
         success: true,
         recipient: user.email,
+        cc: ccList,
         messageId: deliveryResult.messageId,
         deliveredAt: new Date().toISOString()
       };
@@ -120,6 +123,18 @@ class EmailNotificationService {
         subject: 'New comment on {{taskTitle}} - COLONY',
         htmlBody: this.getCommentEmailTemplate(),
         textBody: this.getCommentTextTemplate()
+      },
+
+      project_assigned: {
+        subject: 'New project assigned: {{projectName}} - COLONY',
+        htmlBody: this.getProjectAssignedEmailTemplate(),
+        textBody: this.getProjectAssignedTextTemplate()
+      },
+
+      project_ping: {
+        subject: 'Action Required: {{pingReason}} on {{projectName}} - COLONY',
+        htmlBody: this.getProjectPingEmailTemplate(),
+        textBody: this.getProjectPingTextTemplate()
       }
     };
 
@@ -212,6 +227,9 @@ class EmailNotificationService {
       message: notification.message || '',
       type: notification.type || '',
       createdAt: notification.createdAt || '',
+      reason: notification.reason || '',
+      pingReason: notification.pingReason || notification.reason || '',
+      customMessage: notification.customMessage || '',
 
       userName: '',
       userEmail: notification.userId || '',
@@ -302,21 +320,25 @@ class EmailNotificationService {
     return result;
   }
 
-  static sendEmailWithRetry(email, subject, htmlBody, textBody, maxRetries = 3) {
+  static sendEmailWithRetry(email, subject, htmlBody, textBody, maxRetries = 3, options = {}) {
     let attempt = 1;
     let lastError = null;
+    const ccList = Array.isArray(options && options.cc) ? options.cc.filter(Boolean) : [];
 
     while (attempt <= maxRetries) {
       try {
-        const result = GmailApp.sendEmail(email, subject, textBody, {
+        const sendOptions = {
           htmlBody: htmlBody,
           name: 'COLONY.SYSTEM',
           replyTo: 'noreply@projectflow.com'
-        });
+        };
+        if (ccList.length > 0) sendOptions.cc = ccList.join(',');
+        const result = GmailApp.sendEmail(email, subject, textBody, sendOptions);
 
         return {
           success: true,
           attempt: attempt,
+          cc: ccList,
           messageId: `email_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           sentAt: new Date().toISOString()
         };
@@ -369,6 +391,9 @@ class EmailNotificationService {
 
   static getProjectUrl(projectId) {
     const baseUrl = this.getSystemUrl();
+    if (typeof projectId === 'string' && projectId.indexOf('DA_') === 0) {
+      return `${baseUrl}#/dataassets/${projectId}`;
+    }
     return `${baseUrl}#/project/${projectId}`;
   }
 
@@ -740,5 +765,86 @@ Manage your notification preferences: {{unsubscribeUrl}}`;
     return this.getMentionTextTemplate()
       .replace('You were mentioned', 'New Comment')
       .replace('mentioned you in a comment', 'added a comment');
+  }
+
+  static getProjectAssignedEmailTemplate() {
+    return `
+<div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 20px;">
+  <div style="background: white; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0;">
+    <h2 style="color: #1e293b; margin: 0 0 12px 0;">Project assigned to you</h2>
+    <p style="color: #334155; margin: 0 0 12px 0;">Hi {{userName}},</p>
+    <p style="color: #334155; margin: 0 0 16px 0;">{{message}}</p>
+    <h3 style="color: #3b82f6; margin: 16px 0 8px 0;">{{projectName}}</h3>
+    {{#projectDescription}}
+    <div style="background: #f1f5f9; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px 0;">
+      <p style="margin: 0; color: #475569;">{{projectDescription}}</p>
+    </div>
+    {{/projectDescription}}
+    {{#reason}}<p style="font-size: 12px; color: #64748b; margin: 0 0 16px 0;">{{reason}}</p>{{/reason}}
+    <p style="margin: 20px 0 0 0;">
+      <a href="{{projectUrl}}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">
+        Open Project
+      </a>
+    </p>
+  </div>
+  <div style="margin-top: 20px; padding: 12px 16px; font-size: 12px; color: #64748b; text-align: center;">
+    <p style="margin: 0;">COLONY &middot; <a href="{{unsubscribeUrl}}" style="color: #64748b;">Notification preferences</a></p>
+  </div>
+</div>`;
+  }
+
+  static getProjectAssignedTextTemplate() {
+    return `COLONY - Project Assigned
+
+Hi {{userName}},
+
+{{message}}
+
+Project: {{projectName}}
+{{projectDescription}}
+
+Open the project: {{projectUrl}}
+`;
+  }
+
+  static getProjectPingEmailTemplate() {
+    return `
+<div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 20px;">
+  <div style="background: white; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0;">
+    <div style="background: #fef3c7; color: #92400e; padding: 10px 14px; border-radius: 6px; margin: 0 0 16px 0; font-weight: 600;">
+      Action required: {{pingReason}}
+    </div>
+    <p style="color: #334155; margin: 0 0 12px 0;">Hi {{userName}},</p>
+    <p style="color: #334155; margin: 0 0 16px 0;">{{message}}</p>
+    <h3 style="color: #3b82f6; margin: 16px 0 8px 0;">{{projectName}}</h3>
+    {{#customMessage}}
+    <div style="background: #f1f5f9; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px 0; border-left: 3px solid #3b82f6;">
+      <p style="margin: 0; color: #475569;">{{customMessage}}</p>
+    </div>
+    {{/customMessage}}
+    <p style="margin: 20px 0 0 0;">
+      <a href="{{projectUrl}}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">
+        Open Project
+      </a>
+    </p>
+  </div>
+  <div style="margin-top: 20px; padding: 12px 16px; font-size: 12px; color: #64748b; text-align: center;">
+    <p style="margin: 0;">COLONY &middot; <a href="{{unsubscribeUrl}}" style="color: #64748b;">Notification preferences</a></p>
+  </div>
+</div>`;
+  }
+
+  static getProjectPingTextTemplate() {
+    return `COLONY - Action requested: {{pingReason}}
+
+Hi {{userName}},
+
+{{message}}
+
+Project: {{projectName}}
+{{customMessage}}
+
+Open the project: {{projectUrl}}
+`;
   }
 }

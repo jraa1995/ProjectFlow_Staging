@@ -197,6 +197,19 @@ function saveRequestsWorkbookId(workbookId) {
   }
 }
 
+function importFunnelRowAsProjectWrapped(funnelId, projectOverrides, options) {
+  try {
+    var result = importFunnelRowAsProject(funnelId, projectOverrides || {}, options || {});
+    if (result && result.success && typeof invalidateProjectCache === 'function') {
+      try { invalidateProjectCache(); } catch (e) { console.error('invalidateProjectCache failed:', e); }
+    }
+    return result;
+  } catch (error) {
+    console.error('importFunnelRowAsProjectWrapped failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function getTriageQueue(filters) {
   try {
     if (typeof TriageEngine === 'undefined') {
@@ -586,6 +599,33 @@ function logTimeEntry(taskId, entry) {
     return { success: true, actualHrs: newActualHrs };
   } catch (error) {
     console.error('logTimeEntry failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function updateTimeEntry(taskId, entryIndex, updatedEntry) {
+  try {
+    var task = getTaskById(taskId);
+    if (!task) return { success: false, error: 'Task not found' };
+    var entries = [];
+    try { entries = task.timeEntries ? JSON.parse(task.timeEntries) : []; } catch (e) { entries = []; }
+    if (entryIndex < 0 || entryIndex >= entries.length) return { success: false, error: 'Invalid entry index' };
+    var oldHours = parseFloat(entries[entryIndex].hours || 0);
+    var startMs = new Date(updatedEntry.start).getTime();
+    var endMs = new Date(updatedEntry.end).getTime();
+    if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) return { success: false, error: 'Invalid time range' };
+    var newHours = Math.round(((endMs - startMs) / 3600000) * 100) / 100;
+    entries[entryIndex].start = updatedEntry.start;
+    entries[entryIndex].end = updatedEntry.end;
+    entries[entryIndex].hours = newHours;
+    var totalHrs = 0;
+    entries.forEach(function(e) { totalHrs += parseFloat(e.hours || 0); });
+    totalHrs = Math.round(totalHrs * 100) / 100;
+    updateTask(taskId, { timeEntries: JSON.stringify(entries), actualHrs: totalHrs });
+    invalidateTaskCache(taskId, 'update');
+    return { success: true, actualHrs: totalHrs, entries: entries };
+  } catch (error) {
+    console.error('updateTimeEntry failed:', error);
     return { success: false, error: error.message };
   }
 }

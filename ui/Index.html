@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>COLONY</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" media="print" onload="this.media='all'" />
 <script>
 tailwind.config = {
@@ -30,8 +31,11 @@ tailwind.config = {
 </script>
 <?!= include('ui/DesignSystem'); ?>
 <?!= include('ui/Styles'); ?>
+<script>
+window.__COLONY_DEEP_LINK__ = <?!= JSON.stringify(deepLink || {}) ?>;
+</script>
 </head>
-<body class="bg-gray-100 h-screen overflow-hidden">
+<body class="h-screen overflow-hidden" style="background:var(--co-page-bg);">
 <script>
 function _pc(pageName, method) {
   var page = window[pageName];
@@ -44,12 +48,12 @@ function _pc(pageName, method) {
 }
 </script>
 <div id="app" class="flex h-full">
-<aside id="sidebar" class="w-60 bg-gray-900 text-white flex flex-col">
-<div class="flex items-center gap-2 p-4 border-b border-gray-700">
-<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-sm" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-sm)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-sm)" fill="none" opacity="0.4"/></svg>
-<div>
-<span class="font-bold text-lg">COLONY</span>
-<div id="sidebarDate" class="text-xs text-gray-400"></div>
+<aside id="sidebar" class="w-60 text-white flex flex-col" style="background:#1c1b18;">
+<div class="flex items-center gap-2.5 px-5 py-4" style="border-bottom:1px solid rgba(255,255,255,0.06);">
+<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-sm" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#d89a6a"/><stop offset="100%" stop-color="#c06b4a"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-sm)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-sm)" fill="none" opacity="0.4"/></svg>
+<div class="flex-1 min-w-0">
+<span class="font-semibold text-[15px] tracking-tight">COLONY</span>
+<div id="sidebarDate" class="text-[11px] text-gray-400 mt-0.5"></div>
 </div>
 </div>
 <nav class="flex-1 py-4 overflow-y-auto">
@@ -61,10 +65,13 @@ function _pc(pageName, method) {
 <i class="fas fa-user w-5"></i> My Board
 </span>
 <span class="nav-link" data-view="projects" onclick="switchView('projects')">
-<i class="fas fa-folder-open w-5"></i> Projects
+<i class="fas fa-folder-open w-5"></i> My Projects
 </span>
 <span class="nav-link" data-view="dataassets" onclick="switchView('dataassets')">
 <i class="fas fa-database w-5"></i> Data Assets
+</span>
+<span class="nav-link" data-view="adhoc" onclick="switchView('adhoc')">
+<i class="fas fa-clipboard-list w-5"></i> Ad Hoc
 </span>
 </div>
 <div class="px-3 mb-2">
@@ -74,7 +81,7 @@ function _pc(pageName, method) {
 </div>
 <div id="sidebarGroup-workViews" class="sidebar-group-content">
 <span class="nav-link" data-view="list" onclick="switchView('list')">
-<i class="fas fa-list w-5"></i> List View
+<i class="fas fa-list w-5"></i> Task List
 </span>
 </div>
 </div>
@@ -104,103 +111,148 @@ function _pc(pageName, method) {
 </span>
 </div>
 <div class="px-3 mb-4">
-<p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Projects</p>
-<div class="relative" id="projectSelectorContainer">
-  <button id="projectSelectorBtn" onclick="toggleProjectDropdown()" class="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors text-left">
-    <i class="fas fa-folder text-gray-500"></i>
-    <span id="projectSelectorLabel" class="flex-1 truncate">All Projects</span>
-    <i class="fas fa-chevron-down text-xs text-gray-500" id="projectSelectorChevron"></i>
-  </button>
-  <div id="projectDropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-gray-800 rounded-lg shadow-xl z-50 border border-gray-700 overflow-hidden">
-    <div class="p-2 border-b border-gray-700">
-      <input id="projectSearchInput" type="text" placeholder="Search projects..." oninput="filterProjectDropdown()" class="w-full px-3 py-1.5 text-sm bg-gray-900 text-gray-200 rounded-md border border-gray-600 placeholder-gray-500 focus:outline-none focus:border-gray-400" />
-    </div>
-    <div id="projectDropdownList" class="overflow-y-auto max-h-48"></div>
-  </div>
-</div>
-<span class="nav-link text-primary-300 mt-2" onclick="openProjectModal()">
+<span class="nav-link text-primary-300" onclick="openProjectModal()">
 <i class="fas fa-plus w-5"></i> New Project
 </span>
 </div>
 </nav>
-<div class="p-4 border-t border-gray-700">
+<div class="px-4 py-3.5" style="border-top:1px solid rgba(255,255,255,0.06);">
 <div class="flex items-center gap-3">
 <div id="userAvatar"
-class="w-9 h-9 rounded-full bg-primary-600 flex items-center justify-center font-semibold text-sm">
+class="w-9 h-9 rounded-full bg-primary-700 flex items-center justify-center font-semibold text-sm cursor-pointer transition-all overflow-hidden"
+style="border:1px solid rgba(255,255,255,0.08);"
+onmouseover="this.style.boxShadow='0 0 0 2px rgba(192,107,74,0.35)'"
+onmouseout="this.style.boxShadow='none'"
+onclick="if(typeof AvatarPicker!=='undefined')AvatarPicker.open()"
+oncontextmenu="event.preventDefault(); if(typeof BadgeShowcase!=='undefined')BadgeShowcase.open(); return false;"
+title="Change avatar (right-click for badges)">
 ?
 </div>
 <div class="flex-1 overflow-hidden">
-<div id="userName" class="font-medium text-sm truncate">
+<div id="userName" class="font-medium text-[13px] truncate text-white">
 Loading...
 </div>
-<div id="userEmail" class="text-xs text-gray-400 truncate"></div>
-<div id="userRole" class="text-xs text-primary-300 font-medium"></div>
+<div id="userEmail" class="text-[11px] text-gray-500 truncate"></div>
+<div id="userRole" class="text-[11px] font-medium" style="color:var(--co-accent-300);"></div>
+<div id="sidebarBadges"></div>
 </div>
 <button
 onclick="handleLogout()"
-class="text-gray-400 hover:text-white p-1 rounded"
+class="text-gray-500 hover:text-white p-1.5 rounded transition-colors"
 title="Sign Out"
 >
-<i class="fas fa-sign-out-alt"></i>
+<i class="fas fa-sign-out-alt text-sm"></i>
 </button>
 </div>
 </div>
 </aside>
 <main class="flex-1 flex flex-col overflow-hidden">
-<header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-<div class="flex items-center gap-4">
-<h1 id="viewTitle" class="text-xl font-semibold text-gray-900">
-My Board
-</h1>
+<header class="border-b px-6 py-3 flex items-center justify-between gap-4" style="background:var(--co-surface);border-color:var(--co-border-subtle);">
+<div class="flex items-center gap-3 min-w-0">
+<h1 id="viewTitle" class="text-[15px] font-semibold whitespace-nowrap shrink-0" style="color:var(--co-ink);">My Board</h1>
+<div class="w-px h-4 shrink-0" style="background:var(--co-border-soft);"></div>
+<div class="relative shrink-0" id="projectSelectorContainer">
+  <button id="projectSelectorBtn" onclick="toggleProjectDropdown()" class="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors" style="color:var(--co-ink-muted);background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);" onmouseover="this.style.background='var(--co-border-subtle)';this.style.color='var(--co-ink)';" onmouseout="this.style.background='var(--co-surface-sunken)';this.style.color='var(--co-ink-muted)';">
+    <i class="fas fa-layer-group text-xs" style="color:var(--co-gray-400);"></i>
+    <span id="projectSelectorLabel" class="truncate max-w-[160px]">All Projects</span>
+    <i class="fas fa-chevron-down text-[10px]" style="color:var(--co-gray-400);" id="projectSelectorChevron"></i>
+  </button>
+  <div id="projectDropdown" class="hidden absolute left-0 top-full mt-1.5 rounded-lg z-50 overflow-hidden w-64" style="background:var(--co-surface);box-shadow:var(--co-shadow-lg);border:1px solid var(--co-border-subtle);">
+    <div class="p-2" style="border-bottom:1px solid var(--co-border-subtle);">
+      <input id="projectSearchInput" type="text" placeholder="Search projects..." oninput="filterProjectDropdown()" class="w-full px-3 py-1.5 text-sm rounded-md focus:outline-none" style="background:var(--co-surface-sunken);color:var(--co-ink);border:1px solid var(--co-border-subtle);" />
+    </div>
+    <div id="projectDropdownList" class="overflow-y-auto max-h-48"></div>
+  </div>
 </div>
-<div class="flex items-center gap-3 header-actions">
 <button
-id="lofiToggle"
-onclick="toggleLofi()"
-class="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-title="lofi hip hop radio"
+  onclick="hydrateScript('TaskEditModal'); _pc('TaskEditModal','openNew',{ projectId: State.projectFilter || '' })"
+  class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
+  style="background:var(--co-ink);color:#fff;"
+  onmouseover="this.style.background='var(--co-primary-800)'"
+  onmouseout="this.style.background='var(--co-ink)'"
 >
-<i class="fas fa-play"></i>
+  <i class="fas fa-plus text-[10px]"></i> New Task
+</button>
+</div>
+<div class="flex items-center gap-0.5 shrink-0 header-actions">
+<button
+  onclick="HelpGuide.toggle()"
+  class="w-8 h-8 flex items-center justify-center rounded-md transition-colors"
+  style="color:var(--co-gray-400);"
+  onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';"
+  onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';"
+  title="Help Guide"
+>
+  <i class="fas fa-question-circle text-sm"></i>
+</button>
+<button
+  id="topbarRefreshBtn"
+  onclick="refreshCurrentView()"
+  class="w-8 h-8 flex items-center justify-center rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+  style="color:var(--co-gray-400);"
+  onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';"
+  onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';"
+  title="Refresh"
+>
+  <i id="topbarRefreshIcon" class="fas fa-sync-alt text-sm"></i>
+</button>
+<button
+  id="lofiToggle"
+  onclick="toggleLofi()"
+  class="w-9 h-9 flex items-center justify-center rounded-md overflow-hidden hover:ring-2 hover:ring-gray-300 transition-all"
+  title="lofi hip hop radio"
+>
+  <svg id="lofiCassette" viewBox="0 0 120 80" class="w-8 h-6" style="opacity:0.45;">
+    <rect x="2" y="2" width="116" height="76" rx="6" fill="#2a2a2a" stroke="#555" stroke-width="1.5"/>
+    <rect x="12" y="10" width="96" height="40" rx="3" fill="#1a1a1a" stroke="#444" stroke-width="0.8"/>
+    <rect x="20" y="16" width="80" height="28" rx="2" fill="#0d0d0d" opacity="0.6"/>
+    <g id="lofiReelLeft">
+      <circle cx="38" cy="30" r="11" fill="none" stroke="#666" stroke-width="1.2"/>
+      <circle cx="38" cy="30" r="4" fill="#555"/>
+      <line x1="38" y1="19" x2="38" y2="23" stroke="#555" stroke-width="0.8"/>
+      <line x1="28.5" y1="24.5" x2="31.5" y2="27" stroke="#555" stroke-width="0.8"/>
+      <line x1="28.5" y1="35.5" x2="31.5" y2="33" stroke="#555" stroke-width="0.8"/>
+    </g>
+    <g id="lofiReelRight">
+      <circle cx="82" cy="30" r="11" fill="none" stroke="#666" stroke-width="1.2"/>
+      <circle cx="82" cy="30" r="4" fill="#555"/>
+      <line x1="82" y1="19" x2="82" y2="23" stroke="#555" stroke-width="0.8"/>
+      <line x1="92.5" y1="24.5" x2="89.5" y2="27" stroke="#555" stroke-width="0.8"/>
+      <line x1="92.5" y1="35.5" x2="89.5" y2="33" stroke="#555" stroke-width="0.8"/>
+    </g>
+    <line x1="49" y1="30" x2="71" y2="30" stroke="#444" stroke-width="0.6"/>
+    <rect x="30" y="56" width="60" height="8" rx="2" fill="#333" stroke="#555" stroke-width="0.5"/>
+    <circle cx="20" cy="68" r="3" fill="#333" stroke="#555" stroke-width="0.5"/>
+    <circle cx="100" cy="68" r="3" fill="#333" stroke="#555" stroke-width="0.5"/>
+  </svg>
 </button>
 <iframe id="lofiPlayer" style="display:none;" allow="autoplay"></iframe>
-<button
-onclick="refreshCurrentView()"
-class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
-title="Refresh"
->
-<i class="fas fa-sync-alt"></i>
-</button>
-<button
-onclick="hydrateScript('TaskEditModal'); _pc('TaskEditModal','openNew',{ projectId: State.projectFilter || '' })"
-class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"
->
-<i class="fas fa-plus"></i> New Task
-</button>
 </div>
 </header>
-<div class="bg-white border-b border-gray-200 px-6 py-3">
-<div class="flex items-center gap-6 text-sm">
-<div class="flex items-center gap-2">
-<span class="text-gray-500">Total:</span>
-<span id="statTotal" class="font-semibold text-gray-900">0</span>
+<div class="px-6 py-2" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
+<div class="flex items-center gap-5 text-[12px]" style="color:var(--co-ink-muted);">
+<div class="flex items-center gap-1.5">
+<span class="uppercase tracking-wider text-[10px]" style="color:var(--co-gray-400);">Total</span>
+<span id="statTotal" class="font-semibold" style="color:var(--co-ink);">0</span>
 </div>
-<div class="flex items-center gap-2">
-<span class="text-gray-500">Completed:</span>
-<span id="statCompleted" class="font-semibold text-green-600"
->0</span>
+<span style="width:1px;height:12px;background:var(--co-border-subtle);"></span>
+<div class="flex items-center gap-1.5">
+<span class="uppercase tracking-wider text-[10px]" style="color:var(--co-gray-400);">Completed</span>
+<span id="statCompleted" class="font-semibold text-green-600">0</span>
 </div>
-<div class="flex items-center gap-2">
-<span class="text-gray-500">Progress:</span>
-<span id="statProgress" class="font-semibold text-primary-700"
->0%</span>
+<span style="width:1px;height:12px;background:var(--co-border-subtle);"></span>
+<div class="flex items-center gap-1.5">
+<span class="uppercase tracking-wider text-[10px]" style="color:var(--co-gray-400);">Progress</span>
+<span id="statProgress" class="font-semibold" style="color:var(--co-accent-600);">0%</span>
 </div>
-<div class="flex items-center gap-2">
-<span class="text-gray-500">Due Soon:</span>
-<span id="statDueSoon" class="font-semibold text-gray-600"
->0</span>
+<span style="width:1px;height:12px;background:var(--co-border-subtle);"></span>
+<div class="flex items-center gap-1.5">
+<span class="uppercase tracking-wider text-[10px]" style="color:var(--co-gray-400);">Due Soon</span>
+<span id="statDueSoon" class="font-semibold" style="color:var(--co-ink-soft);">0</span>
 </div>
-<div class="flex items-center gap-2">
-<span class="text-gray-500">Overdue:</span>
+<span style="width:1px;height:12px;background:var(--co-border-subtle);"></span>
+<div class="flex items-center gap-1.5">
+<span class="uppercase tracking-wider text-[10px]" style="color:var(--co-gray-400);">Overdue</span>
 <span id="statOverdue" class="font-semibold text-red-600">0</span>
 </div>
 </div>
@@ -222,6 +274,9 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 </div>
 <div id="dataAssetsView" class="flex-1 overflow-auto hidden">
 <?!= include('ui/DataAssetView'); ?>
+</div>
+<div id="adhocView" class="flex-1 overflow-auto hidden">
+<?!= include('ui/AdHocView'); ?>
 </div>
 <div id="surgeView" class="flex-1 overflow-auto p-4 hidden">
 <?!= include('ui/SurgeView'); ?>
@@ -261,10 +316,11 @@ class="px-3 py-1 border border-gray-300 rounded text-sm"
 </select>
 </div>
 <button
+id="analyticsRefreshBtn"
 onclick="refreshAnalytics()"
-class="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700"
+class="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
 >
-<i class="fas fa-sync-alt mr-1"></i> Refresh
+<i id="analyticsRefreshIcon" class="fas fa-sync-alt mr-1"></i> Refresh
 </button>
 </div>
 </div>
@@ -374,15 +430,18 @@ Priority Distribution
   </div>
 </div>
 <!-- Task Modal -->
-<div id="taskModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-<div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
-<div class="flex items-center justify-between px-6 py-4 border-b">
-<h2 id="modalTitle" class="text-lg font-semibold text-gray-900">
+<div id="taskModal" class="fixed inset-0 flex items-center justify-center z-50 hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+<div class="rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">
+<div class="flex items-center justify-between px-6 py-4" style="border-bottom:1px solid var(--co-border-subtle);">
+<h2 id="modalTitle" class="text-[16px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.01em;">
 New Task
 </h2>
 <button
 onclick="closeTaskModal()"
-class="text-gray-400 hover:text-gray-600"
+class="p-2 rounded-lg transition-all"
+style="color:var(--co-gray-400);"
+onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';"
+onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';"
 >
 <i class="fas fa-times text-xl"></i>
 </button>
@@ -508,28 +567,31 @@ class="w-full px-3 py-2 border border-gray-300 rounded-lg"
 />
 </div>
 </div>
-<div class="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
+<div class="flex items-center justify-between px-6 py-4" style="border-top:1px solid var(--co-border-subtle);background:var(--co-surface-sunken);">
 <button
 type="button"
 onclick="deleteTask()"
 id="deleteTaskBtn"
-class="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm hidden"
+class="inline-flex items-center gap-2 px-3.5 py-1.5 text-[13px] rounded-lg transition-colors hidden"
+style="background:transparent;border:1px solid rgba(220,38,38,0.25);color:#dc2626;"
+onmouseover="this.style.background='#fef2f2'"
+onmouseout="this.style.background='transparent'"
 >
-<i class="fas fa-trash mr-1"></i> Delete
+<i class="fas fa-trash text-[11px]"></i> Delete
 </button>
-<div class="flex items-center gap-3">
+<div class="flex items-center gap-2 ml-auto">
 <button
 type="button"
 onclick="closeTaskModal()"
-class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm"
+class="co-btn-outline"
 >
 Cancel
 </button>
 <button
 type="submit"
-class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm"
+class="co-btn-solid"
 >
-<i class="fas fa-save mr-1"></i> Save Task
+<i class="fas fa-save text-[11px]"></i> Save Task
 </button>
 </div>
 </div>
@@ -537,17 +599,18 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 </div>
 </div>
 <!-- Project Modal -->
-<div id="projectModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden" onclick="closeProjectModal()">
-<div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col mx-4" onclick="event.stopPropagation()">
-<div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-<h2 class="text-lg font-semibold text-gray-900">New Project</h2>
-<button onclick="closeProjectModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+<div id="projectModal" class="fixed inset-0 flex items-center justify-center z-50 hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);" onclick="closeProjectModal()">
+<div class="rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);" onclick="event.stopPropagation()">
+<div class="flex items-center justify-between px-6 py-4 flex-shrink-0" style="border-bottom:1px solid var(--co-border-subtle);">
+<h2 class="text-[16px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.01em;">New Project</h2>
+<button onclick="closeProjectModal()" class="p-2 rounded-lg transition-all" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';" onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';"><i class="fas fa-times text-xl"></i></button>
 </div>
-<div id="newProjTabBar" class="bg-white border-b border-gray-200 px-6 flex items-center gap-1 flex-shrink-0 overflow-x-auto">
-<button onclick="switchNewProjTab('overview')" data-nptab="overview" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap border-gray-900 font-semibold text-gray-900">Overview</button>
-<button onclick="switchNewProjTab('portfolio')" data-nptab="portfolio" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Portfolio</button>
-<button onclick="switchNewProjTab('ownership')" data-nptab="ownership" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Ownership</button>
-<button onclick="switchNewProjTab('infrastructure')" data-nptab="infrastructure" class="px-4 py-3 text-sm transition-colors border-b-2 whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Infrastructure</button>
+<div id="newProjTabBar" class="px-6 flex items-center gap-1 flex-shrink-0 overflow-x-auto" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
+<button onclick="switchNewProjTab('overview')" data-nptab="overview" class="co-tab co-tab-active">Overview</button>
+<button onclick="switchNewProjTab('portfolio')" data-nptab="portfolio" class="co-tab">Portfolio</button>
+<button onclick="switchNewProjTab('ownership')" data-nptab="ownership" class="co-tab">Ownership</button>
+<button onclick="switchNewProjTab('infrastructure')" data-nptab="infrastructure" class="co-tab">Infrastructure</button>
+<button onclick="switchNewProjTab('documentation')" data-nptab="documentation" class="co-tab">Documentation &amp; Links</button>
 </div>
 <div class="flex-1 overflow-y-auto p-6">
 <div id="newProjTab_overview" class="max-w-2xl space-y-4">
@@ -557,11 +620,18 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 <select id="newProjOwner" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="">Current User (default)</option></select></div>
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Description</label>
 <textarea id="newProjDesc" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"></textarea></div>
+<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+<div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Timeline</div>
 <div class="grid grid-cols-2 gap-4">
-<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Start Date</label>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Initial Gov Request Received Date</label>
+<input type="date" id="newProjGovRequestDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Start Date</label>
 <input type="date" id="newProjStartDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
-<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">End Date</label>
-<input type="date" id="newProjEndDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">First Delivery / Prod Deployment Date</label>
+<input type="date" id="newProjFirstDeployDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Retired Date</label>
+<input type="date" id="newProjRetiredDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+</div>
 </div>
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Version</label>
 <input type="text" id="newProjVersion" placeholder="0.1.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
@@ -573,6 +643,14 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 <div id="newProjTab_portfolio" class="max-w-2xl space-y-4 hidden"></div>
 <div id="newProjTab_ownership" class="max-w-2xl space-y-4 hidden"></div>
 <div id="newProjTab_infrastructure" class="max-w-2xl space-y-4 hidden"></div>
+<div id="newProjTab_documentation" class="max-w-2xl space-y-4 hidden">
+<div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
+<div><div class="text-xs font-medium text-gray-600 uppercase tracking-wide">Documentation Completeness</div>
+<div class="text-xs text-gray-500">Filling these raises the project's Documentation score.</div></div>
+<div id="newProjDocCompletenessBadge" class="text-sm font-semibold text-gray-400">0% (0/7)</div>
+</div>
+<div id="newProjDocFields" class="grid grid-cols-1 gap-3"></div>
+</div>
 </div>
 <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 flex-shrink-0">
 <button type="button" onclick="closeProjectModal()" class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm">Cancel</button>
@@ -582,22 +660,22 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 </div>
 <!-- Toast Container -->
 <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
-<div id="confirmModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[10050] hidden">
-  <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
-    <p id="confirmModalMessage" class="text-gray-900 font-medium mb-4"></p>
-    <div class="flex gap-3 justify-end">
-      <button id="confirmModalCancel" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-      <button id="confirmModalConfirm" class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">Confirm</button>
+<div id="confirmModal" class="fixed inset-0 flex items-center justify-center z-[10050] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+  <div class="rounded-xl w-full max-w-sm p-6 mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">
+    <p id="confirmModalMessage" class="font-medium mb-5 text-[14px]" style="color:var(--co-ink);"></p>
+    <div class="flex gap-2 justify-end">
+      <button id="confirmModalCancel" class="co-btn-outline">Cancel</button>
+      <button id="confirmModalConfirm" class="co-btn-solid">Confirm</button>
     </div>
   </div>
 </div>
-<div id="promptModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[10050] hidden">
-  <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
-    <p id="promptModalMessage" class="text-gray-900 font-medium mb-3"></p>
-    <input id="promptModalInput" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-1 focus:ring-gray-400" />
-    <div class="flex gap-3 justify-end">
-      <button id="promptModalCancel" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-      <button id="promptModalConfirm" class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">OK</button>
+<div id="promptModal" class="fixed inset-0 flex items-center justify-center z-[10050] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+  <div class="rounded-xl w-full max-w-sm p-6 mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">
+    <p id="promptModalMessage" class="font-medium mb-3 text-[14px]" style="color:var(--co-ink);"></p>
+    <input id="promptModalInput" type="text" class="co-search-input w-full mb-5" />
+    <div class="flex gap-2 justify-end">
+      <button id="promptModalCancel" class="co-btn-outline">Cancel</button>
+      <button id="promptModalConfirm" class="co-btn-solid">OK</button>
     </div>
   </div>
 </div>
@@ -616,6 +694,7 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 <?!= include('ui/Sidebar'); ?>
 <?!= include('ui/Scripts'); ?>
 <?!= include('ui/Shortcuts'); ?>
+<?!= include('ui/HelpGuide'); ?>
 <script type="text/plain" data-deferred="BoardView"><?!= include('ui/BoardView'); ?></script>
 <script type="text/plain" data-deferred="AnalyticsModule"><?!= include('ui/AnalyticsModule'); ?></script>
 <script type="text/plain" data-deferred="ProjectViewScript"><?!= include('ui/ProjectViewScript'); ?></script>
@@ -625,6 +704,8 @@ class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-
 <script type="text/plain" data-deferred="TaskEditModal"><?!= include('ui/TaskEditModal'); ?></script>
 <script type="text/plain" data-deferred="DependencyPicker"><?!= include('ui/DependencyPicker'); ?></script>
 <?!= include('ui/NotificationCenter'); ?>
+<?!= include('ui/BadgeShowcase'); ?>
+<?!= include('ui/AvatarPicker'); ?>
 <div id="commandPalette" class="fixed inset-0 bg-black/40 flex items-start justify-center pt-[15vh] z-[70] hidden" onclick="CommandPalette.close()">
   <div class="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
     <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-200">

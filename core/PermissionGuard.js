@@ -63,10 +63,10 @@ const PermissionGuard = {
       description: 'Standard team member',
       permissions: [
         'task:create', 'task:read:own', 'task:read:all', 'task:update:own', 'task:delete:own',
-        'project:create', 'project:read',
+        'project:create', 'project:read', 'project:update',
         'user:read',
         'analytics:view:own',
-        'dataasset:read', 'dataasset:create'
+        'dataasset:read', 'dataasset:create', 'dataasset:update'
       ],
       isSystemRole: true
     },
@@ -219,10 +219,10 @@ const PermissionGuard = {
       case 'member':
         return [
           'task:create', 'task:read:own', 'task:read:all', 'task:update:own', 'task:delete:own',
-          'project:create', 'project:read',
+          'project:create', 'project:read', 'project:update',
           'user:read',
           'analytics:view:own',
-          'dataasset:read', 'dataasset:create'
+          'dataasset:read', 'dataasset:create', 'dataasset:update'
         ];
       case 'viewer':
         return [
@@ -278,21 +278,33 @@ const PermissionGuard = {
   initializeDefaultRoles() {
     const sheet = getRolesSheet();
     const data = sheet.getDataRange().getValues();
-
-    if (data.length <= 1) {
-      Object.keys(this.DEFAULT_ROLES).forEach(roleName => {
-        const role = this.DEFAULT_ROLES[roleName];
-        const roleData = {
-          id: generateId('role'),
-          name: roleName,
-          description: role.description,
-          permissions: JSON.stringify(this.getDefaultPermissionsForRole(roleName)),
-          isSystemRole: true,
-          createdAt: now()
-        };
-        sheet.appendRow(objectToRow(roleData, CONFIG.ROLE_COLUMNS));
-      });
+    const nameIndex = CONFIG.ROLE_COLUMNS.indexOf('name');
+    const existingNames = {};
+    for (let i = 1; i < data.length; i++) {
+      const roleName = data[i][nameIndex];
+      if (roleName) existingNames[String(roleName).toLowerCase()] = true;
     }
+
+    let added = 0;
+    Object.keys(this.DEFAULT_ROLES).forEach(roleName => {
+      if (existingNames[roleName.toLowerCase()]) return;
+      const role = this.DEFAULT_ROLES[roleName];
+      const roleData = {
+        id: generateId('role'),
+        name: roleName,
+        description: role.description,
+        permissions: JSON.stringify(this.getDefaultPermissionsForRole(roleName)),
+        isSystemRole: true,
+        createdAt: now()
+      };
+      sheet.appendRow(objectToRow(roleData, CONFIG.ROLE_COLUMNS));
+      added++;
+    });
+
+    if (added > 0) {
+      this._roleCache = null;
+    }
+    return added;
   },
 
   getProjectPermissions(userEmail, projectId) {
@@ -341,6 +353,24 @@ const PermissionGuard = {
     };
 
     sheet.appendRow(objectToRow(member, columns));
+    if (typeof NotificationEngine !== 'undefined' && userEmail && userEmail !== currentUser) {
+      try {
+        var proj = null;
+        try { proj = getProjectById(projectId); } catch (e) {}
+        var projName = proj ? proj.name : projectId;
+        NotificationEngine.createNotification({
+          userId: userEmail,
+          type: 'project_assigned',
+          title: 'Added to project',
+          message: 'You were added to project ' + projectId + ': ' + projName + ' as ' + (projectRole || 'member') + '.',
+          entityType: 'project',
+          entityId: projectId,
+          channels: ['in_app', 'email']
+        });
+      } catch (e) {
+        console.error('addProjectMember notification failed:', e);
+      }
+    }
     return member;
   },
 

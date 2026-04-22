@@ -282,7 +282,13 @@ var DependencyPicker = {
   },
 
   renderTaskCard(task) {
-    const projectName = this.projects.find(p => p.id === task.projectId)?.name || 'No Project';
+    var projMatch = this.projects.find(p => p.id === task.projectId);
+    var projectName = projMatch ? projMatch.name : '';
+    if (!projectName && task.projectId) {
+      var daMatch = (State.dataAssets || []).find(function(a) { return a.id === task.projectId; });
+      projectName = daMatch ? daMatch.assetName : 'No Project';
+    }
+    if (!projectName) projectName = 'No Project';
 
     return `
       <div

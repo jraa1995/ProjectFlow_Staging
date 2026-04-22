@@ -25,6 +25,20 @@ const REQUESTS_COLUMN_MAPPING = {
   actualHrs: 'Time To Complete Actual Hours'
 };
 
+const REQUESTS_METADATA_FIELDS = [
+  'businessJustification',
+  'whatContractDoesItApplyTo',
+  'assignedTeam',
+  'requestor',
+  'contractorPoc',
+  'contractorPocEmail',
+  'internalNotes',
+  'topic',
+  'requestId',
+  'slaBreached',
+  'escalated'
+];
+
 function getRequestsWorkbookId() {
   return PropertiesService.getScriptProperties().getProperty('REQUESTS_WORKBOOK_ID') || '';
 }
@@ -203,25 +217,10 @@ function stageTicketsInFunnel(tickets, mapping, workbookId, sheetName) {
         }
       });
 
-      const criticalUnmappedFields = [
-        'businessJustification',
-        'whatContractDoesItApplyTo',
-        'assignedTeam',
-        'requestor',
-        'contractorPoc',
-        'contractorPocEmail',
-        'internalNotes',
-        'topic',
-        'requestId',
-        'slaBreached',
-        'escalated'
-      ];
-
-      let additionalContext = '';
       const metadata = {};
       const usedColumns = Object.values(mapping);
 
-      criticalUnmappedFields.forEach(fieldName => {
+      REQUESTS_METADATA_FIELDS.forEach(fieldName => {
         Object.keys(ticket).forEach(ticketKey => {
           const normalizedKey = ticketKey.toLowerCase().replace(/[_\s-]/g, '');
           const normalizedField = fieldName.toLowerCase().replace(/[_\s-]/g, '');
@@ -229,22 +228,14 @@ function stageTicketsInFunnel(tickets, mapping, workbookId, sheetName) {
             normalizedKey.includes(normalizedField) ||
             normalizedField.includes(normalizedKey)) {
             if (!usedColumns.includes(ticketKey) && ticket[ticketKey]) {
-              const displayName = fieldName.replace(/([A-Z])/g, ' $1').trim();
-              additionalContext += `\n**${displayName}:** ${ticket[ticketKey]}`;
               metadata[fieldName] = ticket[ticketKey];
             }
           }
         });
       });
 
-      if (additionalContext) {
-        const originalDesc = mappedData.description || '';
-        mappedData.description = originalDesc +
-          '\n\n---\n**Additional Request Details:**' +
-          additionalContext;
-      }
-
       if (Object.keys(metadata).length > 0) {
+        mappedData.sourceMetadata = metadata;
         mappedData.customFields = JSON.stringify(metadata);
       }
 
@@ -429,6 +420,14 @@ function bulkUpdateFunnelTickets(updates) {
   }
 }
 
+function resolveRequestTypeRouting(mappedData, rawData) {
+  var typeValue = (mappedData && mappedData.type) || (rawData && rawData['Request Type Category']) || '';
+  var routing = (typeof CONFIG !== 'undefined' && CONFIG.REQUEST_TYPE_ROUTING) || {};
+  var route = routing[typeValue];
+  if (route) return Object.assign({ sourceType: typeValue }, route);
+  return { kind: 'task', projectId: (mappedData && mappedData.projectId) || '', taskType: 'Task', sourceType: typeValue || 'Unknown' };
+}
+
 function importFunnelTicketsToTasks(funnelIds, options) {
   try {
     options = options || {};
@@ -443,14 +442,31 @@ function importFunnelTicketsToTasks(funnelIds, options) {
 
     funnelTickets.forEach(funnelTicket => {
       try {
-        const taskData = { ...funnelTicket.mappedData };
+        const route = resolveRequestTypeRouting(funnelTicket.mappedData, funnelTicket.rawData);
+        if (route.kind === 'project') {
+          errors.push({
+            funnelId: funnelTicket.id,
+            error: 'New Project tickets must be imported individually via the Assign & Import modal.'
+          });
+          return;
+        }
+
+        const taskData = Object.assign({}, funnelTicket.mappedData);
+        delete taskData.sourceMetadata;
 
         if (!taskData.title) {
           throw new Error('Title is required');
         }
 
-        if (!taskData.projectId) {
-          taskData.projectId = '';
+        taskData.projectId = route.projectId || taskData.projectId || '';
+        if (route.taskType) {
+          taskData.type = route.taskType;
+        } else if (!taskData.type) {
+          taskData.type = 'Task';
+        }
+
+        if (!taskData.customFields && funnelTicket.mappedData.sourceMetadata) {
+          taskData.customFields = JSON.stringify(funnelTicket.mappedData.sourceMetadata);
         }
 
         if (!taskData.assignee) {
@@ -495,6 +511,104 @@ function importFunnelTicketsToTasks(funnelIds, options) {
       error: error.message,
       errors: []
     };
+  }
+}
+
+function importFunnelRowAsProject(funnelId, projectOverrides, options) {
+  try {
+    PermissionGuard.requirePermission('project:create');
+    options = options || {};
+    projectOverrides = projectOverrides || {};
+    var ticket = getFunnelTickets().find(function(t) { return t.id === funnelId; });
+    if (!ticket) throw new Error('Funnel ticket not found: ' + funnelId);
+
+    var mapped = ticket.mappedData || {};
+    var raw = ticket.rawData || {};
+    var meta = mapped.sourceMetadata || {};
+
+    var settings = {};
+    if (projectOverrides.settings && typeof projectOverrides.settings === 'object') {
+      settings = Object.assign({}, projectOverrides.settings);
+    }
+
+    settings.sourceRequest = {
+      funnelId: ticket.id,
+      requestId: meta.requestId || raw['Request ID'] || '',
+      requestor: meta.requestor || raw['Requestor'] || '',
+      topic: meta.topic || raw['Topic'] || '',
+      contractorPoc: meta.contractorPoc || '',
+      contractorPocEmail: meta.contractorPocEmail || '',
+      businessJustification: meta.businessJustification || '',
+      internalNotes: meta.internalNotes || '',
+      assignedTeam: meta.assignedTeam || raw['Assigned Team'] || ''
+    };
+
+    var docKeys = ['googleDriveFolder', 'githubLinks', 'devDocs', 'designDocs', 'sops', 'userGuides', 'dataDictionaries'];
+    docKeys.forEach(function(k) {
+      if (!settings[k] && projectOverrides[k]) settings[k] = projectOverrides[k];
+    });
+
+    var rawDocSourceMap = {
+      googleDriveFolder: ['Google Drive', 'Google Drive Folder', 'Drive Folder'],
+      githubLinks: ['GitHub URL', 'Repo', 'Repository', 'Git Repository']
+    };
+    Object.keys(rawDocSourceMap).forEach(function(k) {
+      if (settings[k]) return;
+      rawDocSourceMap[k].some(function(col) {
+        if (raw[col]) { settings[k] = raw[col]; return true; }
+        return false;
+      });
+    });
+
+    var taxonomyKeys = ['workstream', 'projectCategory', 'projectType', 'developmentPriority',
+      'developmentPhase', 'techStack', 'sdmSupported', 'deploymentLocation', 'linkedProjectId'];
+    taxonomyKeys.forEach(function(f) {
+      if (projectOverrides[f] && !settings[f]) settings[f] = projectOverrides[f];
+    });
+
+    var projectData = {
+      name: projectOverrides.name || mapped.title || 'New Project',
+      description: projectOverrides.description || mapped.description || '',
+      ownerId: projectOverrides.ownerId || ticket.assignedTo || '',
+      startDate: projectOverrides.startDate || mapped.startDate || '',
+      tags: projectOverrides.tags || '',
+      settings: JSON.stringify(settings),
+      skipNotification: true
+    };
+    taxonomyKeys.forEach(function(f) {
+      if (projectOverrides[f]) projectData[f] = projectOverrides[f];
+    });
+
+    var project = createProject(projectData);
+
+    updateFunnelTicket(funnelId, {
+      importStatus: 'imported',
+      importedTaskId: project.id,
+      importedAt: now()
+    });
+
+    if (options.notifyAssignee && project.ownerId) {
+      try {
+        NotificationEngine.createNotification({
+          userId: project.ownerId,
+          type: 'project_assigned',
+          title: 'New project assigned',
+          message: 'You have been assigned as owner of project "' + project.name +
+                   '". Please open the project and fill in the Details and Documentation & Links tabs.',
+          entityType: 'project',
+          entityId: project.id,
+          channels: ['in_app', 'email'],
+          reason: 'Funnel import (request ' + (meta.requestId || ticket.id) + ')'
+        });
+      } catch (e) {
+        console.error('importFunnelRowAsProject notify failed:', e);
+      }
+    }
+
+    return { success: true, project: project };
+  } catch (error) {
+    console.error('importFunnelRowAsProject error:', error);
+    return { success: false, error: error.message };
   }
 }
 

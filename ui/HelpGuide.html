@@ -1,0 +1,221 @@
+<script>
+var HelpGuide = {
+  open: false,
+
+  CONTENT: {
+    home: {
+      title: 'Home',
+      icon: 'fa-home',
+      intro: 'Your dashboard with an overview of recent activity, task stats, and quick access to your work.',
+      items: [
+        { q: 'What does the Home page show?', a: 'Home displays your task summary stats, recent activity feed, upcoming due dates, and quick-access cards to jump into your most active projects.' },
+        { q: 'How do I get to my tasks from here?', a: 'Click "My Board" in the sidebar, or click any task card on the Home page to open it directly.' },
+        { q: 'Can I customize what I see on Home?', a: 'Home automatically adapts to show your assigned tasks and projects. Use the project filter in the sidebar to narrow the scope.' },
+        { q: 'What do the stat counters mean?', a: 'Total = all tasks in scope, Completed = tasks marked Done, Progress = percentage complete, Due Soon = tasks due within the next 7 days.' }
+      ]
+    },
+    my: {
+      title: 'My Board',
+      icon: 'fa-user',
+      intro: 'A Kanban board showing tasks assigned to you, organized by status columns.',
+      items: [
+        { q: 'How do I move a task between columns?', a: 'Drag and drop a task card from one status column to another. The status updates automatically when you drop it.' },
+        { q: 'How do I create a new task?', a: 'Click the "+ New Task" button in the top-right header, or use the keyboard shortcut N.' },
+        { q: 'Can I filter tasks?', a: 'Use the project selector in the sidebar to filter by project. The header stat bar updates to reflect the filtered set.' },
+        { q: 'How do I open task details?', a: 'Click on any task card to open the detail panel on the right side. From there you can edit fields, add comments, and manage dependencies.' },
+        { q: 'What are the status columns?', a: 'Backlog, To Do, In Progress, Review, Testing, and Done. Tasks flow left-to-right as work progresses.' },
+        { q: 'What do story points and hours mean?', a: 'Story points estimate relative complexity. Estimated hours track planned effort. Actual hours track time spent. All are optional fields on each task.' }
+      ]
+    },
+    master: {
+      title: 'Master Board',
+      icon: 'fa-layer-group',
+      intro: 'A manager-level Kanban view showing all tasks across all assignees.',
+      items: [
+        { q: 'How is this different from My Board?', a: 'My Board shows only your tasks. Master Board shows every task in the filtered project(s) regardless of assignee, giving managers full visibility.' },
+        { q: 'Who can access Master Board?', a: 'Users with the Manager or Admin role. Members and Viewers do not see this option in the sidebar.' },
+        { q: 'Can I reassign tasks from here?', a: 'Yes. Click a task card to open the detail panel, then change the Assignee field.' },
+        { q: 'How do I spot bottlenecks?', a: 'Look for columns with many cards stacked up (e.g., Review or Testing). That indicates work is accumulating at that stage.' }
+      ]
+    },
+    projects: {
+      title: 'Projects',
+      icon: 'fa-folder-open',
+      intro: 'Manage all projects, their settings, members, taxonomy fields, and release notes.',
+      items: [
+        { q: 'How do I create a new project?', a: 'Click "+ New Project" at the bottom of the sidebar, or use the button on the Projects page. Fill in the name and details, and COLONY auto-generates a project ID acronym.' },
+        { q: 'What are taxonomy fields?', a: 'Workstream, Category, Type, Priority, Phase, Tech Stack, SDM Supported, and Deployment Location. These classify your project for filtering and reporting.' },
+        { q: 'How do I manage project members?', a: 'Open a project, go to the Members tab, and add users by email. Each member can have a project-specific role (Admin, Manager, Member, Viewer).' },
+        { q: 'How do release notes work?', a: 'In the project detail view, go to the Releases tab. Add entries with a version, type (Major/Minor/Patch), summary, and categorized changes (Added, Changed, Fixed, Removed, Security).' },
+        { q: 'Can I email release notes to stakeholders?', a: 'Yes. In the Releases tab, click "Send As Email" to open the email builder. Select recipients, customize the intro message, optionally attach a Drive GIF/screenshot, and send.' },
+        { q: 'What is the linked project field?', a: 'It lets you associate a child project with a parent project, creating a project hierarchy for complex programs.' },
+        { q: 'How do I edit project settings?', a: 'Click a project card to open its detail view. Use the Settings tab to edit repository URL, tags, and other configuration.' }
+      ]
+    },
+    list: {
+      title: 'List View',
+      icon: 'fa-list',
+      intro: 'A table-based view of tasks with sorting, inline status badges, and quick access to details.',
+      items: [
+        { q: 'How is List View different from the Board?', a: 'List View displays tasks as table rows instead of Kanban cards. It is better for scanning many tasks at once, sorting by columns, and comparing fields side-by-side.' },
+        { q: 'Can I sort by column?', a: 'Click any column header to sort ascending/descending. Common sorts: by priority, due date, status, or assignee.' },
+        { q: 'How do I open a task from the list?', a: 'Click the task row to open the detail panel on the right.' },
+        { q: 'Does the project filter apply here?', a: 'Yes. The sidebar project selector filters List View just like it filters the Board views.' }
+      ]
+    },
+    dataassets: {
+      title: 'Data Assets',
+      icon: 'fa-database',
+      intro: 'Track and manage data assets including ownership, sources, schedules, and documentation links.',
+      items: [
+        { q: 'What is a Data Asset?', a: 'A Data Asset represents a dataset, report, or data pipeline your team manages. It tracks the owner, backup owner, source, target files, update schedule, and related projects.' },
+        { q: 'How do I create a Data Asset?', a: 'Click the "+ New Data Asset" button on the Data Assets page. Fill in the required fields: name, owner, status, and data source at minimum.' },
+        { q: 'What do the status values mean?', a: 'Active = currently in use, Inactive = paused/dormant, Deprecated = scheduled for removal, In Development = being built.' },
+        { q: 'How do I link a Data Asset to a project?', a: 'Use the "Related Projects" field when creating or editing a Data Asset. You can link multiple projects.' },
+        { q: 'Where do I add documentation links?', a: 'Use the "GitHub Link" and "Data Sharing Doc Link" fields on the Data Asset detail form.' }
+      ]
+    },
+    surge: {
+      title: 'Pick Ups / Surge',
+      icon: 'fa-hand-paper',
+      intro: 'Browse and claim available tasks that need to be picked up by team members.',
+      items: [
+        { q: 'What are Pick Up tasks?', a: 'These are unassigned tasks or tasks flagged for surge capacity. Team members can browse and self-assign tasks they have bandwidth for.' },
+        { q: 'How do I pick up a task?', a: 'Click the "Pick Up" button on any available task card. It will be assigned to you and appear on your My Board.' },
+        { q: 'Can I return a picked-up task?', a: 'Yes. Open the task detail and clear the Assignee field, or reassign it to someone else.' },
+        { q: 'Who decides what goes into Pick Ups?', a: 'Tasks appear here when they have no assignee, or when a manager explicitly flags them for surge pickup.' }
+      ]
+    },
+    analytics: {
+      title: 'Analytics',
+      icon: 'fa-chart-bar',
+      intro: 'Visual dashboards with charts and metrics for tracking team performance and project health.',
+      items: [
+        { q: 'Who can see Analytics?', a: 'Users with the Manager or Admin role. The analytics scope depends on your permissions — managers see team-level data, admins see everything.' },
+        { q: 'What charts are available?', a: 'Task distribution by status, priority breakdown, velocity trends, burndown progress, and assignee workload comparisons.' },
+        { q: 'How often does data refresh?', a: 'Analytics data is cached and refreshes when you navigate to the page or click the Refresh button in the header.' },
+        { q: 'Can I filter analytics by project?', a: 'Yes. Use the sidebar project selector to scope analytics to a specific project.' }
+      ]
+    },
+    funnel: {
+      title: 'Ticket Funnel',
+      icon: 'fa-filter',
+      intro: 'Import and triage incoming work items from external sources into COLONY tasks.',
+      items: [
+        { q: 'What is the Funnel?', a: 'The Funnel is where external work requests land before becoming tasks. You can review, map fields, assign, and import them as proper COLONY tasks.' },
+        { q: 'How do items get into the Funnel?', a: 'Items are imported from external spreadsheets or workbooks. Use the Import button to connect a source sheet.' },
+        { q: 'What are Funnel statuses?', a: 'Pending = awaiting review, Reviewed = triaged but not imported, Imported = converted to a task, Rejected = declined.' },
+        { q: 'Who can use the Funnel?', a: 'Managers and Admins. It is designed for team leads who triage incoming requests.' }
+      ]
+    },
+    'access-requests': {
+      title: 'Access Requests',
+      icon: 'fa-user-plus',
+      intro: 'Review and approve or deny user access requests to join COLONY.',
+      items: [
+        { q: 'Who can manage Access Requests?', a: 'Only Admins. This page is not visible to other roles.' },
+        { q: 'What happens when I approve a request?', a: 'The user is created with the default Member role and can log in immediately.' },
+        { q: 'Can I add a reason when denying?', a: 'Yes. You can add a note explaining why the request was denied for record-keeping.' }
+      ]
+    }
+  },
+
+  toggle: function() {
+    this.open ? this.close() : this.show();
+  },
+
+  show: function() {
+    this.open = true;
+    var view = State.currentView || 'home';
+    var content = this.CONTENT[view] || this.CONTENT['home'];
+    var panel = document.createElement('div');
+    panel.id = 'helpGuideOverlay';
+    panel.className = 'fixed inset-0 bg-black/20 flex items-center justify-end';
+    panel.style.cssText = 'z-index:10030;';
+    panel.onclick = function(e) { if (e.target === panel) HelpGuide.close(); };
+
+    var sections = content.items.map(function(item, idx) {
+      return '<div class="border-b border-gray-100 last:border-0">' +
+        '<button onclick="HelpGuide.toggleItem(' + idx + ')" class="helpguide-q w-full flex items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors">' +
+          '<span>' + item.q + '</span>' +
+          '<i id="helpChev' + idx + '" class="fas fa-chevron-right text-xs text-gray-400 transition-transform"></i>' +
+        '</button>' +
+        '<div id="helpAns' + idx + '" class="hidden px-4 pb-3 text-sm text-gray-600 leading-relaxed">' + item.a + '</div>' +
+      '</div>';
+    }).join('');
+
+    var viewKeys = Object.keys(this.CONTENT);
+    var viewTabs = viewKeys.map(function(k) {
+      var c = HelpGuide.CONTENT[k];
+      var isActive = k === view;
+      return '<button onclick="HelpGuide.switchTo(\'' + k + '\')" ' +
+        'class="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md whitespace-nowrap transition-colors ' +
+        (isActive ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100') + '">' +
+        '<i class="fas ' + c.icon + '"></i> ' + c.title +
+      '</button>';
+    }).join('');
+
+    panel.innerHTML =
+      '<div class="bg-white w-full max-w-md h-full shadow-xl flex flex-col overflow-hidden" onclick="event.stopPropagation()">' +
+        '<div class="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50">' +
+          '<div class="flex items-center gap-2.5">' +
+            '<div class="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center"><i class="fas fa-question text-white text-sm"></i></div>' +
+            '<div>' +
+              '<h2 class="text-base font-semibold text-gray-900">Help Guide</h2>' +
+              '<p class="text-xs text-gray-500">' + content.title + '</p>' +
+            '</div>' +
+          '</div>' +
+          '<button onclick="HelpGuide.close()" class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"><i class="fas fa-times"></i></button>' +
+        '</div>' +
+        '<div class="px-4 py-2.5 border-b border-gray-200 overflow-x-auto">' +
+          '<div class="flex items-center gap-1">' + viewTabs + '</div>' +
+        '</div>' +
+        '<div class="flex-1 overflow-y-auto">' +
+          '<div class="px-4 py-4">' +
+            '<p class="text-sm text-gray-600 leading-relaxed">' + content.intro + '</p>' +
+          '</div>' +
+          '<div class="border-t border-gray-200">' +
+            '<div class="px-4 py-2.5"><span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">FAQ</span></div>' +
+            sections +
+          '</div>' +
+        '</div>' +
+        '<div class="px-4 py-3 border-t border-gray-200 bg-gray-50">' +
+          '<p class="text-xs text-gray-400 text-center">Press <kbd class="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded text-xs font-mono">?</kbd> to toggle this guide</p>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(panel);
+    requestAnimationFrame(function() {
+      panel.style.opacity = '1';
+    });
+  },
+
+  close: function() {
+    this.open = false;
+    var el = document.getElementById('helpGuideOverlay');
+    if (el) el.remove();
+  },
+
+  switchTo: function(view) {
+    this.close();
+    this.open = false;
+    var content = this.CONTENT[view];
+    if (!content) return;
+    var savedView = State.currentView;
+    State.currentView = view;
+    this.show();
+    State.currentView = savedView;
+  },
+
+  toggleItem: function(idx) {
+    var ans = document.getElementById('helpAns' + idx);
+    var chev = document.getElementById('helpChev' + idx);
+    if (!ans) return;
+    var isHidden = ans.classList.contains('hidden');
+    ans.classList.toggle('hidden');
+    if (chev) {
+      chev.style.transform = isHidden ? 'rotate(90deg)' : '';
+    }
+  }
+};
+</script>

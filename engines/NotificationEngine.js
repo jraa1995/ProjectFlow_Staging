@@ -27,6 +27,12 @@ class NotificationEngine {
       channels: channels,
       scheduledFor: notificationData.scheduledFor || now()
     });
+    if (notificationData.reason) notification.reason = notificationData.reason;
+    if (notificationData.pingReason) notification.pingReason = notificationData.pingReason;
+    if (notificationData.customMessage) notification.customMessage = notificationData.customMessage;
+    if (Array.isArray(notificationData.ccRecipients) && notificationData.ccRecipients.length > 0) {
+      notification.ccRecipients = notificationData.ccRecipients.slice();
+    }
     const scheduledTime = new Date(notification.scheduledFor);
     const currentTime = new Date();
     if (scheduledTime <= currentTime) {
@@ -74,7 +80,7 @@ class NotificationEngine {
         push: false
       },
       task_updated: {
-        email: false,
+        email: true,
         in_app: true,
         push: false
       },
@@ -88,8 +94,18 @@ class NotificationEngine {
         in_app: true,
         push: false
       },
+      project_assigned: {
+        email: true,
+        in_app: true,
+        push: false
+      },
+      project_ping: {
+        email: true,
+        in_app: true,
+        push: false
+      },
       comment_added: {
-        email: false,
+        email: true,
         in_app: true,
         push: false
       }
@@ -115,7 +131,13 @@ class NotificationEngine {
 
   static queueNotificationForDelivery(notification) {
     try {
-      notification.channels.forEach(channel => {
+      var channels = notification.channels;
+      if (typeof channels === 'string') {
+        channels = channels.split(',').map(function(c) { return c.trim(); }).filter(Boolean);
+      } else if (!Array.isArray(channels)) {
+        channels = ['in_app'];
+      }
+      channels.forEach(channel => {
         switch (channel) {
           case 'email':
             this.queueEmailNotification(notification);
@@ -129,18 +151,22 @@ class NotificationEngine {
         }
       });
     } catch (error) {
+      console.error('queueNotificationForDelivery failed:', error);
     }
   }
 
   static queueEmailNotification(notification) {
     try {
-      const deliveryResult = EmailNotificationService.sendEmailNotification(notification);
+      EmailNotificationService.sendEmailNotification(notification);
     } catch (error) {
-      logActivity('system', 'email_failed', 'notification', notification.id, {
-        recipient: notification.userId,
-        error: error.message,
-        retryable: true
-      });
+      console.error('queueEmailNotification failed:', error);
+      try {
+        logActivity('system', 'email_failed', 'notification', notification.id, {
+          recipient: notification.userId,
+          error: error.message,
+          retryable: true
+        });
+      } catch (e) {}
     }
   }
 
@@ -154,7 +180,13 @@ class NotificationEngine {
       push: []
     };
     notifications.forEach(notification => {
-      notification.channels.forEach(channel => {
+      var channels = notification.channels;
+      if (typeof channels === 'string') {
+        channels = channels.split(',').map(function(c) { return c.trim(); }).filter(Boolean);
+      } else if (!Array.isArray(channels)) {
+        channels = ['in_app'];
+      }
+      channels.forEach(channel => {
         if (channelGroups[channel]) {
           channelGroups[channel].push(notification);
         }
@@ -162,8 +194,9 @@ class NotificationEngine {
     });
     if (channelGroups.email.length > 0) {
       try {
-        const batchResult = EmailNotificationService.sendBatchEmailNotifications(channelGroups.email);
+        EmailNotificationService.sendBatchEmailNotifications(channelGroups.email);
       } catch (error) {
+        console.error('sendBatchEmailNotifications failed:', error);
       }
     }
     ['in_app', 'push'].forEach(channel => {
@@ -315,6 +348,61 @@ class NotificationEngine {
         </div>
         `
       },
+      project_assigned: {
+        subject: 'New project assigned to you in COLONY',
+        body: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h2 style="color: #1e293b; margin: 0;">New project assigned to you</h2>
+        </div>
+        <div style="background: white; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h3 style="color: #3b82f6; margin: 0 0 10px 0;">{{projectName}}</h3>
+        <p>{{message}}</p>
+        {{#projectDescription}}
+        <div style="background: #f1f5f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
+        <p style="margin: 0;">{{projectDescription}}</p>
+        </div>
+        {{/projectDescription}}
+        {{#reason}}<p style="font-size: 12px; color: #64748b;">{{reason}}</p>{{/reason}}
+        <p>
+        <a href="{{projectUrl}}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block;">
+        View Project
+        </a>
+        </p>
+        </div>
+        <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #64748b;">
+        <p>This notification was sent by COLONY. To manage your notification preferences, visit your account settings.</p>
+        </div>
+        </div>
+        `
+      },
+      project_ping: {
+        subject: 'Action Required: {{pingReason}} for {{projectName}} - COLONY',
+        body: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h2 style="color: #92400e; margin: 0;">Action requested: {{pingReason}}</h2>
+        </div>
+        <div style="background: white; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h3 style="color: #3b82f6; margin: 0 0 10px 0;">{{projectName}}</h3>
+        <p>{{message}}</p>
+        {{#customMessage}}
+        <div style="background: #f1f5f9; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 3px solid #3b82f6;">
+        <p style="margin: 0;">{{customMessage}}</p>
+        </div>
+        {{/customMessage}}
+        <p>
+        <a href="{{projectUrl}}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block;">
+        Open Project
+        </a>
+        </p>
+        </div>
+        <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 6px; font-size: 12px; color: #64748b;">
+        <p>This notification was sent by COLONY. To manage your notification preferences, visit your account settings.</p>
+        </div>
+        </div>
+        `
+      },
       comment_added: {
         subject: 'New comment on task in COLONY: {{taskTitle}}',
         body: `
@@ -375,6 +463,15 @@ class NotificationEngine {
         context.taskStatus = task.status;
         context.taskDueDate = task.dueDate || 'Not set';
         context.taskUrl = this.getTaskUrl(task.id);
+        if (task.projectId) {
+          try {
+            const linkedProject = getProjectById(task.projectId);
+            if (linkedProject) {
+              context.projectName = linkedProject.name;
+              context.projectUrl = this.getProjectUrl(linkedProject.id);
+            }
+          } catch (e) {}
+        }
       }
     }
     if (notification.entityType === 'project' && notification.entityId) {
@@ -391,6 +488,8 @@ class NotificationEngine {
       context.userEmail = user.email;
     }
     context.reason = notification.reason || '';
+    context.pingReason = notification.pingReason || notification.reason || '';
+    context.customMessage = notification.customMessage || '';
     return context;
   }
 
@@ -418,6 +517,8 @@ class NotificationEngine {
       task_updated: 'Task updated',
       deadline_approaching: 'Deadline approaching',
       project_update: 'Project updated',
+      project_assigned: 'Project assigned',
+      project_ping: 'Action requested on project',
       comment_added: 'New comment added'
     };
     return titles[type] || 'COLONY Notification';
@@ -425,12 +526,17 @@ class NotificationEngine {
 
   static getTaskUrl(taskId) {
     const webAppUrl = ScriptApp.getService().getUrl();
-    return `${webAppUrl}#/task/${taskId}`;
+    return `${webAppUrl}?taskId=${encodeURIComponent(taskId)}`;
   }
 
-  static getProjectUrl(projectId) {
+  static getProjectUrl(projectId, options) {
     const webAppUrl = ScriptApp.getService().getUrl();
-    return `${webAppUrl}#/project/${projectId}`;
+    if (typeof projectId === 'string' && projectId.indexOf('DA_') === 0) {
+      return `${webAppUrl}?dataAssetId=${encodeURIComponent(projectId)}`;
+    }
+    var url = `${webAppUrl}?projectId=${encodeURIComponent(projectId)}`;
+    if (options && options.tab) url += `&tab=${encodeURIComponent(options.tab)}`;
+    return url;
   }
 
   static processPendingNotifications(batchSize = 50) {

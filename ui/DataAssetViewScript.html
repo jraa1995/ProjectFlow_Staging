@@ -9,6 +9,7 @@ var DataAssetPage = {
   searchTerm: '',
   formOptions: { users: [], projects: [] },
   _formOptionsLoaded: false,
+  _activeTab: 'details',
 
   init() {
     if (typeof SplitPane !== 'undefined') SplitPane.init('dataAssetSplitPane', 'dataassets', 288);
@@ -76,11 +77,11 @@ var DataAssetPage = {
     if (!document.getElementById('daSearchBar')) {
       var bar = document.createElement('div');
       bar.id = 'daSearchBar';
-      bar.className = 'p-3 border-b border-gray-100 space-y-2';
+      bar.className = 'px-3.5 py-2.5 space-y-2';
+      bar.style.cssText = 'border-bottom:1px solid var(--co-border-subtle);background:var(--co-surface);';
       bar.innerHTML = '<input type="text" id="daSearchInput" placeholder="Search assets..." ' +
-        'class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />' +
-        '<select id="daFilterSelect" ' +
-        'class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
+        'class="co-search-input w-full" />' +
+        '<select id="daFilterSelect" class="co-filter-select w-full">' +
         '<option value="">All Statuses</option>' +
         '<option value="Active">Active</option>' +
         '<option value="Inactive">Inactive</option>' +
@@ -125,16 +126,16 @@ var DataAssetPage = {
     listEl.innerHTML = filtered.map(function(asset) {
       var isActive = self.selectedAsset && self.selectedAsset.id === asset.id;
       var dotColor = self._statusColor(asset.status);
+      var activeStyle = isActive ? 'background:var(--co-surface-sunken);box-shadow:inset 3px 0 0 var(--co-accent-500);' : '';
       return '<div onclick="DataAssetPage.selectAsset(\'' + escapeHtml(asset.id) + '\')" ' +
-        'class="p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 transition-colors ' +
-        (isActive ? 'bg-gray-100 border-l-4 border-l-gray-900' : '') + '">' +
+        'class="px-4 py-3 cursor-pointer transition-colors co-project-item" style="border-bottom:1px solid var(--co-border-subtle);' + activeStyle + '">' +
         '<div class="flex items-center gap-2 min-w-0">' +
         '<span class="w-2 h-2 rounded-full flex-shrink-0" style="background-color:' + dotColor + '"></span>' +
-        '<span class="text-sm font-medium text-gray-900 truncate">' + escapeHtml(asset.assetName || '-') + '</span>' +
+        '<span class="text-[13px] font-medium truncate" style="color:var(--co-ink);">' + escapeHtml(asset.assetName || '-') + '</span>' +
         '</div>' +
         '<div class="mt-1 pl-4">' +
-        '<p class="text-xs text-gray-500 truncate">' + escapeHtml(asset.assetOwner || '') + '</p>' +
-        '<p class="text-xs text-gray-400 truncate">' + escapeHtml(asset.dataSource || '') + '</p>' +
+        '<p class="text-[11px] truncate" style="color:var(--co-ink-muted);">' + escapeHtml(asset.assetOwner || '') + '</p>' +
+        '<p class="text-[11px] truncate" style="color:var(--co-gray-400);">' + escapeHtml(asset.dataSource || '') + '</p>' +
         '</div></div>';
     }).join('');
   },
@@ -157,18 +158,18 @@ var DataAssetPage = {
     var a = this.selectedAsset;
     var dotColor = this._statusColor(a.status);
 
-    var header = '<div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">' +
+    var header = '<div class="px-6 py-3 flex items-center justify-between flex-shrink-0" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">' +
       '<div class="flex items-center gap-3 min-w-0">' +
-      '<h2 class="text-lg font-semibold text-gray-900 truncate">' + escapeHtml(a.assetName || '-') + '</h2>' +
-      '<span class="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border border-gray-200 text-gray-700 flex-shrink-0">' +
+      '<h2 class="text-[16px] font-semibold tracking-tight truncate" style="color:var(--co-ink);letter-spacing:-0.01em;">' + escapeHtml(a.assetName || '-') + '</h2>' +
+      '<span class="flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full flex-shrink-0" style="border:1px solid var(--co-border-soft);color:var(--co-ink-soft);">' +
       '<span class="w-1.5 h-1.5 rounded-full" style="background-color:' + dotColor + '"></span>' +
       escapeHtml(a.status || '') + '</span>' +
       '</div>' +
       '<div class="flex items-center gap-2 flex-shrink-0">' +
-      '<button onclick="DataAssetPage.toggleEdit()" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">' +
-      '<i class="fas fa-pencil-alt text-xs"></i> Edit</button>' +
-      '<button onclick="DataAssetPage.confirmDelete(\'' + escapeHtml(a.id) + '\')" class="flex items-center gap-2 px-3 py-1.5 border border-red-200 text-red-600 text-sm rounded-lg hover:bg-red-50 transition-colors">' +
-      '<i class="fas fa-trash text-xs"></i> Delete</button>' +
+      '<button onclick="DataAssetPage.toggleEdit()" class="co-btn-outline">' +
+      '<i class="fas fa-pencil-alt text-[11px]"></i> Edit</button>' +
+      '<button onclick="DataAssetPage.confirmDelete(\'' + escapeHtml(a.id) + '\')" class="inline-flex items-center gap-2 px-3.5 py-1.5 text-[13px] rounded-lg transition-colors" style="background:var(--co-surface);border:1px solid rgba(220,38,38,0.25);color:#dc2626;" onmouseover="this.style.background=\'#fef2f2\'" onmouseout="this.style.background=\'var(--co-surface)\'">' +
+      '<i class="fas fa-trash text-[11px]"></i> Delete</button>' +
       '</div></div>';
 
     var row = function(label, value) {
@@ -233,11 +234,32 @@ var DataAssetPage = {
       (updatedByDisplay ? '<span class="text-xs text-gray-400">Updated By: ' + escapeHtml(updatedByDisplay) + '</span>' : '') +
       '</div>';
 
-    container.innerHTML = header +
-      '<div class="flex-1 overflow-y-auto p-6">' +
-      '<div class="max-w-2xl bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' +
-      fields + timestamps +
-      '</div></div>';
+    var activeTab = this._activeTab || 'details';
+    var tabBar = '<div class="border-b border-gray-200 px-6 flex gap-0">' +
+      '<button onclick="DataAssetPage.switchTab(\'details\')" class="px-4 py-2.5 text-sm font-medium transition-colors ' +
+      (activeTab === 'details' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-500 hover:text-gray-700') + '">' +
+      '<i class="fas fa-list-alt mr-1.5 text-xs"></i>Details</button>' +
+      '<button onclick="DataAssetPage.switchTab(\'lineage\')" class="px-4 py-2.5 text-sm font-medium transition-colors ' +
+      (activeTab === 'lineage' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-500 hover:text-gray-700') + '">' +
+      '<i class="fas fa-project-diagram mr-1.5 text-xs"></i>Lineage</button>' +
+      '</div>';
+
+    var tabContent = '';
+    if (activeTab === 'details') {
+      tabContent = '<div class="flex-1 overflow-y-auto p-6">' +
+        '<div class="max-w-2xl bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' +
+        fields + timestamps +
+        '</div></div>';
+    } else {
+      tabContent = this._renderLineageTab(a);
+    }
+
+    container.innerHTML = header + tabBar + tabContent;
+  },
+
+  switchTab(tab) {
+    this._activeTab = tab;
+    this.renderAssetDetail();
   },
 
   _buildUserSelect(id, label, selectedVal) {
@@ -594,6 +616,141 @@ var DataAssetPage = {
         toast('Import failed: ' + error.message, 'error');
       })
       .importWorkLogDataAssets(workbookId);
+  },
+
+  _renderLineageTab(asset) {
+    var projectIds = (asset.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    if (projectIds.length === 0) {
+      return '<div class="flex-1 flex flex-col items-center justify-center text-gray-400 p-12">' +
+        '<i class="fas fa-project-diagram text-4xl mb-3 text-gray-300"></i>' +
+        '<p class="text-sm font-medium text-gray-500">No lineage relationships</p>' +
+        '<p class="text-xs text-gray-400 mt-1">Add Related Projects to this Data Asset to see lineage</p></div>';
+    }
+    var graph = this._buildLineageGraph(asset);
+    return '<div class="flex-1 overflow-auto p-6">' +
+      '<div class="bg-white border border-gray-200 rounded-lg p-4">' +
+      this._renderLineageSVG(graph) +
+      '</div>' +
+      '<div class="flex items-center gap-6 mt-4 px-2">' +
+      '<div class="flex items-center gap-2"><span class="w-3 h-3 rounded border-2 border-gray-900 bg-gray-100"></span><span class="text-xs text-gray-500">Data Asset</span></div>' +
+      '<div class="flex items-center gap-2"><span class="w-3 h-3 rounded border-2 border-gray-500 bg-gray-50"></span><span class="text-xs text-gray-500">Project</span></div>' +
+      '<div class="flex items-center gap-2"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#9ca3af" stroke-width="2"/></svg><span class="text-xs text-gray-500">Feeds into</span></div>' +
+      '</div></div>';
+  },
+
+  _buildLineageGraph(asset) {
+    var nodes = [];
+    var edges = [];
+    var nodeMap = {};
+    var self = this;
+    nodes.push({ id: asset.id, label: asset.assetName, type: 'dataAsset', isCurrent: true, status: asset.status });
+    nodeMap[asset.id] = true;
+    var projectIds = (asset.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    projectIds.forEach(function(pid) {
+      var proj = (self.formOptions.projects || []).find(function(p) { return p.id === pid; });
+      if (!proj && typeof State !== 'undefined') {
+        proj = (State.projects || []).find(function(p) { return p.id === pid; });
+      }
+      nodes.push({ id: pid, label: proj ? proj.name : pid, type: 'project' });
+      nodeMap[pid] = true;
+      edges.push({ from: asset.id, to: pid });
+    });
+    self.assets.forEach(function(da) {
+      if (da.id === asset.id) return;
+      var daProjects = (da.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      var shared = daProjects.filter(function(p) { return projectIds.indexOf(p) !== -1; });
+      if (shared.length === 0) return;
+      if (!nodeMap[da.id]) {
+        nodes.push({ id: da.id, label: da.assetName, type: 'dataAsset', isCurrent: false, status: da.status });
+        nodeMap[da.id] = true;
+      }
+      shared.forEach(function(pid) {
+        edges.push({ from: da.id, to: pid });
+      });
+    });
+    return { nodes: nodes, edges: edges };
+  },
+
+  _renderLineageSVG(graph) {
+    var daNodes = graph.nodes.filter(function(n) { return n.type === 'dataAsset'; });
+    var projNodes = graph.nodes.filter(function(n) { return n.type === 'project'; });
+    var nodeW = 140;
+    var nodeH = 30;
+    var padX = 24;
+    var padY = 14;
+    var colGap = 120;
+    var daX = padX;
+    var projX = padX + nodeW + colGap;
+    var svgW = projX + nodeW + padX;
+    var daSpacing = nodeH + padY;
+    var projSpacing = nodeH + padY;
+    var daHeight = daNodes.length * daSpacing;
+    var projHeight = projNodes.length * projSpacing;
+    var contentH = Math.max(daHeight, projHeight);
+    var svgH = contentH + padY * 2;
+    var daStartY = padY + (contentH - daHeight) / 2;
+    var projStartY = padY + (contentH - projHeight) / 2;
+    var posMap = {};
+    daNodes.forEach(function(n, i) {
+      n.x = daX;
+      n.y = daStartY + i * daSpacing;
+      posMap[n.id] = n;
+    });
+    projNodes.forEach(function(n, i) {
+      n.x = projX;
+      n.y = projStartY + i * projSpacing;
+      posMap[n.id] = n;
+    });
+    var svg = '<svg width="100%" viewBox="0 0 ' + svgW + ' ' + svgH + '" style="min-height:' + Math.max(svgH, 200) + 'px">';
+    svg += '<defs><marker id="arrowhead" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">' +
+      '<polygon points="0 0, 6 2.5, 0 5" fill="#9ca3af"/></marker></defs>';
+    graph.edges.forEach(function(e) {
+      var from = posMap[e.from];
+      var to = posMap[e.to];
+      if (!from || !to) return;
+      var x1 = from.x + nodeW;
+      var y1 = from.y + nodeH / 2;
+      var x2 = to.x;
+      var y2 = to.y + nodeH / 2;
+      var cx1 = x1 + colGap * 0.4;
+      var cx2 = x2 - colGap * 0.4;
+      svg += '<path d="M' + x1 + ',' + y1 + ' C' + cx1 + ',' + y1 + ' ' + cx2 + ',' + y2 + ' ' + x2 + ',' + y2 + '" ' +
+        'fill="none" stroke="#d1d5db" stroke-width="1.5" marker-end="url(#arrowhead)"/>';
+    });
+    var self = this;
+    graph.nodes.forEach(function(n) {
+      var isDA = n.type === 'dataAsset';
+      var fill = isDA ? '#f9fafb' : '#f8fafc';
+      var stroke = n.isCurrent ? '#171717' : (isDA ? '#6b7280' : '#94a3b8');
+      var strokeW = n.isCurrent ? 2 : 1;
+      var icon = isDA ? '\uf1c0' : '\uf07b';
+      var iconColor = isDA ? '#6b7280' : '#94a3b8';
+      var clickAction = isDA
+        ? 'DataAssetPage.selectAsset(\'' + n.id + '\')'
+        : 'if(typeof switchView===\'function\'){switchView(\'projects\');setTimeout(function(){if(typeof ProjectPage!==\'undefined\')ProjectPage.selectProject(\'' + n.id + '\');},200);}';
+      var label = n.label || '';
+      if (label.length > 16) label = label.substring(0, 14) + '...';
+      svg += '<g onclick="' + clickAction + '" style="cursor:pointer">';
+      svg += '<rect x="' + n.x + '" y="' + n.y + '" width="' + nodeW + '" height="' + nodeH + '" rx="6" ry="6" ' +
+        'fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + strokeW + '"/>';
+      if (n.isCurrent) {
+        svg += '<rect x="' + (n.x - 2) + '" y="' + (n.y - 2) + '" width="' + (nodeW + 4) + '" height="' + (nodeH + 4) + '" rx="8" ry="8" ' +
+          'fill="none" stroke="' + stroke + '" stroke-width="1" stroke-dasharray="3,2" opacity="0.4"/>';
+      }
+      svg += '<text x="' + (n.x + 10) + '" y="' + (n.y + nodeH / 2 + 1) + '" font-family="\'Font Awesome 5 Free\'" font-weight="900" font-size="9" fill="' + iconColor + '" dominant-baseline="middle">' + icon + '</text>';
+      svg += '<text x="' + (n.x + 24) + '" y="' + (n.y + nodeH / 2 + 1) + '" font-family="system-ui,sans-serif" font-size="10" font-weight="' + (n.isCurrent ? '600' : '400') + '" fill="#1e293b" dominant-baseline="middle">' + self._escSvg(label) + '</text>';
+      if (isDA && n.status) {
+        var sc = self._statusColor(n.status);
+        svg += '<circle cx="' + (n.x + nodeW - 10) + '" cy="' + (n.y + nodeH / 2) + '" r="3" fill="' + sc + '"/>';
+      }
+      svg += '</g>';
+    });
+    svg += '</svg>';
+    return svg;
+  },
+
+  _escSvg(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   },
 
   _statusColor(status) {

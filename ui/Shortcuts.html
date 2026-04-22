@@ -15,6 +15,7 @@
     }
 
     if (e.key === 'Escape') {
+      if (HelpGuide.open) { HelpGuide.close(); return; }
       if (typeof TaskDetailPanel !== 'undefined' && TaskDetailPanel.isOpen) { TaskDetailPanel.close(); return; }
       closeTaskModal();
       closeProjectModal();
@@ -42,7 +43,7 @@
 
     if (e.key === '?') {
       e.preventDefault();
-      showShortcutsHelp();
+      HelpGuide.toggle();
       return;
     }
 
@@ -66,7 +67,7 @@
       ['T', 'Timeline'],
       ['P', 'Projects'],
       ['M', 'Milestones'],
-      ['?', 'Toggle this help'],
+      ['?', 'Toggle Help Guide'],
       ['Esc', 'Close modals/panels']
     ];
     var html = '<div id="shortcutsHelp" class="fixed inset-0 bg-black/40 flex items-center justify-center z-[70]" onclick="this.remove()">' +

@@ -2,6 +2,14 @@ function doGet(e) {
   try {
     initializeSystem();
     const template = HtmlService.createTemplateFromFile('ui/Index');
+    var params = (e && e.parameter) || {};
+    template.deepLink = {
+      projectId: params.projectId || '',
+      tab: params.tab || '',
+      taskId: params.taskId || '',
+      dataAssetId: params.dataAssetId || '',
+      view: params.view || ''
+    };
     return template.evaluate()
       .setTitle('COLONY')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)
@@ -9,6 +17,24 @@ function doGet(e) {
   } catch (error) {
     console.error('doGet error:', error);
     return HtmlService.createHtmlOutput(getErrorPage(error.message));
+  }
+}
+
+function getPickerOAuthToken() {
+  return ScriptApp.getOAuthToken();
+}
+
+function getPickerConfig() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    return {
+      token: ScriptApp.getOAuthToken(),
+      developerKey: props.getProperty('PICKER_API_KEY') || '',
+      appId: props.getProperty('PICKER_APP_ID') || ''
+    };
+  } catch (error) {
+    console.error('getPickerConfig failed:', error);
+    return { token: '', developerKey: '', appId: '' };
   }
 }
 
@@ -39,7 +65,8 @@ function testIncludes() {
                'ui/SurgeView',
                'ui/TaskDetailPanel', 'ui/TaskEditModal', 'ui/MentionAutocomplete',
                'ui/DependencyPicker', 'ui/NotificationCenter', 'ui/CacheService',
-               'ui/DataAssetView', 'ui/DataAssetViewScript'];
+               'ui/DataAssetView', 'ui/DataAssetViewScript',
+               'ui/AdHocView', 'ui/BadgeShowcase'];
   var results = {};
   files.forEach(function(f) {
     try {
@@ -103,28 +130,25 @@ function initializeSystem() {
       return;
     }
 
-    const sheetCreators = [
-      { fn: getTasksSheet, name: 'Tasks' },
-      { fn: getUsersSheet, name: 'Users' },
-      { fn: getProjectsSheet, name: 'Projects' },
-      { fn: getCommentsSheet, name: 'Comments' },
-      { fn: getActivitySheet, name: 'Activity' },
-      { fn: getMentionsSheet, name: 'Mentions' },
-      { fn: getNotificationsSheet, name: 'Notifications' },
-      { fn: getAnalyticsCacheSheet, name: 'Analytics Cache' },
-      { fn: getTaskDependenciesSheet, name: 'Task Dependencies' },
-      { fn: getFunnelStagingSheet, name: 'Funnel Staging' },
-      { fn: getDataAssetsSheet, name: 'Data Assets' }
-    ];
-
-    sheetCreators.forEach(({ fn, name }) => {
+    WORKBOOK_SHEET_SPEC.forEach(function(spec) {
       try {
-        fn();
+        var columns = CONFIG[spec.columnsKey];
+        if (!Array.isArray(columns)) {
+          console.error('Missing columns for ' + spec.name + ' (' + spec.columnsKey + ')');
+          return;
+        }
+        getSheet(spec.name, columns);
       } catch (e) {
-        console.error(`Failed to create ${name} sheet:`, e.message);
+        console.error('Failed to ensure sheet ' + spec.name + ':', e.message);
         throw e;
       }
     });
+
+    try {
+      PermissionGuard.initializeDefaultRoles();
+    } catch (e) {
+      console.error('Failed to seed default roles:', e.message);
+    }
 
     cache.put('SYSTEM_INITIALIZED', '1', 3600);
     getCurrentUser();
@@ -141,6 +165,7 @@ const RequestCache = {
   _activity: null,
   _dependencies: null,
   _taskIndex: null,
+  _dataAssets: null,
 
   getTasks() {
     if (this._tasks === null) {
@@ -198,6 +223,13 @@ const RequestCache = {
     return this._dependencies;
   },
 
+  getDataAssets() {
+    if (this._dataAssets === null) {
+      this._dataAssets = getAllDataAssetsOptimized();
+    }
+    return this._dataAssets;
+  },
+
   clear() {
     this._tasks = null;
     this._projects = null;
@@ -205,6 +237,7 @@ const RequestCache = {
     this._activity = null;
     this._dependencies = null;
     this._taskIndex = null;
+    this._dataAssets = null;
   }
 };
 
@@ -437,15 +470,21 @@ function getListViewData() {
     var userRole = getCurrentUserRole();
     var allTasks = getAllTasksOptimized();
     var tasks = filterTasksByUserRole(allTasks, userEmail, userRole);
+    tasks = tasks.filter(function(t) {
+      var pid = (t.projectId || '').toUpperCase();
+      return pid !== 'ADHOC' && pid !== 'TASK' && pid !== '';
+    });
     var allProjects = getAllProjectsOptimized();
     var projects = filterProjectsByUserRole(allProjects, tasks, userEmail, userRole);
     var users = getActiveUsersOptimized();
+    var dataAssets = getAllDataAssetsOptimized();
 
     return {
       success: true,
       tasks: tasks,
       projects: projects,
       users: users,
+      dataAssets: dataAssets,
       userRole: userRole
     };
   } catch (error) {
@@ -455,8 +494,27 @@ function getListViewData() {
       error: error.message,
       tasks: [],
       projects: [],
-      users: []
+      users: [],
+      dataAssets: []
     };
+  }
+}
+
+function getAdHocData() {
+  try {
+    var userEmail = getCurrentUserEmailOptimized();
+    var userRole = getCurrentUserRole();
+    var allTasks = getAllTasksOptimized();
+    var tasks = filterTasksByUserRole(allTasks, userEmail, userRole);
+    tasks = tasks.filter(function(t) {
+      var pid = (t.projectId || '').toUpperCase();
+      return pid === 'ADHOC' || pid === 'TASK' || pid === '';
+    });
+    var users = getActiveUsersOptimized();
+    return { success: true, tasks: tasks, users: users };
+  } catch (error) {
+    console.error('getAdHocData failed:', error);
+    return { success: false, error: error.message, tasks: [], users: [] };
   }
 }
 
@@ -558,6 +616,8 @@ function getSessionUser() {
     } catch (e) {
       console.error('Failed to update lastLogin:', e);
     }
+
+    try { BadgeEngine.evaluateLoginStreak(email); } catch (e) {}
 
     var payload = buildLoginPayload_(user, email);
     payload.authenticated = true;

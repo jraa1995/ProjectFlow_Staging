@@ -13,7 +13,6 @@ function getAllDataAssetsOptimized() {
 
 function getDataAssetDetailsList() {
   try {
-    invalidateDataAssetCache();
     var assets = getAllDataAssetsOptimized();
     return { success: true, assets: assets };
   } catch (error) {
@@ -77,10 +76,10 @@ function invalidateDataAssetCache() {
 
 function getDataAssetFormOptions() {
   try {
-    var users = getAllUsers()
-      .filter(function(u) { return u.email && u.active; })
+    var users = getActiveUsersOptimized()
+      .filter(function(u) { return u.email; })
       .map(function(u) { return { email: u.email, name: u.name || u.email.split('@')[0], role: u.role || '' }; });
-    var projects = getAllProjects()
+    var projects = getAllProjectsOptimized()
       .map(function(p) { return { id: p.id, name: p.name || '' }; });
     return { success: true, users: users, projects: projects };
   } catch (error) {
