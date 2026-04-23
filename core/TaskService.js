@@ -70,6 +70,14 @@ function getMyBoardOptimized(projectId, userEmail) {
 
 function saveNewTask(taskData) {
   try {
+    taskData = taskData || {};
+    var title = typeof taskData.title === 'string' ? taskData.title.trim() : '';
+    if (!title) throw new Error('Title is required');
+    if (!taskData.assignee) throw new Error('Assignee is required');
+    var projectId = taskData.projectId || '';
+    var daId = taskData.dataAssetId || '';
+    if (!projectId && !daId) throw new Error('Project is required');
+    taskData.title = title;
     const result = createTask(taskData);
     patchTaskCache(result.id, result, 'create');
     invalidateTaskCache(result.id, 'create');

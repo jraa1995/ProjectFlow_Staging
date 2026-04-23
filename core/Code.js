@@ -447,6 +447,7 @@ function getInitialDataFast() {
         columns: columns,
         projects: batchData.projects,
         users: batchData.users,
+        dataAssets: batchData.dataAssets || [],
         stats: {
           total: total,
           completed: completed,

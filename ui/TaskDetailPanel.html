@@ -1374,7 +1374,13 @@ var TaskDetailPanel = {
 
     this.setElementText('taskDetailTypeView', task.type || 'Task');
     const projectName = this.getProjectName(task.projectId);
-    this.setElementText('taskDetailProjectView', projectName || 'No Project');
+    const projectEl = document.getElementById('taskDetailProjectView');
+    if (projectEl) {
+      var subChip = task.subProjectId
+        ? ` <span class="inline-flex items-center gap-1 text-[10px] font-mono ml-1 px-1.5 py-0.5 rounded border" style="background:var(--co-surface-sunken);color:var(--co-ink-muted);border-color:var(--co-border-subtle);"><i class="fas fa-puzzle-piece text-[9px]"></i>${escapeHtml(task.subProjectId)}</span>`
+        : '';
+      projectEl.innerHTML = escapeHtml(projectName || 'No Project') + subChip;
+    }
 
     const assigneeView = document.getElementById('taskDetailAssigneeView');
     if (assigneeView) {

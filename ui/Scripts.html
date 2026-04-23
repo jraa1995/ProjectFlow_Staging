@@ -910,11 +910,13 @@
     State.setTasks(flatTasks);
     State.setProjects(data.board?.projects || []);
     State.setUsers(data.board?.users || []);
+    State.setDataAssets(data.board?.dataAssets || []);
     LocalCache.set('board', data.board);
     LocalCache.set('config', data.config);
     LocalCache.set('user', data.user);
     LocalCache.set('tasks', flatTasks);
     LocalCache.set('projects', data.board?.projects || []);
+    LocalCache.set('dataAssets', data.board?.dataAssets || []);
     if (typeof CacheService !== 'undefined') {
       Promise.all([
         CacheService.set('boardData', data.board),
@@ -922,7 +924,8 @@
         CacheService.set('userData', data.user),
         CacheService.set('tasks', flatTasks),
         CacheService.set('projects', data.board?.projects || []),
-        CacheService.set('users', data.board?.users || [])
+        CacheService.set('users', data.board?.users || []),
+        CacheService.set('dataAssets', data.board?.dataAssets || [])
       ]).then(() => {}).catch(err => {
         console.error('IndexedDB cache failed:', err);
       });

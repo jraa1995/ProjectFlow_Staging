@@ -83,7 +83,10 @@ const CONFIG = {
     'deletedAt',
     'taskUid',
     'jsonData',
-    'requestedBy'
+    'requestedBy',
+    'isArchived',
+    'archivedAt',
+    'subProjectId'
   ],
 
   USER_COLUMNS: [
@@ -530,7 +533,9 @@ const CONFIG = {
 
   DEPRECATED_SETTINGS_KEYS: ['futureOwner', 'futureContractHome', 'transitionPriority', 'transitionMeetingDate', 'transitionComplete'],
 
-  TBD_DATE_SENTINEL: 'TBD'
+  TBD_DATE_SENTINEL: 'TBD',
+
+  AUTO_ARCHIVE_DONE_DAYS: 3
 
 };
 

@@ -578,6 +578,33 @@ function setupRecurringTrigger() {
   }
 }
 
+function autoArchiveDoneTasksWrapper() {
+  try {
+    var count = archiveStaleDoneTasks();
+    return { success: true, archived: count };
+  } catch (error) {
+    console.error('autoArchiveDoneTasksWrapper failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function setupAutoArchiveTrigger() {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    var triggers = ScriptApp.getProjectTriggers();
+    var existing = triggers.find(function(t) { return t.getHandlerFunction() === 'autoArchiveDoneTasksWrapper'; });
+    if (existing) return { success: true, message: 'Auto-archive trigger already exists' };
+    ScriptApp.newTrigger('autoArchiveDoneTasksWrapper')
+      .timeBased()
+      .everyHours(24)
+      .create();
+    return { success: true, message: 'Daily auto-archive trigger created' };
+  } catch (error) {
+    console.error('setupAutoArchiveTrigger failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function logTimeEntry(taskId, entry) {
   try {
     var task = getTaskById(taskId);

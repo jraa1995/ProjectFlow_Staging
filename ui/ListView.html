@@ -1253,6 +1253,7 @@ var ListViewPage = {
         <td>${escapeHtml(task.id || '')}</td>
         <td class="editable-cell" data-field="title" data-task-id="${escapeHtml(task.taskUid || task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           ${escapeHtml(task.title || '')}
+          ${task.subProjectId ? `<span class="inline-flex items-center gap-1 text-[10px] font-mono ml-2 px-1.5 py-0.5 rounded border" style="background:var(--co-surface-sunken);color:var(--co-ink-muted);border-color:var(--co-border-subtle);"><i class="fas fa-puzzle-piece text-[9px]"></i>${escapeHtml(task.subProjectId)}</span>` : ''}
         </td>
         <td class="editable-cell" data-field="status" data-task-id="${escapeHtml(task.taskUid || task.id)}" onclick="ListViewPage.startInlineEdit(this)">
           <span class="status-badge status-${(task.status || '').toLowerCase().replace(/\s+/g, '-')}">${this.formatStatus(task.status || '')}</span>

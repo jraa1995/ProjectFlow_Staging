@@ -515,6 +515,143 @@ function generateProjectCode(projectId) {
   }
 }
 
+function _parseProjectSettings_(project) {
+  if (!project) return {};
+  try {
+    return typeof project.settings === 'string' ? (project.settings ? JSON.parse(project.settings) : {}) : (project.settings || {});
+  } catch (e) {
+    return {};
+  }
+}
+
+function getProjectSubProjects(projectId) {
+  try {
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found', subProjects: [] };
+    var settings = _parseProjectSettings_(project);
+    var subs = Array.isArray(settings.subProjects) ? settings.subProjects : [];
+    return { success: true, isModular: settings.isModular === true, subProjects: subs };
+  } catch (error) {
+    console.error('getProjectSubProjects failed:', error);
+    return { success: false, error: error.message, subProjects: [] };
+  }
+}
+
+function setProjectModular(projectId, isModular) {
+  try {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    settings.isModular = isModular === true;
+    if (!Array.isArray(settings.subProjects)) settings.subProjects = [];
+    updateProject(projectId, { settings: JSON.stringify(settings) });
+    invalidateProjectCache(projectId);
+    return { success: true, isModular: settings.isModular, subProjects: settings.subProjects };
+  } catch (error) {
+    console.error('setProjectModular failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function addSubProject(projectId, subProjectData) {
+  try {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    if (!settings.isModular) settings.isModular = true;
+    if (!Array.isArray(settings.subProjects)) settings.subProjects = [];
+
+    var name = (subProjectData && subProjectData.name ? String(subProjectData.name) : '').trim();
+    if (!name) return { success: false, error: 'Sub-project name is required' };
+
+    var parentCode = settings.projectCode || '';
+    if (!parentCode) {
+      return { success: false, error: 'Generate a Project ID for the parent before adding sub-projects' };
+    }
+
+    var maxSuffix = 0;
+    settings.subProjects.forEach(function(sub) {
+      if (!sub || !sub.id) return;
+      var idx = sub.id.lastIndexOf('-');
+      if (idx === -1) return;
+      var tail = sub.id.substring(idx + 1);
+      var n = parseInt(tail, 10);
+      if (!isNaN(n) && n > maxSuffix) maxSuffix = n;
+    });
+    var nextSuffix = maxSuffix + 1;
+    var newId = parentCode + '-' + nextSuffix;
+
+    var sub = {
+      id: newId,
+      name: name,
+      description: subProjectData.description ? String(subProjectData.description).trim() : '',
+      createdAt: now()
+    };
+    settings.subProjects.push(sub);
+    updateProject(projectId, { settings: JSON.stringify(settings) });
+    invalidateProjectCache(projectId);
+    return { success: true, subProject: sub, subProjects: settings.subProjects };
+  } catch (error) {
+    console.error('addSubProject failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function updateSubProject(projectId, subProjectId, updates) {
+  try {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    var subs = Array.isArray(settings.subProjects) ? settings.subProjects : [];
+    var idx = subs.findIndex(function(s) { return s && s.id === subProjectId; });
+    if (idx === -1) return { success: false, error: 'Sub-project not found' };
+    if (updates && typeof updates.name === 'string') {
+      var newName = updates.name.trim();
+      if (!newName) return { success: false, error: 'Sub-project name is required' };
+      subs[idx].name = newName;
+    }
+    if (updates && typeof updates.description === 'string') {
+      subs[idx].description = updates.description.trim();
+    }
+    subs[idx].updatedAt = now();
+    settings.subProjects = subs;
+    updateProject(projectId, { settings: JSON.stringify(settings) });
+    invalidateProjectCache(projectId);
+    return { success: true, subProject: subs[idx] };
+  } catch (error) {
+    console.error('updateSubProject failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function removeSubProject(projectId, subProjectId) {
+  try {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    var subs = Array.isArray(settings.subProjects) ? settings.subProjects : [];
+    var tasksUsingSub = 0;
+    try {
+      var tasks = getAllTasksOptimized();
+      tasksUsingSub = tasks.filter(function(t) { return t.projectId === projectId && t.subProjectId === subProjectId; }).length;
+    } catch (e) {}
+    if (tasksUsingSub > 0) {
+      return { success: false, error: 'Cannot remove: ' + tasksUsingSub + ' task(s) reference this sub-project' };
+    }
+    settings.subProjects = subs.filter(function(s) { return s && s.id !== subProjectId; });
+    updateProject(projectId, { settings: JSON.stringify(settings) });
+    invalidateProjectCache(projectId);
+    return { success: true, subProjects: settings.subProjects };
+  } catch (error) {
+    console.error('removeSubProject failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function sendReleaseNotesEmail(projectId, payload) {
   try {
     PermissionGuard.requirePermission('project:update', { projectId: projectId });

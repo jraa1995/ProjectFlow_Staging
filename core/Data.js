@@ -721,11 +721,14 @@ function getAllTasks(filters = {}, options = {}) {
   if (data.length <= 1) return [];
   const columns = CONFIG.TASK_COLUMNS;
   const isDeletedIdx = columns.indexOf('isDeleted');
+  const isArchivedIdx = columns.indexOf('isArchived');
+  const includeArchived = options && options.includeArchived === true;
   let tasks = [];
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     if (!row[0] && !row[2]) continue;
     if (isDeletedIdx !== -1 && (row[isDeletedIdx] === true || row[isDeletedIdx] === 'true' || row[isDeletedIdx] === 'TRUE')) continue;
+    if (!includeArchived && isArchivedIdx !== -1 && (row[isArchivedIdx] === true || row[isArchivedIdx] === 'true' || row[isArchivedIdx] === 'TRUE')) continue;
     const task = rowToObject(row, columns);
     if (typeof task.labels === 'string' && task.labels) {
       task.labels = task.labels.split(',').map(l => l.trim()).filter(l => l);
@@ -737,6 +740,7 @@ function getAllTasks(filters = {}, options = {}) {
     task.actualHrs = parseFloat(task.actualHrs) || 0;
     task.position = parseInt(task.position) || 0;
     task.isMilestone = task.isMilestone === true || task.isMilestone === 'true' || task.isMilestone === 'TRUE' || task.isMilestone === 1;
+    task.isArchived = task.isArchived === true || task.isArchived === 'true' || task.isArchived === 'TRUE';
     if (task.taskUid && task.id) UidIndexCache.set(task.taskUid, task.id);
     tasks.push(task);
   }
@@ -777,6 +781,7 @@ function getTaskById(taskId) {
   task.labels = typeof task.labels === 'string' && task.labels
     ? task.labels.split(',').map(l => l.trim()).filter(l => l)
     : [];
+  task.isArchived = task.isArchived === true || task.isArchived === 'true' || task.isArchived === 'TRUE';
   return task;
 }
 
@@ -890,7 +895,10 @@ function createTask(taskData) {
       milestoneDate: taskData.milestoneDate || '',
       milestoneType: taskData.milestoneType || '',
       taskUid: generateTaskUid(),
-      requestedBy: taskData.requestedBy || ''
+      requestedBy: taskData.requestedBy || '',
+      isArchived: false,
+      archivedAt: '',
+      subProjectId: taskData.subProjectId || ''
     };
     if (task.startDate && task.dueDate && task.startDate !== CONFIG.TBD_DATE_SENTINEL && task.dueDate !== CONFIG.TBD_DATE_SENTINEL) {
       var calc = calculateStoryPoints(task.startDate, task.dueDate);
@@ -1166,6 +1174,60 @@ function deleteTask(taskId) {
 
 function restoreTask(taskId) {
   return updateTask(taskId, { isDeleted: false, deletedAt: '' });
+}
+
+function archiveTask(taskId, timestamp) {
+  var ts = timestamp || now();
+  return updateTask(taskId, { isArchived: true, archivedAt: ts });
+}
+
+function unarchiveTask(taskId) {
+  return updateTask(taskId, { isArchived: false, archivedAt: '' });
+}
+
+function archiveStaleDoneTasks(daysOld) {
+  var threshold = typeof daysOld === 'number' ? daysOld : (CONFIG.AUTO_ARCHIVE_DONE_DAYS || 3);
+  var cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - threshold);
+  var sheet = getTasksSheet();
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return 0;
+  var columns = CONFIG.TASK_COLUMNS;
+  var idIdx = 0;
+  var statusIdx = columns.indexOf('status');
+  var completedAtIdx = columns.indexOf('completedAt');
+  var isArchivedIdx = columns.indexOf('isArchived');
+  var isDeletedIdx = columns.indexOf('isDeleted');
+  var updatedAtIdx = columns.indexOf('updatedAt');
+  if (statusIdx === -1 || isArchivedIdx === -1) return 0;
+  var archived = 0;
+  var ts = now();
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (!row[idIdx]) continue;
+    if (row[statusIdx] !== 'Done') continue;
+    var already = row[isArchivedIdx];
+    if (already === true || already === 'true' || already === 'TRUE') continue;
+    if (isDeletedIdx !== -1) {
+      var del = row[isDeletedIdx];
+      if (del === true || del === 'true' || del === 'TRUE') continue;
+    }
+    var completed = completedAtIdx !== -1 ? row[completedAtIdx] : '';
+    var referenceDate = completed ? new Date(completed) : (updatedAtIdx !== -1 && row[updatedAtIdx] ? new Date(row[updatedAtIdx]) : null);
+    if (!referenceDate || isNaN(referenceDate.getTime())) continue;
+    if (referenceDate > cutoff) continue;
+    var archivedAtIdx = columns.indexOf('archivedAt');
+    row[isArchivedIdx] = true;
+    if (archivedAtIdx !== -1) row[archivedAtIdx] = ts;
+    if (updatedAtIdx !== -1) row[updatedAtIdx] = ts;
+    sheet.getRange(i + 1, 1, 1, columns.length).setValues([row]);
+    archived++;
+  }
+  if (archived > 0) {
+    SpreadsheetApp.flush();
+    try { invalidateCache('task', null, 'update'); } catch (e) {}
+  }
+  return archived;
 }
 
 function purgeDeletedTasks(daysOld) {

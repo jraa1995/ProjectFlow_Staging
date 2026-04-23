@@ -866,8 +866,6 @@ var ProjectPage = {
       r('Item Created Date', '<span class="text-sm text-gray-900">' + dv(p.createdAt) + '</span>') +
       r('Surge Users', '<div class="flex flex-wrap">' + this.renderSecondaryUserTags(secondaryUsers) + '</div>') +
       r('Linked Project ID(s)', '<div class="flex flex-wrap">' + linkedHtml + '</div>') +
-      r('Primary Tech Owner', tv(settings.primaryTechOwner)) +
-      r('Backup Tech Owner(s)', '<div class="flex flex-wrap">' + backupTechHtml + '</div>') +
       r('Gov Project Owners', tv(settings.govProjectOwners)) +
       r('Project Status', projectStatusHtml) +
       r('Development Status', tv(settings.developmentPhase)) +
@@ -893,7 +891,36 @@ var ProjectPage = {
       r('Project Category', tv(settings.projectCategory)) +
       r('Project Type', tv(settings.projectType)) +
       r('SDMs Supported', tv(settings.sdmSupported)) +
+      r('Modular Build', settings.isModular ? '<span class="text-sm text-gray-900">Yes</span>' : '<span class="text-gray-400 text-sm">No</span>') +
       '</div>';
+
+    var modulesSection = '';
+    if (settings.isModular) {
+      var subs = Array.isArray(settings.subProjects) ? settings.subProjects : [];
+      var subsHtml = subs.length
+        ? subs.map(function(sub) {
+            return '<div class="flex items-center justify-between px-4 py-2.5 border-t border-gray-100">' +
+              '<div class="min-w-0 flex-1">' +
+              '<div class="text-sm font-medium text-gray-900 truncate">' + escapeHtml(sub.name || '(unnamed)') + '</div>' +
+              '<div class="text-xs font-mono text-gray-500 mt-0.5">' + escapeHtml(sub.id || '') + '</div>' +
+              (sub.description ? '<div class="text-xs text-gray-600 mt-0.5 truncate">' + escapeHtml(sub.description) + '</div>' : '') +
+              '</div>' +
+              '<div class="flex items-center gap-1 flex-shrink-0 ml-3">' +
+              '<button onclick="_pc(\'ProjectPage\',\'_openSubProjectEditor\',\'' + escapeHtml(sub.id) + '\')" class="text-xs px-2 py-1 text-gray-600 hover:bg-gray-100 rounded" title="Edit"><i class="fas fa-pencil-alt"></i></button>' +
+              '<button onclick="_pc(\'ProjectPage\',\'_removeSubProject\',\'' + escapeHtml(sub.id) + '\')" class="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded" title="Remove"><i class="fas fa-times"></i></button>' +
+              '</div>' +
+              '</div>';
+          }).join('')
+        : '<div class="px-4 py-4 text-sm text-gray-400">No modules yet. Click "Add Module" to create one.</div>';
+      modulesSection =
+        '<div class="bg-white border border-gray-200 rounded-lg mt-6">' +
+        '<div class="px-4 py-2.5 bg-gray-50 rounded-t-lg flex items-center justify-between">' +
+        '<span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Modules</span>' +
+        '<button onclick="_pc(\'ProjectPage\',\'_openSubProjectEditor\')" class="text-xs px-2.5 py-1 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"><i class="fas fa-plus text-[10px] mr-1"></i>Add Module</button>' +
+        '</div>' +
+        subsHtml +
+        '</div>';
+    }
 
     return '<div class="w-full">' +
       '<div class="flex items-start justify-between mb-6"><div>' +
@@ -911,6 +938,7 @@ var ProjectPage = {
       '</div></div>' +
       '<div class="grid grid-cols-2 gap-6">' + pane1 + pane2 + '</div>' +
       bottomSection +
+      modulesSection +
       this._buildRelatedProjects() + '</div>';
   },
 
@@ -989,8 +1017,6 @@ var ProjectPage = {
         '<div id="editSecondaryUserDropdownWrap">' + this._buildSecondaryUserDropdown() + '</div></div>' +
       '<div>' + lbl('Description') + '<textarea id="editProjectDesc" rows="3" class="' + cls + ' resize-none">' + escapeHtml(p.description || '') + '</textarea></div>' +
       '<div>' + lbl('Linked Project ID(s)') + buildProjectPicker() + '</div>' +
-      '<div>' + lbl('Primary Technical Owner') + buildSelect('editSetting_primaryTechOwner', 'biSmes', settings.primaryTechOwner) + '</div>' +
-      '<div>' + lbl('Backup Technical Owner(s)') + buildMultiCheck('backupTechOwners', 'biSmes', settings.backupTechOwners) + '</div>' +
       '<div>' + lbl('Government Project Owners') + '<input id="editSetting_govProjectOwners" type="text" value="' + escapeHtml(settings.govProjectOwners || '') + '" class="' + cls + '"></div>' +
       '<div>' + lbl('Project Status') +
         '<select id="editProjectStatus" class="' + cls + ' bg-white">' +
@@ -1026,7 +1052,15 @@ var ProjectPage = {
       '<div>' + lbl('Project Category') + buildTaxonomySelect('editSetting_projectCategory', 'projectCategory', settings.projectCategory) + '</div>' +
       '<div>' + lbl('Project Type') + buildSelect('editSetting_projectType', 'projectTypeCode', settings.projectType) + '</div>' +
       '<div>' + lbl('SDMs Supported') + buildTaxonomySelect('editSetting_sdmSupported', 'sdmSupported', settings.sdmSupported) + '</div>' +
-      '</div></div>';
+      '</div>' +
+      '<div class="bg-gray-50 border border-gray-200 rounded-lg p-3">' +
+      '<label class="flex items-start gap-2 cursor-pointer">' +
+      '<input id="editSetting_isModular" type="checkbox"' + (settings.isModular ? ' checked' : '') + ' class="mt-0.5 rounded border-gray-300 text-gray-900 focus:ring-gray-400">' +
+      '<div>' +
+      '<div class="text-sm font-medium text-gray-900">Modular Build</div>' +
+      '<div class="text-xs text-gray-600 mt-0.5">Group related modules under this project. Tasks can be tagged with a specific module without creating separate boards.</div>' +
+      '</div></label></div>' +
+      '</div>';
 
     return '<div class="bg-white border border-gray-200 rounded-lg p-6 w-full">' +
       '<h2 class="text-base font-semibold text-gray-900 mb-5">Edit Details</h2>' +
@@ -1363,7 +1397,6 @@ var ProjectPage = {
     existingSettings.secondaryUsers = this._editSecondaryUsers.slice();
     existingSettings.linkedProjectIds = this._editLinkedProjects.slice();
     var detailsSettingsFields = [
-      { id: 'editSetting_primaryTechOwner', key: 'primaryTechOwner' },
       { id: 'editSetting_govProjectOwners', key: 'govProjectOwners' },
       { id: 'editSetting_developmentPriority', key: 'developmentPriority' },
       { id: 'editSetting_developmentPhase', key: 'developmentPhase' },
@@ -1381,14 +1414,15 @@ var ProjectPage = {
       var el = document.getElementById(f.id);
       if (el) existingSettings[f.key] = el.value || '';
     });
-    var backupTechChecks = document.querySelectorAll('input[data-ms-field="backupTechOwners"]');
-    var backupTechArr = [];
-    backupTechChecks.forEach(function(cb) { if (cb.checked) backupTechArr.push(cb.value); });
-    existingSettings.backupTechOwners = backupTechArr;
     var intendedChecks = document.querySelectorAll('input[data-ms-field="intendedUsers"]');
     var intendedArr = [];
     intendedChecks.forEach(function(cb) { if (cb.checked) intendedArr.push(cb.value); });
     existingSettings.intendedUsers = intendedArr;
+    var modularEl = document.getElementById('editSetting_isModular');
+    if (modularEl) {
+      existingSettings.isModular = modularEl.checked === true;
+      if (!Array.isArray(existingSettings.subProjects)) existingSettings.subProjects = [];
+    }
     var tags = [];
     if (existingSettings.workstream) tags.push(existingSettings.workstream);
     if (existingSettings.projectCategory) tags.push(existingSettings.projectCategory);
@@ -1511,6 +1545,147 @@ var ProjectPage = {
   _closePidRequirementsModal() {
     var el = document.getElementById('pidRequirementsModal');
     if (el) el.remove();
+  },
+
+  _openSubProjectEditor(subId) {
+    var p = this.selectedProject;
+    if (!p) return;
+    var settings = this._getSettings();
+    var existing = null;
+    if (subId) {
+      var subs = Array.isArray(settings.subProjects) ? settings.subProjects : [];
+      existing = subs.find(function(s) { return s && s.id === subId; }) || null;
+    }
+    var parentCode = settings.projectCode || '';
+    if (!parentCode && !existing) {
+      toast('Generate a Project ID first before adding modules', 'error');
+      return;
+    }
+    var old = document.getElementById('subProjectEditorModal');
+    if (old) old.remove();
+    var isEdit = !!existing;
+    var modal = document.createElement('div');
+    modal.id = 'subProjectEditorModal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10060]';
+    var cls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400';
+    var lbl = function(t) { return '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + t + '</label>'; };
+    var idPreview = isEdit
+      ? '<div class="text-xs font-mono text-gray-500">' + escapeHtml(existing.id) + '</div>'
+      : '<div class="text-xs text-gray-500">Auto-generated from parent ID <span class="font-mono">' + escapeHtml(parentCode) + '-N</span></div>';
+    modal.innerHTML =
+      '<div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onclick="event.stopPropagation()">' +
+      '<div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">' +
+      '<div><h2 class="text-base font-semibold text-gray-900">' + (isEdit ? 'Edit Module' : 'Add Module') + '</h2>' +
+      '<p class="text-xs text-gray-500 mt-0.5">Sub-project under <span class="font-mono">' + escapeHtml(parentCode || p.id) + '</span></p></div>' +
+      '<button onclick="_pc(\'ProjectPage\',\'_closeSubProjectEditor\')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>' +
+      '</div>' +
+      '<div class="p-5 space-y-4">' +
+      '<div>' + lbl('Module Name') + '<input id="subProjName" type="text" value="' + escapeHtml(existing ? (existing.name || '') : '') + '" class="' + cls + '" placeholder="e.g., Command Center"></div>' +
+      '<div>' + lbl('Description (optional)') + '<textarea id="subProjDesc" rows="3" class="' + cls + ' resize-none" placeholder="Short description">' + escapeHtml(existing ? (existing.description || '') : '') + '</textarea></div>' +
+      '<div>' + lbl('Module ID') + idPreview + '</div>' +
+      '</div>' +
+      '<div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">' +
+      '<button onclick="_pc(\'ProjectPage\',\'_closeSubProjectEditor\')" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">Cancel</button>' +
+      '<button onclick="_pc(\'ProjectPage\',\'_saveSubProject\',\'' + (isEdit ? escapeHtml(existing.id) : '') + '\')" class="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700">' + (isEdit ? 'Save' : 'Add Module') + '</button>' +
+      '</div></div>';
+    modal.onclick = function(e) { if (e.target === modal) ProjectPage._closeSubProjectEditor(); };
+    document.body.appendChild(modal);
+    setTimeout(function() { var nameEl = document.getElementById('subProjName'); if (nameEl) nameEl.focus(); }, 50);
+  },
+
+  _closeSubProjectEditor() {
+    var el = document.getElementById('subProjectEditorModal');
+    if (el) el.remove();
+  },
+
+  _saveSubProject(subId) {
+    var p = this.selectedProject;
+    if (!p) return;
+    var nameEl = document.getElementById('subProjName');
+    var descEl = document.getElementById('subProjDesc');
+    var name = nameEl ? nameEl.value.trim() : '';
+    var description = descEl ? descEl.value.trim() : '';
+    if (!name) { toast('Module name is required', 'error'); return; }
+    var self = this;
+    var projectId = p.id;
+    showLoading(true);
+    var refreshSubs = function() {
+      google.script.run
+        .withSuccessHandler(function(listResult) {
+          showLoading(false);
+          if (!listResult || !listResult.success) {
+            toast((listResult && listResult.error) || 'Saved but failed to refresh', 'warning');
+            self._closeSubProjectEditor();
+            return;
+          }
+          var settings = self._getSettings();
+          settings.isModular = listResult.isModular === true;
+          settings.subProjects = listResult.subProjects || [];
+          self.selectedProject.settings = JSON.stringify(settings);
+          var idx = self.projects.findIndex(function(pr) { return pr.id === self.selectedProject.id; });
+          if (idx !== -1) self.projects[idx].settings = self.selectedProject.settings;
+          self._closeSubProjectEditor();
+          self.renderProjectDetail();
+          toast(subId ? 'Module updated' : 'Module added', 'success');
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          console.error('refresh subs failed:', err);
+          toast('Failed to refresh modules', 'error');
+        })
+        .getProjectSubProjects(projectId);
+    };
+    var onSave = function(result) {
+      if (!result || !result.success) {
+        showLoading(false);
+        toast((result && result.error) || 'Failed to save module', 'error');
+        return;
+      }
+      refreshSubs();
+    };
+    var onError = function(err) {
+      showLoading(false);
+      console.error('saveSubProject failed:', err);
+      toast('Failed to save module', 'error');
+    };
+    if (subId) {
+      google.script.run.withSuccessHandler(onSave).withFailureHandler(onError)
+        .updateSubProject(projectId, subId, { name: name, description: description });
+    } else {
+      google.script.run.withSuccessHandler(onSave).withFailureHandler(onError)
+        .addSubProject(projectId, { name: name, description: description });
+    }
+  },
+
+  _removeSubProject(subId) {
+    if (!this.selectedProject || !subId) return;
+    var self = this;
+    var projectId = this.selectedProject.id;
+    ConfirmModal('Remove this module? Tasks tagged with it must be reassigned first.').then(function(ok) {
+      if (!ok) return;
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (!result || !result.success) {
+            toast((result && result.error) || 'Failed to remove module', 'error');
+            return;
+          }
+          var settings = self._getSettings();
+          settings.subProjects = result.subProjects || [];
+          self.selectedProject.settings = JSON.stringify(settings);
+          var idx = self.projects.findIndex(function(pr) { return pr.id === self.selectedProject.id; });
+          if (idx !== -1) self.projects[idx].settings = self.selectedProject.settings;
+          self.renderProjectDetail();
+          toast('Module removed', 'success');
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          console.error('removeSubProject failed:', err);
+          toast('Failed to remove module', 'error');
+        })
+        .removeSubProject(projectId, subId);
+    });
   },
 
   _savePidRequirements() {

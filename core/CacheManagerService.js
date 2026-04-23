@@ -107,6 +107,7 @@ function rebuildBatchCache() {
     const projJsonIdx = projHeaders.indexOf('jsonData');
     const userJsonIdx = CONFIG.USER_COLUMNS.indexOf('jsonData');
     const isDeletedIdx = CONFIG.TASK_COLUMNS.indexOf('isDeleted');
+    const isArchivedIdx = CONFIG.TASK_COLUMNS.indexOf('isArchived');
 
     const tasks = [];
     if (tasksData.length > 1) {
@@ -114,6 +115,7 @@ function rebuildBatchCache() {
         const row = tasksData[i];
         if (!row[0] && !row[2]) continue;
         if (isDeletedIdx !== -1 && (row[isDeletedIdx] === true || row[isDeletedIdx] === 'true' || row[isDeletedIdx] === 'TRUE')) continue;
+        if (isArchivedIdx !== -1 && (row[isArchivedIdx] === true || row[isArchivedIdx] === 'true' || row[isArchivedIdx] === 'TRUE')) continue;
         var task;
         if (taskJsonIdx !== -1 && row[taskJsonIdx]) {
           try { task = JSON.parse(row[taskJsonIdx]); } catch (e) { task = rowToObject(row, CONFIG.TASK_COLUMNS); }
@@ -168,10 +170,14 @@ function rebuildBatchCache() {
       }
     }
 
+    var dataAssets = [];
+    try { dataAssets = getAllDataAssetsOptimized(); } catch (e) { console.error('batch dataAssets load failed:', e); }
+
     const result = {
       tasks,
       projects,
       users,
+      dataAssets: dataAssets,
       config: {
         statuses: CONFIG.STATUSES,
         priorities: CONFIG.PRIORITIES,
@@ -195,10 +201,13 @@ function rebuildBatchCache() {
 }
 
 function buildBatchDataFallback() {
+  var dataAssets = [];
+  try { dataAssets = getAllDataAssetsOptimized(); } catch (e) { console.error('fallback dataAssets load failed:', e); }
   return {
     tasks: getAllTasks(),
     projects: getAllProjects(),
     users: getActiveUsers(),
+    dataAssets: dataAssets,
     config: {
       statuses: CONFIG.STATUSES,
       priorities: CONFIG.PRIORITIES,

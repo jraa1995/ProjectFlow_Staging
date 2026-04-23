@@ -101,7 +101,7 @@ autocomplete="off"
 <span class="field-error hidden text-xs mt-1" style="color:var(--co-error);">Type is required</span>
 </div>
 <div class="form-field">
-<label for="taskEditProject" class="form-label required-either">
+<label for="taskEditProject" class="form-label required">
 <i class="fas fa-folder text-gray-400 mr-1"></i> Project
 </label>
 <div class="co-searchable-select" data-search-target="taskEditProject">
@@ -111,10 +111,10 @@ autocomplete="off"
 <option value="">— None —</option>
 </select>
 </div>
-<span class="field-error hidden text-xs mt-1" style="color:var(--co-error);">Select a Project or Data Asset</span>
+<span class="field-error hidden text-xs mt-1" style="color:var(--co-error);">Project is required (choose Ad Hoc if none)</span>
 </div>
 <div class="form-field">
-<label for="taskEditDataAsset" class="form-label required-either">
+<label for="taskEditDataAsset" class="form-label">
 <i class="fas fa-database text-gray-400 mr-1"></i> Data Asset
 </label>
 <div class="co-searchable-select" data-search-target="taskEditDataAsset">
@@ -124,6 +124,15 @@ autocomplete="off"
 <option value="">— None —</option>
 </select>
 </div>
+</div>
+<div id="taskEditSubProjectField" class="form-field hidden">
+<label for="taskEditSubProject" class="form-label">
+<i class="fas fa-puzzle-piece text-gray-400 mr-1"></i> Module
+</label>
+<select id="taskEditSubProject" class="form-select">
+<option value="">— None —</option>
+</select>
+<span class="text-xs mt-1 block" style="color:var(--co-ink-muted);">Optional — tag this task to a module of the selected project.</span>
 </div>
 </div>
 <div class="grid grid-cols-2 gap-4">
@@ -1317,6 +1326,11 @@ var TaskEditModal = {
     this._bindSearchableDropdowns();
     this._syncSearchableDisplay('taskEditProject');
     this._syncSearchableDisplay('taskEditDataAsset');
+    this._refreshSubProjectField((this.task && this.task.subProjectId) || '');
+
+    if (!(projects && projects.length) || !(dataAssets && dataAssets.length)) {
+      this._lazyFetchProjectOptions();
+    }
 
     const requestedByInput = document.getElementById('taskEditRequestedBy');
     const requestedByList = document.getElementById('taskEditRequestedByOptions');
@@ -1534,7 +1548,7 @@ var TaskEditModal = {
     var projVal = this.getInputValue('taskEditProject');
     var daVal = this.getInputValue('taskEditDataAsset');
     if (!projVal && !daVal) {
-      errors.push('Select a Project or Data Asset');
+      errors.push('Project is required (choose Ad Hoc if none)');
       if (!firstBadField) firstBadField = 'taskEditProjectSearch';
       if (!opts.silent) {
         this._markFieldError('taskEditProject', true);
@@ -1846,6 +1860,31 @@ var TaskEditModal = {
       .loadCpmdPersonnel();
   },
 
+  _lazyFetchProjectOptions() {
+    if (this._lazyFetchInFlight) return;
+    this._lazyFetchInFlight = true;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        self._lazyFetchInFlight = false;
+        if (!result || !result.success) return;
+        if (Array.isArray(result.projects)) {
+          State.setProjects(result.projects);
+          LocalCache.set('projects', result.projects);
+        }
+        if (Array.isArray(result.dataAssets)) {
+          State.setDataAssets(result.dataAssets);
+          LocalCache.set('dataAssets', result.dataAssets);
+        }
+        if (self.isOpen) self.populateSelectOptions();
+      })
+      .withFailureHandler(function(err) {
+        self._lazyFetchInFlight = false;
+        console.error('lazy fetch project options failed:', err);
+      })
+      .getListViewData();
+  },
+
   onProjectOrAssetChange(source) {
     var projectSelect = document.getElementById('taskEditProject');
     var dataAssetSelect = document.getElementById('taskEditDataAsset');
@@ -1856,8 +1895,51 @@ var TaskEditModal = {
       projectSelect.value = '';
       this._syncSearchableDisplay('taskEditProject');
     }
+    var currentProjectId = projectSelect ? projectSelect.value : '';
+    var originalProjectId = this.task && this.task.projectId ? String(this.task.projectId) : '';
+    var preselect = currentProjectId === originalProjectId ? (this.task && this.task.subProjectId) || '' : '';
+    this._refreshSubProjectField(preselect);
     this.checkForChanges();
     this.updateSaveButtonState();
+  },
+
+  _refreshSubProjectField(preselectId) {
+    var field = document.getElementById('taskEditSubProjectField');
+    var select = document.getElementById('taskEditSubProject');
+    if (!field || !select) return;
+    var projectSelect = document.getElementById('taskEditProject');
+    var projectId = projectSelect ? projectSelect.value : '';
+    if (!projectId || projectId.toUpperCase() === 'ADHOC') {
+      field.classList.add('hidden');
+      select.innerHTML = '<option value="">— None —</option>';
+      select.value = '';
+      return;
+    }
+    var projects = (typeof State !== 'undefined' && State.projects) ? State.projects : [];
+    var project = projects.find(function(p) { return p.id === projectId; });
+    var settings = {};
+    try {
+      settings = project && project.settings
+        ? (typeof project.settings === 'string' ? JSON.parse(project.settings) : project.settings)
+        : {};
+    } catch (e) { settings = {}; }
+    var subs = Array.isArray(settings.subProjects) ? settings.subProjects : [];
+    if (!settings.isModular || subs.length === 0) {
+      field.classList.add('hidden');
+      select.innerHTML = '<option value="">— None —</option>';
+      select.value = '';
+      return;
+    }
+    var current = preselectId !== undefined ? preselectId : (this.task && this.task.subProjectId) || '';
+    var html = '<option value=""' + (!current ? ' selected' : '') + '>— None —</option>';
+    html += subs.map(function(sub) {
+      if (!sub || !sub.id) return '';
+      var label = (sub.name || sub.id) + ' · ' + sub.id;
+      return '<option value="' + escapeHtml(sub.id) + '"' + (sub.id === current ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+    }).join('');
+    select.innerHTML = html;
+    select.value = current || '';
+    field.classList.remove('hidden');
   },
 
   _searchableConfig: {
@@ -1963,6 +2045,12 @@ var TaskEditModal = {
     var dataAssetVal = this.getInputValue('taskEditDataAsset');
     var projectVal = this.getInputValue('taskEditProject');
     var resolvedProjectId = dataAssetVal || projectVal || 'ADHOC';
+    var subFieldEl = document.getElementById('taskEditSubProjectField');
+    var subSelectEl = document.getElementById('taskEditSubProject');
+    var subProjectId = '';
+    if (subFieldEl && !subFieldEl.classList.contains('hidden') && subSelectEl) {
+      subProjectId = subSelectEl.value || '';
+    }
     var pushEventEl = document.getElementById('taskEditPushCalEvent');
     var pushTaskEl = document.getElementById('taskEditPushCalTask');
     return {
@@ -1971,6 +2059,7 @@ var TaskEditModal = {
       priority: this.getInputValue('taskEditPriority'),
       type: this.getInputValue('taskEditType'),
       projectId: resolvedProjectId,
+      subProjectId: subProjectId,
       assignee: this.getInputValue('taskEditAssignee'),
       requestedBy: this.getInputValue('taskEditRequestedBy'),
       watchers: this.selectedWatchers.join(','),
