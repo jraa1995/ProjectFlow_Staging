@@ -138,25 +138,28 @@ var UserProfilePage = {
   _renderMonthLabels(cells, cols) {
     var row = document.getElementById('upvHeatmapMonths');
     if (!row) return;
-    var monthsByCol = {};
-    for (var c = 0; c < cols; c++) {
-      var i = c * 7;
-      var cell = cells[i];
-      if (!cell || cell.blank) continue;
-      var d = new Date(cell.date + 'T00:00:00');
-      var key = d.getMonth();
-      if (!monthsByCol[key]) monthsByCol[key] = c;
-    }
+    row.style.gridTemplateColumns = 'repeat(' + cols + ', 12px)';
     var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    var html = '';
-    var prevCol = -1;
-    Object.keys(monthsByCol).sort(function(a, b) { return monthsByCol[a] - monthsByCol[b]; }).forEach(function(monthIdx) {
-      var startCol = monthsByCol[monthIdx];
-      var pad = (startCol - prevCol - 1);
-      if (pad > 0) html += '<span style="min-width:' + (pad * 15) + 'px;"></span>';
-      html += '<span>' + monthNames[parseInt(monthIdx, 10)] + '</span>';
-      prevCol = startCol;
-    });
+    var seen = {};
+    var labels = [];
+    for (var c = 0; c < cols; c++) {
+      for (var r = 0; r < 7; r++) {
+        var idx = c * 7 + r;
+        if (idx >= cells.length) break;
+        var cell = cells[idx];
+        if (!cell || cell.blank || !cell.date) continue;
+        var d = new Date(cell.date + 'T00:00:00');
+        if (d.getDate() !== 1) continue;
+        var key = d.getFullYear() + '-' + d.getMonth();
+        if (seen[key]) continue;
+        seen[key] = true;
+        labels.push({ col: c, month: d.getMonth() });
+        break;
+      }
+    }
+    var html = labels.map(function(lbl) {
+      return '<span style="grid-column-start:' + (lbl.col + 1) + ';">' + monthNames[lbl.month] + '</span>';
+    }).join('');
     row.innerHTML = html;
   },
 

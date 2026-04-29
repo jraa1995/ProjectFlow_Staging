@@ -13,8 +13,8 @@
 .upv-section { padding:20px 24px; border-radius:12px; background:var(--co-surface); border:1px solid var(--co-border-subtle); margin-bottom:20px; }
 .upv-section-title { font-size:14px; font-weight:600; color:var(--co-ink); margin-bottom:14px; letter-spacing:-0.01em; display:flex; align-items:center; justify-content:space-between; }
 .upv-section-title .upv-section-sub { font-size:11px; font-weight:400; color:var(--co-gray-400); text-transform:none; letter-spacing:normal; }
-.upv-heatmap-wrap { overflow-x:auto; padding-bottom:8px; }
-.upv-heatmap { display:inline-grid; grid-auto-flow:column; grid-template-rows:repeat(7, 12px); gap:3px; }
+.upv-heatmap-wrap { overflow-x:auto; padding-bottom:8px; flex:1; min-width:0; }
+.upv-heatmap { display:inline-grid; grid-auto-flow:column; grid-template-rows:repeat(7, 12px); column-gap:3px; row-gap:3px; }
 .upv-heatmap-cell { width:12px; height:12px; border-radius:2px; background:var(--co-surface-sunken); cursor:pointer; transition:transform 0.08s; }
 .upv-heatmap-cell:hover { transform:scale(1.4); outline:1px solid var(--co-ink); }
 .upv-heatmap-l1 { background:rgba(216, 154, 106, 0.25); }
@@ -24,9 +24,9 @@
 .upv-legend { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--co-gray-400); margin-top:8px; }
 .upv-legend-cells { display:inline-flex; gap:3px; }
 .upv-legend-cells span { width:12px; height:12px; border-radius:2px; }
-.upv-month-row { display:flex; gap:3px; padding-left:24px; margin-bottom:6px; font-size:10px; color:var(--co-gray-400); height:14px; }
-.upv-month-row span { display:inline-block; min-width:46px; }
-.upv-day-labels { display:grid; grid-template-rows:repeat(7, 12px); gap:3px; margin-right:6px; font-size:9px; color:var(--co-gray-400); }
+.upv-month-row { display:grid; column-gap:3px; height:14px; margin-bottom:6px; font-size:10px; color:var(--co-gray-400); }
+.upv-month-row span { line-height:14px; white-space:nowrap; overflow:visible; }
+.upv-day-labels { display:grid; grid-template-rows:repeat(7, 12px); row-gap:3px; margin-right:6px; margin-top:20px; font-size:9px; color:var(--co-gray-400); }
 .upv-day-labels span { line-height:12px; }
 .upv-heatmap-flex { display:flex; align-items:flex-start; }
 .upv-breakdown { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; }
@@ -92,12 +92,12 @@
       Build Activity
       <span class="upv-section-sub">What you delivered, not what you committed</span>
     </div>
-    <div id="upvHeatmapMonths" class="upv-month-row"></div>
     <div class="upv-heatmap-flex">
       <div class="upv-day-labels">
         <span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span>
       </div>
       <div class="upv-heatmap-wrap">
+        <div id="upvHeatmapMonths" class="upv-month-row"></div>
         <div id="upvHeatmap" class="upv-heatmap"></div>
       </div>
     </div>
