@@ -116,4 +116,34 @@
       try { localStorage.setItem('co_sidebar_' + gId, '1'); } catch (e) {}
     }
   }
+
+  function toggleSidebarCollapse() {
+    var sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    var collapsed = sidebar.classList.toggle('sidebar-collapsed');
+    var btn = document.getElementById('sidebarCollapseBtn');
+    var icon = document.getElementById('sidebarCollapseIcon');
+    if (icon) {
+      icon.classList.toggle('fa-angles-left', !collapsed);
+      icon.classList.toggle('fa-angles-right', collapsed);
+    }
+    if (btn) btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    try { localStorage.setItem('co_sidebar_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+  }
+
+  function restoreSidebarCollapseState() {
+    var stored = null;
+    try { stored = localStorage.getItem('co_sidebar_collapsed'); } catch (e) {}
+    if (stored === '1') {
+      var sidebar = document.getElementById('sidebar');
+      if (sidebar) sidebar.classList.add('sidebar-collapsed');
+      var icon = document.getElementById('sidebarCollapseIcon');
+      var btn = document.getElementById('sidebarCollapseBtn');
+      if (icon) {
+        icon.classList.remove('fa-angles-left');
+        icon.classList.add('fa-angles-right');
+      }
+      if (btn) btn.title = 'Expand sidebar';
+    }
+  }
 </script>

@@ -36,6 +36,12 @@
       return;
     }
 
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      e.preventDefault();
+      if (typeof toggleSidebarCollapse === 'function') toggleSidebarCollapse();
+      return;
+    }
+
     if ((e.ctrlKey || e.metaKey) && e.key === '/') {
       e.preventDefault();
       return;

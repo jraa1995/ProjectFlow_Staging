@@ -41,4 +41,227 @@
     };
     return colors[priority] || 'bg-gray-100 text-gray-700';
   }
+
+  var RECENCY_NEW_DAYS = 2;
+  var RECENCY_UPDATED_DAYS = 7;
+
+  function _msSince(value) {
+    if (!value) return Infinity;
+    var ts = (value instanceof Date) ? value.getTime() : Date.parse(value);
+    if (isNaN(ts)) return Infinity;
+    return Date.now() - ts;
+  }
+
+  function renderListSkeleton(rows) {
+    var n = Math.max(1, rows || 6);
+    var widths = [60, 80, 50, 70, 65, 55, 75, 45];
+    var html = '';
+    for (var i = 0; i < n; i++) {
+      var primaryW = widths[i % widths.length];
+      var secondaryW = widths[(i + 3) % widths.length] - 10;
+      html += '<div class="co-skeleton-row">' +
+        '<span class="co-skeleton-dot"></span>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div class="co-skeleton-bar" style="width:' + primaryW + '%;margin-bottom:6px;"></div>' +
+          '<div class="co-skeleton-bar" style="width:' + secondaryW + '%;height:8px;opacity:0.6;"></div>' +
+        '</div>' +
+      '</div>';
+    }
+    return html;
+  }
+  window.renderListSkeleton = renderListSkeleton;
+
+  function renderEmptyState(opts) {
+    opts = opts || {};
+    var icon = opts.icon || 'fa-inbox';
+    var title = opts.title || 'Nothing here yet';
+    var subtitle = opts.subtitle || '';
+    var actions = opts.actions || '';
+    var variant = opts.variant || '';
+    var classes = ['co-empty'];
+    if (variant === 'card') classes.push('co-empty-card');
+    if (variant === 'compact') classes.push('co-empty-compact');
+    return '<div class="' + classes.join(' ') + '">' +
+      '<div class="co-empty-icon"><i class="fas ' + icon + '" aria-hidden="true"></i></div>' +
+      '<div class="co-empty-title">' + escapeHtml(title) + '</div>' +
+      (subtitle ? '<div class="co-empty-subtitle">' + escapeHtml(subtitle) + '</div>' : '') +
+      (actions ? '<div class="co-empty-actions">' + actions + '</div>' : '') +
+      '</div>';
+  }
+  window.renderEmptyState = renderEmptyState;
+
+  function originBadge(project, opts) {
+    if (!project) return '';
+    var origin = project.origin || (project.settings && project.settings.origin);
+    if (!origin && project.settings && typeof project.settings === 'string') {
+      try { var parsed = JSON.parse(project.settings); origin = parsed.origin; } catch (e) {}
+    }
+    var showInternal = opts && opts.showInternal;
+    if (!origin || (origin === 'internal' && !showInternal)) return '';
+    if (origin === 'client') {
+      return '<span class="co-origin-badge" title="Submitted by an external client"><i class="fas fa-handshake" aria-hidden="true"></i>Client</span>';
+    }
+    if (origin === 'internal' && showInternal) {
+      return '<span class="co-origin-badge co-origin-internal" title="Internal project"><i class="fas fa-landmark" aria-hidden="true"></i>Internal</span>';
+    }
+    return '';
+  }
+  window.originBadge = originBadge;
+
+  function recencyBadge(item) {
+    if (!item) return '';
+    var dayMs = 86400000;
+    var createdAge = _msSince(item.createdAt);
+    var updatedAge = _msSince(item.updatedAt);
+    if (createdAge <= RECENCY_NEW_DAYS * dayMs) {
+      return '<span class="co-recency-badge co-recency-new" title="Created within the last ' + RECENCY_NEW_DAYS + ' days"><i class="fas fa-star" aria-hidden="true"></i>New</span>';
+    }
+    if (updatedAge <= RECENCY_UPDATED_DAYS * dayMs && updatedAge < createdAge) {
+      return '<span class="co-recency-badge co-recency-updated" title="Updated within the last ' + RECENCY_UPDATED_DAYS + ' days"><i class="fas fa-bolt" aria-hidden="true"></i>Recently Updated</span>';
+    }
+    return '';
+  }
+  window.recencyBadge = recencyBadge;
+
+  function _getPersonnelLabels(kind) {
+    var list = _getPersonnelList(kind);
+    return list.map(function(p) {
+      return (p && p.label) || (p && p.email ? (p.name + ' (' + p.email + ')') : (p && p.name) || '');
+    }).filter(Boolean);
+  }
+
+  function _getPersonnelList(kind) {
+    var stateKey = kind === 'fed' ? 'fedPersonnel' : 'cpmdPersonnel';
+    var projectKey = kind === 'fed' ? '_fedPersonnel' : '_cpmdPersonnel';
+    if (typeof State !== 'undefined' && Array.isArray(State[stateKey]) && State[stateKey].length) return State[stateKey];
+    if (typeof ProjectPage !== 'undefined' && Array.isArray(ProjectPage[projectKey]) && ProjectPage[projectKey].length) return ProjectPage[projectKey];
+    if (typeof State !== 'undefined' && Array.isArray(State[stateKey])) return State[stateKey];
+    if (typeof ProjectPage !== 'undefined' && Array.isArray(ProjectPage[projectKey])) return ProjectPage[projectKey];
+    return [];
+  }
+
+  function _setPersonnelList(kind, list) {
+    var stateKey = kind === 'fed' ? 'fedPersonnel' : 'cpmdPersonnel';
+    var projectKey = kind === 'fed' ? '_fedPersonnel' : '_cpmdPersonnel';
+    var arr = Array.isArray(list) ? list : [];
+    if (typeof State !== 'undefined') State[stateKey] = arr;
+    if (typeof ProjectPage !== 'undefined') ProjectPage[projectKey] = arr;
+    if (typeof ProjectPage !== 'undefined') {
+      if (!ProjectPage._taxonomyValues) ProjectPage._taxonomyValues = {};
+      var labels = arr.map(function(p) {
+        return (p && p.label) || (p && p.email ? (p.name + ' (' + p.email + ')') : (p && p.name) || '');
+      }).filter(Boolean);
+      ProjectPage._taxonomyValues[kind === 'fed' ? 'fedStaffNames' : 'cpmdNames'] = labels;
+    }
+  }
+
+  function escapeHtmlWithLinks(text) {
+    if (!text) return '';
+    var s = String(text);
+    var urlRe = /(https?:\/\/[^\s<>"]+)/g;
+    var result = '';
+    var lastIdx = 0;
+    var match;
+    while ((match = urlRe.exec(s)) !== null) {
+      result += escapeHtml(s.substring(lastIdx, match.index));
+      var url = match[0];
+      var trailingPunct = url.match(/[)\].,;:!?]+$/);
+      var clean = trailingPunct ? url.substring(0, url.length - trailingPunct[0].length) : url;
+      var trail = trailingPunct ? trailingPunct[0] : '';
+      result += '<a href="' + escapeHtml(clean) + '" target="_blank" rel="noopener" class="text-indigo-600 hover:underline break-all">' + escapeHtml(clean) + '</a>' + escapeHtml(trail);
+      lastIdx = urlRe.lastIndex;
+    }
+    result += escapeHtml(s.substring(lastIdx));
+    return result;
+  }
+  window.escapeHtmlWithLinks = escapeHtmlWithLinks;
+
+  var MonthYearPicker = {
+    MONTHS: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+    _parse: function(value) {
+      if (!value) return { year: '', month: '' };
+      var s = String(value).substring(0, 7);
+      var parts = s.split('-');
+      return { year: parts[0] || '', month: parts[1] || '' };
+    },
+    _years: function(selectedYear) {
+      var current = new Date().getFullYear();
+      var min = 2010;
+      var max = current + 5;
+      var sel = parseInt(selectedYear, 10);
+      if (sel && sel < min) min = sel;
+      if (sel && sel > max) max = sel;
+      var out = [];
+      for (var y = max; y >= min; y--) out.push(y);
+      return out;
+    },
+    buildHtml: function(id, value, classes) {
+      var parsed = this._parse(value);
+      var classAttr = classes || 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400';
+      var monthOpts = '<option value="" disabled' + (parsed.month ? '' : ' selected') + ' hidden>Month</option>' +
+        this.MONTHS.map(function(name, i) {
+          var num = (i + 1) < 10 ? '0' + (i + 1) : String(i + 1);
+          return '<option value="' + num + '"' + (num === parsed.month ? ' selected' : '') + '>' + name + '</option>';
+        }).join('');
+      var years = this._years(parsed.year);
+      var yearOpts = '<option value="" disabled' + (parsed.year ? '' : ' selected') + ' hidden>Year</option>' +
+        years.map(function(y) {
+          return '<option value="' + y + '"' + (String(y) === parsed.year ? ' selected' : '') + '>' + y + '</option>';
+        }).join('');
+      var hiddenVal = (parsed.year && parsed.month) ? (parsed.year + '-' + parsed.month) : '';
+      return '<div class="grid grid-cols-2 gap-2" data-month-year-picker="' + id + '">' +
+        '<select id="' + id + '__month" class="' + classAttr + ' bg-white" onchange="MonthYearPicker.sync(\'' + id + '\')">' + monthOpts + '</select>' +
+        '<select id="' + id + '__year" class="' + classAttr + ' bg-white" onchange="MonthYearPicker.sync(\'' + id + '\')">' + yearOpts + '</select>' +
+        '<input type="hidden" id="' + id + '" value="' + hiddenVal + '">' +
+        '</div>';
+    },
+    sync: function(id) {
+      var m = document.getElementById(id + '__month');
+      var y = document.getElementById(id + '__year');
+      var hidden = document.getElementById(id);
+      if (!m || !y || !hidden) return;
+      hidden.value = (m.value && y.value) ? (y.value + '-' + m.value) : '';
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+    setValue: function(id, value) {
+      var parsed = this._parse(value);
+      var m = document.getElementById(id + '__month');
+      var y = document.getElementById(id + '__year');
+      var hidden = document.getElementById(id);
+      if (m) m.value = parsed.month || '';
+      if (y) y.value = parsed.year || '';
+      if (hidden) hidden.value = (parsed.year && parsed.month) ? (parsed.year + '-' + parsed.month) : '';
+    },
+    reset: function(id) {
+      this.setValue(id, '');
+    }
+  };
+  window.MonthYearPicker = MonthYearPicker;
+
+  function preloadPersonnelLists() {
+    try {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && result.success && Array.isArray(result.personnel)) {
+            _setPersonnelList('fed', result.personnel);
+            try { if (typeof ProjectPage !== 'undefined' && ProjectPage._refreshSelectedProjectDetail) ProjectPage._refreshSelectedProjectDetail(); } catch (e) {}
+            try { if (typeof TaskEditModal !== 'undefined' && TaskEditModal._refreshRequestedByDatalist) TaskEditModal._refreshRequestedByDatalist(); } catch (e) {}
+          }
+        })
+        .withFailureHandler(function(err) { console.error('preloadPersonnelLists (fed) failed:', err); })
+        .loadFedStaffingPersonnel('personnel');
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && result.success && Array.isArray(result.personnel)) {
+            _setPersonnelList('cpmd', result.personnel);
+            try { if (typeof ProjectPage !== 'undefined' && ProjectPage._refreshSelectedProjectDetail) ProjectPage._refreshSelectedProjectDetail(); } catch (e) {}
+            try { if (typeof TaskEditModal !== 'undefined' && TaskEditModal._refreshRequestedByDatalist) TaskEditModal._refreshRequestedByDatalist(); } catch (e) {}
+          }
+        })
+        .withFailureHandler(function(err) { console.error('preloadPersonnelLists (cpmd) failed:', err); })
+        .loadCpmdPersonnel();
+    } catch (err) {
+      console.error('preloadPersonnelLists error:', err);
+    }
+  }
 </script>

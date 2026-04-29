@@ -10,12 +10,17 @@ var ProjectPage = {
   showAddRelease: false,
   showAddUpdate: false,
   showEmailRelease: false,
+  showRecipientGroupsModal: false,
   _editSecondaryUsers: [],
+  _recipientGroups: [],
+  _recipientGroupsLoaded: false,
+  _editingGroupId: null,
   filterStatus: '',
   filterWorkstream: '',
   filterProjectType: '',
   filterTechStack: '',
   filterPrimaryOwner: '',
+  filterOrigin: '',
   searchTerm: '',
 
   _settingsSchema: {
@@ -29,94 +34,292 @@ var ProjectPage = {
       { key: 'tableauLink', label: 'Tableau Server', type: 'url' }
     ],
     ownership: [
-      { key: 'secondaryUsers', label: 'Backup Owner(s)', type: 'static_multiselect', optionsKey: 'biSmes' },
-      { key: 'projectPoc', label: 'Other Contractor POC(s)', type: 'static_multiselect', optionsKey: 'cpmdNames' },
-      { key: 'clientStakeholders', label: 'Other Gov Stakeholders', type: 'text' },
+      { key: 'projectPoc', label: 'Other Contractor POC(s)', type: 'static_search_multiselect', sourceKind: 'cpmd', hint: 'Start typing to search CPMD personnel. Enter or + to add. If the list is empty, ask an admin to set the CPMD workbook ID.' },
+      { key: 'clientOwner', label: 'Primary Gov Stakeholder', type: 'static_search_select', sourceKind: 'fed', hint: 'Start typing a name or email. List loaded from the Fed Staffing workbook (Employees only).' },
       { key: 'contractInitial', label: 'Contract of Initial Development', type: 'static_select', optionsKey: 'contractOptions' },
       { key: 'contractCurrent', label: 'Current Contract Ownership', type: 'static_select', optionsKey: 'contractOptions' },
-      { key: 'contractTask', label: 'Contract Task-Level Ownership', type: 'taxonomy_select' },
-      { key: 'gasOwner', label: 'GAS Project Owner', type: 'static_select', optionsKey: 'biSmes' },
-      { key: 'dataMgmtOwner', label: 'Data Management Process Owner', type: 'static_select', optionsKey: 'biSmes' }
+      { key: 'contractTask', label: 'Contract Task-Level Ownership', type: 'taxonomy_select', hint: 'Specific contract task (e.g., AMPS - Task 2). Seeded options can be expanded under project taxonomy.' }
     ],
     infrastructure: [
       { key: '_relatedDataAssets', label: 'Data Assets', type: 'data_assets' },
       { key: 'techStack', label: 'Tech Stack', type: 'taxonomy_multiselect' },
-      { key: 'activeGas', label: 'Active GAS Project', type: 'boolean' },
-      { key: 'gasProjectUid', label: 'GAS Project Link(s)', type: 'url' },
+      { key: 'activeGas', label: 'Active GAS Project', type: 'boolean', hint: 'Set to Yes if this project has a Google Apps Script container/library that needs tracking.' },
+      { key: 'gasProjectUid', label: 'GAS Project Link', type: 'url', conditional: { requires: 'activeGas' } },
+      { key: 'gasContainerFile', label: 'GAS Container File', type: 'drive_picker', conditional: { requires: 'activeGas' }, hint: 'Optional reference to the bound container (spreadsheet, doc, form).' },
       { key: 'activeDataMgmt', label: 'Active Data Management Process', type: 'boolean' },
-      { key: 'dataSourceFiles', label: 'Data Source File(s)', type: 'drive_picker_multi' },
-      { key: 'dataCadence', label: 'Data Refresh Cadence', type: 'static_select', optionsKey: 'dataCadence' },
-      { key: 'dataSourceExplain', label: 'How is Data Sourced', type: 'textarea' }
+      { key: 'dataSourceFiles', label: 'Data Source File(s)', type: 'drive_picker_multi', conditional: { requires: 'activeDataMgmt' } },
+      { key: 'dataCadence', label: 'Data Refresh Cadence', type: 'static_select', optionsKey: 'dataCadence', conditional: { requires: 'activeDataMgmt' } },
+      { key: 'dataSourceExplain', label: 'How is Data Sourced', type: 'textarea', conditional: { requires: 'activeDataMgmt' } }
     ],
     documentation: [
-      { key: 'docCompleteness', label: 'Documentation Completeness', type: 'computed_doc' },
+      { key: 'docCompleteness', label: 'Documentation Compliance', type: 'computed_doc' },
       { key: 'googleDriveFolder', label: 'Google Drive Folder', type: 'url' },
       { key: 'githubLinks', label: 'Git Repository', type: 'url' },
-      { key: 'devDocs', label: 'Development Documentation', type: 'drive_picker' },
-      { key: 'designDocs', label: 'Design Documentation', type: 'drive_picker' },
-      { key: 'sops', label: 'SOPs (Internal)', type: 'drive_picker' },
-      { key: 'userGuides', label: 'User Guides', type: 'drive_picker' },
-      { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'drive_picker' },
+      { key: 'designDocs', label: 'Design Documentation', type: 'drive_picker_multi', template: 'designDoc' },
+      { key: 'devDocs', label: 'Development Documentation', type: 'drive_picker_multi', template: 'devDoc' },
+      { key: 'dataDictionaries', label: 'Data Dictionary', type: 'drive_picker_multi', template: 'dataDictionary' },
+      { key: 'userGuides', label: 'User Guide', type: 'drive_picker_multi', template: 'userGuide' },
+      { key: 'supportRunbook', label: 'Support Runbook', type: 'drive_picker_multi', template: 'supportRunbook' },
       { key: 'additionalFiles', label: 'Additional Files', type: 'drive_picker_multi' }
     ]
   },
 
   _projectOptions: [],
   _cpmdPersonnel: [],
+  _fedPersonnel: [],
 
   init() {
     if (typeof SplitPane !== 'undefined') SplitPane.init('projectSplitPane', 'projects', 288);
     this._applyRoleVisibility();
+    var skel = document.getElementById('projectListSkeleton');
+    if (skel && !this.projects && typeof renderListSkeleton === 'function') skel.innerHTML = renderListSkeleton(8);
     this.loadProjects();
     google.script.run.withSuccessHandler(function(vals) {
-      ProjectPage._taxonomyValues = vals;
+      if (!ProjectPage._taxonomyValues) ProjectPage._taxonomyValues = {};
+      Object.keys(vals || {}).forEach(function(k) { ProjectPage._taxonomyValues[k] = vals[k]; });
       ProjectPage._populateExtraFilters();
     }).getProjectTaxonomyValues();
     google.script.run.withSuccessHandler(function(opts) {
       ProjectPage._projectOptions = opts || [];
     }).getProjectPickerOptions();
+    google.script.run.withSuccessHandler(function(result) {
+      if (result && result.success) ProjectPage._docTemplates = result.templates || {};
+    }).getDocTemplates();
     this._loadCpmdPersonnel();
+    this._loadFedPersonnel();
+    this._updateFilterBadge();
+  },
+
+  promptSetDocTemplate(templateKey, label) {
+    var self = this;
+    PromptModal('Set the template URL for "' + label + '". Leave blank to clear. Admin only.', 'https://docs.google.com/...')
+      .then(function(url) {
+        if (url === null) return;
+        var trimmed = String(url).trim();
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showLoading(false);
+            if (!result || !result.success) { toast((result && result.error) || 'Failed to set template', 'error'); return; }
+            google.script.run.withSuccessHandler(function(r) {
+              if (r && r.success) ProjectPage._docTemplates = r.templates || {};
+              self.renderProjectDetail();
+            }).getDocTemplates();
+            toast(trimmed ? 'Template saved' : 'Template cleared', 'success');
+          })
+          .withFailureHandler(function(err) {
+            showLoading(false);
+            console.error('setDocTemplate failed:', err);
+            toast('Failed: ' + (err && err.message || 'Unknown'), 'error');
+          })
+          .setDocTemplate(templateKey, trimmed, label);
+      });
   },
 
   _applyRoleVisibility() {
     var role = (typeof State !== 'undefined' && State.user && State.user.role)
       ? String(State.user.role).toLowerCase() : '';
+    var isAdmin = role === 'admin';
     var importBtn = document.getElementById('projImportWorklogBtn');
     if (importBtn) {
-      if (role === 'admin') {
-        importBtn.classList.remove('hidden');
-        importBtn.classList.add('flex');
-      } else {
-        importBtn.classList.add('hidden');
-        importBtn.classList.remove('flex');
-      }
+      if (isAdmin) { importBtn.classList.remove('hidden'); importBtn.classList.add('flex'); }
+      else { importBtn.classList.add('hidden'); importBtn.classList.remove('flex'); }
     }
     var exportBtn = document.getElementById('projExportCsvBtn');
     if (exportBtn) {
-      if (role === 'admin') {
-        exportBtn.classList.remove('hidden');
-        exportBtn.classList.add('flex');
-      } else {
-        exportBtn.classList.add('hidden');
-        exportBtn.classList.remove('flex');
-      }
+      if (isAdmin) { exportBtn.classList.remove('hidden'); exportBtn.classList.add('flex'); }
+      else { exportBtn.classList.add('hidden'); exportBtn.classList.remove('flex'); }
+    }
+    var overflow = document.getElementById('projOverflowBtn');
+    if (overflow) {
+      if (isAdmin) overflow.classList.remove('hidden');
+      else overflow.classList.add('hidden');
     }
   },
 
+  _openFiltersPanel() {
+    var panel = document.getElementById('projFilterPanel');
+    if (panel) panel.classList.remove('hidden');
+    var btn = document.getElementById('projFilterToggle');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    document.addEventListener('keydown', ProjectPage._filterPanelEscHandler);
+    setTimeout(function() {
+      document.addEventListener('mousedown', ProjectPage._filterPanelClickAway, true);
+    }, 0);
+  },
+
+  _closeFiltersPanel() {
+    var panel = document.getElementById('projFilterPanel');
+    if (panel) panel.classList.add('hidden');
+    var btn = document.getElementById('projFilterToggle');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('keydown', ProjectPage._filterPanelEscHandler);
+    document.removeEventListener('mousedown', ProjectPage._filterPanelClickAway, true);
+  },
+
+  _filterPanelClickAway(e) {
+    var panel = document.getElementById('projFilterPanel');
+    var btn = document.getElementById('projFilterToggle');
+    if (!panel) return;
+    if (panel.contains(e.target)) return;
+    if (btn && btn.contains(e.target)) return;
+    ProjectPage._closeFiltersPanel();
+  },
+
+  _toggleFiltersPanel() {
+    var panel = document.getElementById('projFilterPanel');
+    if (!panel) return;
+    if (panel.classList.contains('hidden')) this._openFiltersPanel();
+    else this._closeFiltersPanel();
+  },
+
+  _filterPanelEscHandler(e) {
+    if (e.key === 'Escape') ProjectPage._closeFiltersPanel();
+  },
+
+  _activeFilterCount() {
+    var keys = ['filterStatus', 'filterWorkstream', 'filterProjectType', 'filterTechStack', 'filterPrimaryOwner', 'filterOrigin'];
+    var count = 0;
+    for (var i = 0; i < keys.length; i++) {
+      if (this[keys[i]]) count++;
+    }
+    return count;
+  },
+
+  _updateFilterBadge() {
+    var badge = document.getElementById('projFilterBadge');
+    if (!badge) return;
+    var n = this._activeFilterCount();
+    if (n > 0) {
+      badge.textContent = String(n);
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  },
+
+  _toggleOverflowMenu() {
+    var menu = document.getElementById('projOverflowMenu');
+    var btn = document.getElementById('projOverflowBtn');
+    if (!menu || !btn) return;
+    var willOpen = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden');
+    btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    if (willOpen) {
+      setTimeout(function() {
+        document.addEventListener('click', ProjectPage._overflowMenuClickAway, { capture: true, once: true });
+      }, 0);
+    }
+  },
+
+  _overflowMenuClickAway(e) {
+    var menu = document.getElementById('projOverflowMenu');
+    var btn = document.getElementById('projOverflowBtn');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (menu.contains(e.target) || (btn && btn.contains(e.target))) {
+      document.addEventListener('click', ProjectPage._overflowMenuClickAway, { capture: true, once: true });
+      return;
+    }
+    menu.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  },
+
+  _runOverflowAction(method) {
+    var menu = document.getElementById('projOverflowMenu');
+    var btn = document.getElementById('projOverflowBtn');
+    if (menu) menu.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (typeof this[method] === 'function') this[method]();
+  },
+
   _loadCpmdPersonnel() {
+    var existing = (typeof _getPersonnelList === 'function') ? _getPersonnelList('cpmd') : [];
+    if (existing && existing.length) {
+      if (typeof _setPersonnelList === 'function') _setPersonnelList('cpmd', existing);
+      this._refreshSelectedProjectDetail();
+      return;
+    }
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.success) {
-          ProjectPage._cpmdPersonnel = result.personnel || [];
-          var names = ProjectPage._cpmdPersonnel.map(function(p) { return p.name; });
-          if (!ProjectPage._taxonomyValues) ProjectPage._taxonomyValues = {};
-          ProjectPage._taxonomyValues.cpmdNames = names;
+          if (typeof _setPersonnelList === 'function') _setPersonnelList('cpmd', result.personnel || []);
+          else ProjectPage._cpmdPersonnel = result.personnel || [];
+          ProjectPage._refreshSelectedProjectDetail();
         }
       })
       .withFailureHandler(function(err) {
         console.error('Failed to load CPMD personnel:', err);
       })
       .loadCpmdPersonnel();
+  },
+
+  _loadFedPersonnel() {
+    var existing = (typeof _getPersonnelList === 'function') ? _getPersonnelList('fed') : [];
+    if (existing && existing.length) {
+      if (typeof _setPersonnelList === 'function') _setPersonnelList('fed', existing);
+      this._refreshSelectedProjectDetail();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          if (typeof _setPersonnelList === 'function') _setPersonnelList('fed', result.personnel || []);
+          else ProjectPage._fedPersonnel = result.personnel || [];
+          ProjectPage._refreshSelectedProjectDetail();
+        }
+      })
+      .withFailureHandler(function(err) {
+        console.error('Failed to load Fed Staffing personnel:', err);
+      })
+      .loadFedStaffingPersonnel('personnel');
+  },
+
+  _refreshSelectedProjectDetail() {
+    try {
+      if (this.selectedProject && typeof this.renderProjectDetail === 'function') {
+        this.renderProjectDetail();
+      }
+    } catch (e) {}
+  },
+
+  _renderTagDisplay(val) {
+    var arr = val;
+    if (typeof arr === 'string') {
+      try { var parsed = JSON.parse(arr); arr = Array.isArray(parsed) ? parsed : arr.split(/[,;\n]/); }
+      catch (e) { arr = arr.split(/[,;\n]/); }
+    }
+    if (!Array.isArray(arr)) arr = arr ? [String(arr)] : [];
+    arr = arr.map(function(x) { return String(x || '').trim(); }).filter(Boolean);
+    if (!arr.length) return '<span class="text-gray-400 text-sm">-</span>';
+    return arr.map(function(v) {
+      return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(v) + '</span>';
+    }).join('');
+  },
+
+  _buildGovOwnersPicker(rawValue) {
+    var arr = rawValue;
+    if (typeof arr === 'string') {
+      try { var parsed = JSON.parse(arr); arr = Array.isArray(parsed) ? parsed : arr.split(/[,;\n]/); }
+      catch (e) { arr = arr.split(/[,;\n]/); }
+    }
+    if (!Array.isArray(arr)) arr = arr ? [String(arr)] : [];
+    arr = arr.map(function(x) { return String(x || '').trim(); }).filter(Boolean);
+    var opts = (typeof _getPersonnelLabels === 'function') ? _getPersonnelLabels('fed') : [];
+    var listId = 'dl_govProjectOwners_' + Math.random().toString(36).slice(2, 8);
+    var dlOpts = opts.map(function(o) { return '<option value="' + escapeHtml(o) + '"></option>'; }).join('');
+    var chips = arr.map(function(t, i) {
+      return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+        escapeHtml(t) +
+        '<button type="button" onclick="ProjectPage._removeTag(\'govProjectOwners\',' + i + ')" class="text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+    }).join('') || '<span class="text-xs text-gray-400">No entries yet</span>';
+    return '<div id="tagList_govProjectOwners" class="flex flex-wrap mb-2">' + chips + '</div>' +
+      '<input type="hidden" id="editSetting_govProjectOwners" value="' + escapeHtml(JSON.stringify(arr)) + '">' +
+      '<div class="flex items-center gap-2">' +
+        '<input id="tagInput_govProjectOwners" type="text" list="' + listId + '" placeholder="Start typing a name or email…" autocomplete="off" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" ' +
+        'onkeydown="if(event.key===\'Enter\'){event.preventDefault();ProjectPage._addTag(\'govProjectOwners\',this.value);this.value=\'\';}">' +
+        '<button type="button" onclick="var i=document.getElementById(\'tagInput_govProjectOwners\');ProjectPage._addTag(\'govProjectOwners\',i.value);i.value=\'\';" class="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"><i class="fas fa-plus text-xs mr-1"></i>Add</button>' +
+      '</div>' +
+      '<datalist id="' + listId + '">' + dlOpts + '</datalist>';
   },
 
   promptForCpmdWorkbookId() {
@@ -140,16 +343,20 @@ var ProjectPage = {
     this.filterProjectType = '';
     this.filterTechStack = '';
     this.filterPrimaryOwner = '';
+    this.filterOrigin = '';
     var st = document.getElementById('projectStatusFilter');
     var ws = document.getElementById('projWorkstreamFilter');
     var pt = document.getElementById('projTypeFilter');
     var ts = document.getElementById('projTechStackFilter');
     var po = document.getElementById('projPrimaryOwnerFilter');
+    var or = document.getElementById('projOriginFilter');
+    this._updateFilterBadge();
     if (st) st.value = '';
     if (ws) ws.value = '';
     if (pt) pt.value = '';
     if (ts) ts.value = '';
     if (po) po.value = '';
+    if (or) or.value = '';
     this.renderProjectList();
   },
 
@@ -181,17 +388,77 @@ var ProjectPage = {
     if (!sel) return;
     var ownerMap = {};
     (this.projects || []).forEach(function(p) {
-      if (p && p.ownerId) ownerMap[p.ownerId] = true;
+      if (!p) return;
+      if (p.ownerId) {
+        ownerMap[p.ownerId] = ownerMap[p.ownerId] || { value: p.ownerId, pending: false };
+      } else {
+        try {
+          var s = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {});
+          if (s && s.pendingOwnerName) {
+            var key = '__pending__' + s.pendingOwnerName;
+            ownerMap[key] = { value: s.pendingOwnerName, pending: true };
+          }
+        } catch (e) {}
+      }
     });
-    var owners = Object.keys(ownerMap).sort();
+    var owners = Object.keys(ownerMap).map(function(k) { return ownerMap[k]; }).sort(function(a, b) {
+      return a.value.localeCompare(b.value);
+    });
     var current = sel.value;
     var self = this;
     sel.innerHTML = '<option value="">All Primary Owners</option>' +
-      owners.map(function(email) {
-        var name = self.resolveUserName(email) || email;
-        var selected = email === current ? ' selected' : '';
-        return '<option value="' + escapeHtml(email) + '"' + selected + '>' + escapeHtml(name) + '</option>';
+      owners.map(function(o) {
+        var label = o.pending ? (o.value + ' (pending)') : (self.resolveUserName(o.value) || o.value);
+        var selected = o.value === current ? ' selected' : '';
+        return '<option value="' + escapeHtml(o.value) + '"' + selected + '>' + escapeHtml(label) + '</option>';
       }).join('');
+  },
+
+  _ownerKey(value) {
+    return String(value || '').trim().toLowerCase().replace(/\./g, ' ').replace(/\s+/g, ' ');
+  },
+
+  _userIdentitySet() {
+    if (this._identitySetCache) return this._identitySetCache;
+    var keys = {};
+    if (typeof State === 'undefined' || !State.user) return keys;
+    var email = String(State.user.email || '').trim().toLowerCase();
+    if (email) {
+      keys[email] = true;
+      var prefix = email.indexOf('@') !== -1 ? email.split('@')[0] : '';
+      if (prefix) keys[this._ownerKey(prefix)] = true;
+    }
+    var nameKey = this._ownerKey(State.user.name);
+    if (nameKey) keys[nameKey] = true;
+    this._identitySetCache = keys;
+    return keys;
+  },
+
+  _identityMatch(value, identity) {
+    if (!value) return false;
+    var s = String(value).trim();
+    if (!s) return false;
+    if (identity[s.toLowerCase()]) return true;
+    var k = this._ownerKey(s);
+    return !!(k && identity[k]);
+  },
+
+  _userMatchesProject(p, identity) {
+    if (!p) return false;
+    if (this._identityMatch(p.ownerId, identity)) return true;
+    var s = {};
+    try { s = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {}); }
+    catch (e) { return false; }
+    if (s.pendingOwnerName && this._identityMatch(s.pendingOwnerName, identity)) return true;
+    var sec = Array.isArray(s.secondaryUsers) ? s.secondaryUsers : [];
+    for (var i = 0; i < sec.length; i++) {
+      if (this._identityMatch(sec[i], identity)) return true;
+    }
+    var pend = Array.isArray(s.pendingSecondaryUsers) ? s.pendingSecondaryUsers : [];
+    for (var j = 0; j < pend.length; j++) {
+      if (this._identityMatch(pend[j], identity)) return true;
+    }
+    return false;
   },
 
   loadProjects() {
@@ -205,15 +472,10 @@ var ProjectPage = {
         }
         var allProjects = result.projects || [];
         if (typeof State !== 'undefined' && State.user && State.user.role !== 'admin') {
-          var email = State.user.email;
-          allProjects = allProjects.filter(function(p) {
-            if (p.ownerId === email) return true;
-            try {
-              var s = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {});
-              if (Array.isArray(s.secondaryUsers) && s.secondaryUsers.indexOf(email) !== -1) return true;
-            } catch (e) {}
-            return false;
-          });
+          this._identitySetCache = null;
+          var identity = this._userIdentitySet();
+          var self = this;
+          allProjects = allProjects.filter(function(p) { return self._userMatchesProject(p, identity); });
         }
         this.projects = allProjects;
         if (typeof State !== 'undefined' && State.setProjects) {
@@ -240,7 +502,14 @@ var ProjectPage = {
     this.editingTab = null;
     this.showAddRelease = false;
     this.showAddUpdate = false;
+    this.showEmailRelease = false;
+    this.showRecipientGroupsModal = false;
+    this._editingGroupId = null;
+    this._recipientGroups = [];
+    this._recipientGroupsLoaded = false;
+    this._recipientGroupsProjectId = null;
     this._editingReqTemplateId = null;
+    this._relatedAssetsForSelected = this._findRelatedAssetsFor(projectId);
     this.renderProjectList();
     this._hierarchy = null;
     google.script.run.withSuccessHandler(function(h) {
@@ -248,6 +517,15 @@ var ProjectPage = {
       ProjectPage.renderProjectDetail();
     }).getProjectHierarchy(this.selectedProject.id);
     this.renderProjectDetail();
+  },
+
+  _findRelatedAssetsFor(projectId) {
+    if (!projectId) return [];
+    var dataAssets = (typeof State !== 'undefined' ? State.dataAssets : null) || [];
+    return dataAssets.filter(function(da) {
+      var rp = (da.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      return rp.indexOf(projectId) !== -1;
+    });
   },
 
   switchTab(tab) {
@@ -262,22 +540,70 @@ var ProjectPage = {
 
   _getFilteredProjects() {
     var self = this;
+    var filterOwnerKey = self._ownerKey(self.filterPrimaryOwner);
     return this.projects.filter(function(p) {
-      var matchStatus = !self.filterStatus || (p.status || '').toLowerCase() === self.filterStatus;
       var term = (self.searchTerm || '').toLowerCase();
       var matchSearch = !term ||
         (p.name || '').toLowerCase().includes(term) ||
         (p.ownerId || '').toLowerCase().includes(term);
       var pSettings = null;
-      if (self.filterWorkstream || self.filterProjectType || self.filterTechStack) {
+      if (self.filterStatus || self.filterWorkstream || self.filterProjectType || self.filterTechStack || self.filterPrimaryOwner || self.filterOrigin) {
         try { pSettings = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {}); } catch (e) { pSettings = {}; }
+      }
+      var matchOrigin = true;
+      if (self.filterOrigin) {
+        var pOrigin = p.origin || (pSettings && pSettings.origin) || 'internal';
+        matchOrigin = pOrigin === self.filterOrigin;
+      }
+      var matchStatus = true;
+      if (self.filterStatus) {
+        var pStatus = self._projectStatusValue(p, pSettings);
+        if (self.filterStatus === '__archived__') matchStatus = self._isArchivedWorklogStatus(pStatus) || (p.status || '').toLowerCase() === 'archived';
+        else if (self.filterStatus === '__active__') matchStatus = !self._isArchivedWorklogStatus(pStatus) && (p.status || '').toLowerCase() !== 'archived';
+        else matchStatus = pStatus === self.filterStatus;
       }
       var matchWs = !self.filterWorkstream || (p.workstream || (pSettings && pSettings.workstream) || '') === self.filterWorkstream;
       var matchPt = !self.filterProjectType || (p.projectType || (pSettings && pSettings.projectType) || '') === self.filterProjectType;
-      var matchTs = !self.filterTechStack || (p.techStack || (pSettings && pSettings.techStack) || '') === self.filterTechStack;
-      var matchOwner = !self.filterPrimaryOwner || (p.ownerId || '') === self.filterPrimaryOwner;
-      return matchStatus && matchSearch && matchWs && matchPt && matchTs && matchOwner;
+      var matchTs = !self.filterTechStack || self._projectHasTechStack(p, pSettings, self.filterTechStack);
+      var matchOwner = true;
+      if (self.filterPrimaryOwner) {
+        var ownerVal = String(p.ownerId || '').trim();
+        if (ownerVal === self.filterPrimaryOwner) {
+          matchOwner = true;
+        } else if (filterOwnerKey && self._ownerKey(ownerVal) === filterOwnerKey) {
+          matchOwner = true;
+        } else if (pSettings && pSettings.pendingOwnerName && self._ownerKey(pSettings.pendingOwnerName) === filterOwnerKey) {
+          matchOwner = true;
+        } else {
+          matchOwner = false;
+        }
+      }
+      return matchStatus && matchSearch && matchWs && matchPt && matchTs && matchOwner && matchOrigin;
     });
+  },
+
+  _splitMultiValue(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) {
+      return val.map(function(v) { return String(v || '').trim(); }).filter(Boolean);
+    }
+    if (typeof val === 'string') {
+      try {
+        var parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) return parsed.map(function(v) { return String(v || '').trim(); }).filter(Boolean);
+      } catch (e) {}
+      return val.split(',').map(function(v) { return v.trim(); }).filter(Boolean);
+    }
+    return [String(val).trim()].filter(Boolean);
+  },
+
+  _projectHasTechStack(p, pSettings, target) {
+    var raw = p.techStack || (pSettings && pSettings.techStack) || '';
+    var stacks = this._splitMultiValue(raw);
+    for (var i = 0; i < stacks.length; i++) {
+      if (stacks[i] === target) return true;
+    }
+    return false;
   },
 
   _ensureProjectSearchBar() {
@@ -286,13 +612,15 @@ var ProjectPage = {
     if (!document.getElementById('projSearchBar')) {
       var bar = document.createElement('div');
       bar.id = 'projSearchBar';
-      bar.className = 'p-3 border-b border-gray-100';
-      bar.innerHTML = '<input type="text" id="projSearchInput" placeholder="Search projects..." ' +
-        'class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />';
+      bar.innerHTML = '<input type="text" id="projSearchInput" placeholder="Search projects..." class="co-search-input w-full" />';
+      var chips = document.createElement('div');
+      chips.id = 'projFilterChips';
+      chips.className = 'co-filter-chips';
       var list = document.createElement('div');
       list.id = 'projListItems';
       container.innerHTML = '';
       container.appendChild(bar);
+      container.appendChild(chips);
       container.appendChild(list);
       document.getElementById('projSearchInput').addEventListener('input', function() {
         ProjectPage.searchTerm = this.value;
@@ -301,6 +629,48 @@ var ProjectPage = {
     }
     var inp = document.getElementById('projSearchInput');
     if (inp && inp.value !== (this.searchTerm || '')) inp.value = this.searchTerm || '';
+    this._renderFilterChips();
+  },
+
+  _renderFilterChips() {
+    var el = document.getElementById('projFilterChips');
+    if (!el) return;
+    var entries = [
+      { key: 'filterStatus', label: 'Status', value: this.filterStatus, displayMap: { '__active__': 'Active', '__archived__': 'Archived' } },
+      { key: 'filterWorkstream', label: 'Workstream', value: this.filterWorkstream },
+      { key: 'filterProjectType', label: 'Type', value: this.filterProjectType },
+      { key: 'filterTechStack', label: 'Tech Stack', value: this.filterTechStack },
+      { key: 'filterPrimaryOwner', label: 'Owner', value: this.filterPrimaryOwner },
+      { key: 'filterOrigin', label: 'Origin', value: this.filterOrigin, displayMap: { 'client': 'Client', 'internal': 'Internal' } }
+    ];
+    var active = entries.filter(function(e) { return e.value; });
+    if (!active.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.innerHTML = active.map(function(e) {
+      var display = (e.displayMap && e.displayMap[e.value]) || e.value;
+      return '<span class="co-chip" role="button" tabindex="0" onclick="ProjectPage._removeFilter(\'' + e.key + '\')">' +
+        '<span class="co-chip-label">' + escapeHtml(e.label) + ':</span>' +
+        '<span class="co-chip-value">' + escapeHtml(String(display)) + '</span>' +
+        '<i class="fas fa-times co-chip-x"></i></span>';
+    }).join('') + ' <button type="button" class="co-chip-clear" onclick="_pc(\'ProjectPage\',\'clearExtraFilters\')">Clear all</button>';
+  },
+
+  _removeFilter(key) {
+    if (!this.hasOwnProperty(key)) return;
+    this[key] = '';
+    var selectId = ({
+      filterStatus: 'projectStatusFilter',
+      filterWorkstream: 'projWorkstreamFilter',
+      filterProjectType: 'projTypeFilter',
+      filterTechStack: 'projTechStackFilter',
+      filterPrimaryOwner: 'projPrimaryOwnerFilter',
+      filterOrigin: 'projOriginFilter'
+    })[key];
+    var sel = selectId ? document.getElementById(selectId) : null;
+    if (sel) sel.value = '';
+    this._updateFilterBadge();
+    this._renderFilterChips();
+    this.renderProjectList();
   },
 
   _renderProjectItems() {
@@ -308,21 +678,27 @@ var ProjectPage = {
     if (!listEl) return;
     var filtered = this._getFilteredProjects();
     if (!filtered.length) {
-      listEl.innerHTML = '<div class="flex flex-col items-center justify-center h-32 text-gray-400"><i class="fas fa-folder text-2xl mb-2 text-gray-300"></i><p class="text-sm">No projects found</p></div>';
+      listEl.innerHTML = (typeof renderEmptyState === 'function')
+        ? renderEmptyState({ variant:'compact', icon:'fa-folder', title:'No projects', subtitle:'Try clearing filters, or click "+ New Project" to add one.' })
+        : '<div class="flex flex-col items-center justify-center h-32 text-gray-400"><i class="fas fa-folder text-2xl mb-2 text-gray-300"></i><p class="text-sm">No projects found</p></div>';
       return;
     }
     var self = this;
     listEl.innerHTML = filtered.map(function(p) {
       var isActive = self.selectedProject && self.selectedProject.id === p.id;
-      var statusDot = self._statusDotColor(p.status);
+      var listStatus = self._projectStatusValue(p, null);
+      var statusDot = self._statusDotColor(listStatus || p.status);
       var taskCount = parseInt(p.taskCount) || 0;
       var docBadge = self._docBadgeForProject(p);
+      var recency = (typeof recencyBadge === 'function') ? recencyBadge(p) : '';
+      var origin = (typeof originBadge === 'function') ? originBadge(p) : '';
       var activeStyle = isActive ? 'background:var(--co-surface-sunken);box-shadow:inset 3px 0 0 var(--co-accent-500);' : '';
+      var statusLabel = listStatus || (p.status ? String(p.status).charAt(0).toUpperCase() + String(p.status).slice(1) : '');
       return '<div onclick="_pc(\'ProjectPage\',\'selectProject\',\'' + escapeHtml(p.id) + '\')" class="px-4 py-3 cursor-pointer transition-colors co-project-item" style="border-bottom:1px solid var(--co-border-subtle);' + activeStyle + '">' +
         '<div class="flex items-start justify-between gap-2">' +
         '<div class="flex items-center gap-2 min-w-0">' +
         '<span class="w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ' + statusDot + '"></span>' +
-        '<div class="min-w-0"><span class="text-[13px] font-medium truncate block" style="color:var(--co-ink);">' + escapeHtml(p.name) + '</span>' +
+        '<div class="min-w-0"><div class="flex items-center gap-1.5 flex-wrap"><span class="text-[13px] font-medium truncate" style="color:var(--co-ink);">' + escapeHtml(p.name) + '</span>' + recency + origin + '</div>' +
         '<span class="text-[11px] font-mono mt-0.5 block" style="color:var(--co-gray-500);"><span style="color:var(--co-gray-400);">ID:</span> ' + escapeHtml(p.id) + '</span></div>' +
         '</div>' +
         (p.version ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-medium" style="background:var(--co-ink);color:#fff;">' + escapeHtml(p.version) + '</span>' : '') +
@@ -331,27 +707,27 @@ var ProjectPage = {
         '<span class="text-[11px]" style="color:var(--co-gray-400);">' + taskCount + ' task' + (taskCount !== 1 ? 's' : '') + '</span>' +
         '<div class="flex items-center gap-1.5">' +
           (docBadge || '') +
-          (p.status ? '<span class="text-[11px] capitalize" style="color:var(--co-gray-400);">' + escapeHtml(p.status) + '</span>' : '') +
+          (statusLabel ? '<span class="text-[11px]" style="color:var(--co-gray-400);">' + escapeHtml(statusLabel) + '</span>' : '') +
         '</div>' +
         '</div></div>';
     }).join('');
   },
 
   _docBadgeForProject(project) {
-    var settings = {};
-    try { settings = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {}); } catch (e) {}
-    var keys = ['googleDriveFolder','githubLinks','devDocs','designDocs','sops','userGuides','dataDictionaries'];
-    var filled = 0;
-    keys.forEach(function(k) {
-      var v = settings[k];
-      if (v && String(v).trim() && v !== '[]') filled++;
-    });
-    var pct = Math.round((filled / keys.length) * 100);
-    var colorClass = 'bg-red-100 text-red-700';
-    if (pct >= 100) colorClass = 'bg-green-100 text-green-700';
-    else if (pct >= 50) colorClass = 'bg-yellow-100 text-yellow-700';
-    else if (pct === 0) colorClass = 'bg-gray-100 text-gray-500';
-    return '<span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full ' + colorClass + '" title="Documentation: ' + filled + '/' + keys.length + '">' + pct + '%</span>';
+    var rating = project.complianceRating;
+    var score = typeof project.complianceScore === 'number' ? project.complianceScore : null;
+    var filled = project.complianceFilled;
+    var total = project.complianceTotal;
+    if (rating == null || score == null) {
+      var local = this._computeDocCompleteness(project);
+      rating = local.pct >= 100 ? 'Compliant' : 'Non-Compliant';
+      score = local.pct;
+      filled = local.filled;
+      total = local.total;
+    }
+    var colorClass = rating === 'Compliant' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+    var title = 'Compliance: ' + rating + ' (' + filled + '/' + total + ')';
+    return '<span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full ' + colorClass + '" title="' + title + '">' + score + '%</span>';
   },
 
   renderProjectList() {
@@ -360,8 +736,58 @@ var ProjectPage = {
   },
 
   _statusDotColor(status) {
-    var map = { active: 'bg-gray-700', completed: 'bg-gray-400', archived: 'bg-gray-300', paused: 'bg-gray-400' };
-    return map[(status || '').toLowerCase()] || 'bg-gray-400';
+    var s = String(status || '').trim();
+    if (this._isArchivedWorklogStatus(s)) return 'bg-gray-300';
+    if (s) return 'bg-gray-700';
+    return 'bg-gray-400';
+  },
+
+  _worklogStatuses() {
+    var fromConfig = (typeof CONFIG !== 'undefined' && Array.isArray(CONFIG.WORKLOG_PROJECT_STATUSES)) ? CONFIG.WORKLOG_PROJECT_STATUSES : null;
+    if (fromConfig && fromConfig.length) return fromConfig.slice();
+    return [
+      '00-Ideation',
+      '01-Requirements Gathering',
+      '02-In Development',
+      '03-Deployed (Actively Maintained)',
+      '04-Deployed (Inactive-Not Maintained)',
+      '05-Dev Complete/Pending Deployment',
+      '06-Retired/Sunset (Permanent)',
+      '07-Backlog',
+      '08-Stopped'
+    ];
+  },
+
+  _archivedWorklogStatuses() {
+    var fromConfig = (typeof CONFIG !== 'undefined' && Array.isArray(CONFIG.ARCHIVED_PROJECT_STATUSES)) ? CONFIG.ARCHIVED_PROJECT_STATUSES : null;
+    if (fromConfig && fromConfig.length) return fromConfig.slice();
+    return [
+      '04-Deployed (Inactive-Not Maintained)',
+      '06-Retired/Sunset (Permanent)',
+      '08-Stopped'
+    ];
+  },
+
+  _isArchivedWorklogStatus(value) {
+    if (!value) return false;
+    return this._archivedWorklogStatuses().indexOf(String(value).trim()) !== -1;
+  },
+
+  _deriveWorklogStatusFromLifecycle(lifecycleStatus) {
+    var s = String(lifecycleStatus || '').toLowerCase();
+    if (s === 'archived') return '06-Retired/Sunset (Permanent)';
+    return '';
+  },
+
+  _deriveLifecycleFromWorklogStatus(worklogStatus) {
+    return this._isArchivedWorklogStatus(worklogStatus) ? 'archived' : 'active';
+  },
+
+  _projectStatusValue(p, settings) {
+    var s = settings || (function() { try { return typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {}); } catch (e) { return {}; } })();
+    var stored = s && s.projectStatus ? String(s.projectStatus).trim() : '';
+    if (stored) return stored;
+    return this._deriveWorklogStatusFromLifecycle(p && p.status);
   },
 
   _getSettings() {
@@ -373,27 +799,325 @@ var ProjectPage = {
     } catch (e) { return {}; }
   },
 
-  _computeDocCompleteness() {
-    var s = this._getSettings();
-    var p = this.selectedProject || {};
-    var required = [
-      { key: 'googleDriveFolder', label: 'Google Drive Folder', source: 'settings' },
-      { key: 'githubLinks', label: 'Git Repository', source: 'settings' },
-      { key: 'devDocs', label: 'Development Documentation', source: 'settings' },
-      { key: 'designDocs', label: 'Design Documentation', source: 'settings' },
-      { key: 'sops', label: 'SOPs (Internal)', source: 'settings' },
-      { key: 'userGuides', label: 'User Guides', source: 'settings' },
-      { key: 'dataDictionaries', label: 'Data Dictionaries', source: 'settings' }
-    ];
-    var filled = 0, missing = [], allLabels = [];
-    required.forEach(function(r) {
+  _computeDocCompleteness(projectArg, relatedCountArg) {
+    var p = projectArg || this.selectedProject || {};
+    var s = {};
+    try { s = typeof p.settings === 'string' ? (p.settings ? JSON.parse(p.settings) : {}) : (p.settings || {}); } catch (e) {}
+    var relatedCount;
+    if (typeof relatedCountArg === 'number') {
+      relatedCount = relatedCountArg;
+    } else if (projectArg && projectArg.id && (!this.selectedProject || projectArg.id !== this.selectedProject.id)) {
+      relatedCount = this._findRelatedAssetsFor(projectArg.id).length;
+    } else {
+      relatedCount = Array.isArray(this._relatedAssetsForSelected) ? this._relatedAssetsForSelected.length : 0;
+    }
+    var reqs = this._buildComplianceRequirements(p, s, relatedCount);
+    var exemptions = s.docExemptions || {};
+    var filled = 0, total = 0, missing = [], missingObjs = [], exempted = [], allLabels = [], requirements = [];
+    reqs.forEach(function(r) {
       allLabels.push(r.label);
-      var val = r.source === 'project' ? p[r.key] : s[r.key];
-      if (val && String(val).trim() && val !== '[]') filled++;
-      else missing.push(r.label);
+      var isExempted = r.exemptable && exemptions[r.key];
+      if (isExempted) {
+        exempted.push({ key: r.key, label: r.label, reason: exemptions[r.key].reason || '' });
+        requirements.push(Object.assign({}, r, { status: 'exempted', exemption: exemptions[r.key] }));
+        return;
+      }
+      total++;
+      if (r.filled) {
+        filled++;
+        requirements.push(Object.assign({}, r, { status: 'filled' }));
+      } else {
+        missing.push(r.label);
+        missingObjs.push({ key: r.key, label: r.label, exemptable: !!r.exemptable });
+        requirements.push(Object.assign({}, r, { status: 'missing' }));
+      }
     });
-    var pct = Math.round((filled / required.length) * 100);
-    return { pct: pct, filled: filled, total: required.length, missing: missing, allLabels: allLabels };
+    var pct = total === 0 ? 100 : Math.round((filled / total) * 100);
+    var rating = pct >= 100 ? 'Compliant' : 'Non-Compliant';
+    return {
+      pct: pct, score: pct, filled: filled, total: total, missing: missing, missingObjs: missingObjs,
+      exempted: exempted, allLabels: allLabels, requirements: requirements, rating: rating
+    };
+  },
+
+  COMPLIANCE_DEFINITIONS: {
+    googleDriveFolder: 'Shared Google Drive folder containing all supporting files for this project.',
+    githubLinks: 'URL to the GitHub (or other Git) repository holding the source code for this project.',
+    ownerId: 'The Primary Technical Owner — BI SME responsible for build, maintenance, and technical decisions.',
+    secondaryUsers: 'Backup Owner(s) — BI SMEs who can step in as primary or pick up overflow tasks.',
+    projectCode: 'The system-generated Project ID (e.g., FY-XX-SS-###). Generate from the Details tab.',
+    startDate: 'The date formal development started or was scheduled to start.',
+    contractCurrent: 'The contract currently responsible for this project (AMPS, Forward, or SQuAT).',
+    description: 'A short paragraph describing what this project does and who it serves.',
+    devDocs: 'Technical build documentation: architecture, data model, APIs, deployment notes.',
+    techStack: 'All tools, libraries, and platforms used to build or run this project.',
+    activeGas: 'Whether this project includes an active Google Apps Script (GAS) container/library.',
+    gasProjectUid: 'The GAS project link / URL (script.google.com).',
+    gasOwner: 'The BI SME who owns the GAS project.',
+    gasContainerFile: 'Optional link to the bound container file (spreadsheet, doc, form).',
+    relatedDataAssets: 'Data Assets (pipelines/databases) this project reads from or writes to.',
+    activeDataMgmt: 'Whether this project has an active Data Management Process (ingest/refresh).',
+    dataSourceFiles: 'Concrete source files or datasets the DMP reads from.',
+    dataCadence: 'How often data refreshes (Daily, Weekly, Monthly, Ad Hoc, etc.).',
+    dataSourceExplain: 'A plain-language explanation of where the data comes from and how it lands.',
+    dataDictionaries: 'Schema documentation: fields, types, constraints, examples.',
+    userGuides: 'End-user-facing guide: how to use this project step by step.',
+    supportRunbook: 'Support/on-call runbook: failure modes, alerts, recovery procedures.',
+    deployedPublicly: 'Whether the project is exposed beyond the build team (Yes enables Deployment Location).',
+    deploymentLocation: 'The category of location where the project is deployed (e.g., D2D, AAS Intranet).',
+    deploymentLink: 'A concrete URL in at least one of: Standalone App, D2D, AAS Intranet, External GSA, Tableau Server.'
+  },
+
+  _showComplianceInfoModal() {
+    var defs = this.COMPLIANCE_DEFINITIONS;
+    var reqs = this._computeDocCompleteness().requirements || [];
+    var rows = reqs.map(function(r) {
+      var def = defs[r.key] || '';
+      return '<div class="py-2 border-b border-gray-100 last:border-b-0">' +
+        '<div class="text-xs font-semibold text-gray-800">' + escapeHtml(r.label) + (r.exemptable ? ' <span class="ml-1 text-[10px] text-indigo-600 font-normal">(exemptable)</span>' : '') + '</div>' +
+        (def ? '<div class="text-[11px] text-gray-600 mt-0.5">' + escapeHtml(def) + '</div>' : '') +
+        '</div>';
+    }).join('');
+    var modal = document.getElementById('complianceInfoModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'complianceInfoModal';
+      modal.className = 'fixed inset-0 flex items-center justify-center z-[10050] hidden';
+      modal.style.cssText = 'background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);';
+      modal.innerHTML = '<div class="rounded-xl w-full max-w-lg p-6 mx-4 max-h-[80vh] overflow-y-auto" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">' +
+        '<div class="flex items-center justify-between mb-4"><h3 class="font-semibold text-gray-900">Required Documentation</h3>' +
+        '<button onclick="document.getElementById(\'complianceInfoModal\').classList.add(\'hidden\')" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button></div>' +
+        '<div id="complianceInfoBody"></div></div>';
+      document.body.appendChild(modal);
+    }
+    document.getElementById('complianceInfoBody').innerHTML = rows;
+    modal.classList.remove('hidden');
+  },
+
+  _renderComplianceBlock(compact) {
+    var dc = this._computeDocCompleteness();
+    var grouped = { missing: [], filled: [], exempted: [] };
+    (dc.requirements || []).forEach(function(r) {
+      var bucket = grouped[r.status] || grouped.missing;
+      bucket.push(r);
+    });
+
+    var isCompliant = dc.rating === 'Compliant';
+    var ratingPillClass = isCompliant
+      ? 'bg-green-50 text-green-700 border-green-100'
+      : 'bg-amber-50 text-amber-800 border-amber-100';
+    var ratingDotClass = isCompliant ? 'bg-green-500' : 'bg-amber-500';
+    var ratingPill = '<span class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ' + ratingPillClass + '">' +
+      '<span class="w-1.5 h-1.5 rounded-full ' + ratingDotClass + '"></span>' + escapeHtml(dc.rating) +
+    '</span>';
+    var infoBtn = '<button type="button" onclick="_pc(\'ProjectPage\',\'_showComplianceInfoModal\')" class="w-6 h-6 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors" title="View definitions of each required entry" aria-label="What counts toward compliance?"><i class="fas fa-info-circle text-[12px]"></i></button>';
+
+    var trackFill = isCompliant ? 'bg-green-500' : 'bg-amber-500';
+    var progressBar = '<div class="w-full h-1 bg-gray-100 rounded-full overflow-hidden"><div class="h-full ' + trackFill + ' transition-all duration-300" style="width:' + dc.score + '%"></div></div>';
+
+    var headerSection = '<div class="px-5 py-4 border-b border-gray-100">' +
+      '<div class="flex items-center justify-between mb-3">' +
+        '<span class="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">Documentation Compliance</span>' +
+        infoBtn +
+      '</div>' +
+      '<div class="flex items-baseline gap-3 mb-3">' +
+        '<span class="text-[28px] font-semibold text-gray-900 leading-none tabular-nums">' + dc.score + '<span class="text-[16px] text-gray-400 font-normal">%</span></span>' +
+        '<span class="text-[12px] text-gray-500">' + dc.filled + ' of ' + dc.total + ' complete</span>' +
+        '<span class="ml-auto">' + ratingPill + '</span>' +
+      '</div>' +
+      progressBar +
+      (grouped.exempted.length ? '<div class="text-[11px] text-gray-400 mt-3 inline-flex items-center gap-1.5"><i class="fas fa-shield-alt text-[10px]"></i>' + grouped.exempted.length + ' exempted</div>' : '') +
+    '</div>';
+
+    var renderRow = function(r) {
+      var iconHtml, labelClass;
+      if (r.status === 'filled') {
+        iconHtml = '<span class="flex-shrink-0 inline-flex items-center justify-center mt-0.5" style="width:16px;height:16px;background:#dcfce7;border-radius:9999px;"><i class="fas fa-check text-[9px] text-green-700"></i></span>';
+        labelClass = 'text-gray-700';
+      } else if (r.status === 'exempted') {
+        iconHtml = '<span class="flex-shrink-0 inline-flex items-center justify-center mt-0.5" style="width:16px;height:16px;background:#eef2ff;border-radius:9999px;"><i class="fas fa-shield-alt text-[9px] text-indigo-500"></i></span>';
+        labelClass = 'text-gray-500';
+      } else {
+        iconHtml = '<span class="flex-shrink-0 inline-block mt-1" style="width:14px;height:14px;border:1.5px solid #e5e7eb;border-radius:9999px;background:#fff;"></span>';
+        labelClass = 'text-gray-800';
+      }
+
+      var actionBtn = '';
+      if (r.status === 'missing' && r.exemptable) {
+        actionBtn = '<button type="button" onclick="_pc(\'ProjectPage\',\'showExemptionModal\',\'' + escapeHtml(r.key) + '\',\'' + escapeHtml(r.label) + '\')" class="flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-indigo-700 hover:bg-indigo-50 transition-colors whitespace-nowrap" title="Mark as exempt"><i class="fas fa-shield-alt text-[10px]"></i><span>Exempt</span></button>';
+      } else if (r.status === 'exempted') {
+        actionBtn = '<button type="button" onclick="_pc(\'ProjectPage\',\'clearExemption\',\'' + escapeHtml(r.key) + '\')" class="flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-gray-500 hover:bg-gray-100 transition-colors whitespace-nowrap" title="Remove exemption"><i class="fas fa-undo text-[10px]"></i><span>Undo</span></button>';
+      }
+
+      var reasonLine = '';
+      if (r.status === 'exempted' && r.exemption && r.exemption.reason) {
+        reasonLine = '<div class="text-[11px] text-gray-500 italic mt-1.5 ml-[28px] leading-snug break-words">' + escapeHtml(r.exemption.reason) + '</div>';
+      }
+
+      return '<li class="px-5 py-3 hover:bg-gray-50/40 transition-colors">' +
+        '<div class="flex items-start gap-3">' +
+          iconHtml +
+          '<span class="flex-1 min-w-0 text-[13px] leading-relaxed break-words ' + labelClass + '">' + escapeHtml(r.label) + '</span>' +
+          actionBtn +
+        '</div>' +
+        reasonLine +
+      '</li>';
+    };
+
+    var orderedRequirements = grouped.missing.concat(grouped.exempted, grouped.filled);
+    var rows = orderedRequirements.map(renderRow).join('');
+
+    var listHeader = '<div class="px-5 py-2.5 bg-gray-50/60 border-b border-gray-100 flex items-center justify-between">' +
+      '<span class="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-500">Required Entries</span>' +
+      '<span class="text-[10px] text-gray-400 tabular-nums">' + grouped.missing.length + ' missing · ' + grouped.filled.length + ' done</span>' +
+    '</div>';
+
+    return headerSection + listHeader + '<ul>' + rows + '</ul>';
+  },
+
+  showExemptionModal(fieldKey, fieldLabel) {
+    if (!this.selectedProject) return;
+    var projectId = this.selectedProject.id;
+    var self = this;
+    PromptModal(
+      'Provide an explanation for exempting "' + fieldLabel + '" from the Documentation Compliance rating. This reason will be visible to reviewers.',
+      'e.g., Internal tool — no external user guide required'
+    ).then(function(reason) {
+      if (reason === null) return;
+      if (!String(reason).trim()) { toast('Exemption reason is required', 'error'); return; }
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (!result || !result.success) { toast((result && result.error) || 'Exemption failed', 'error'); return; }
+          var s = self._getSettings();
+          if (!s.docExemptions) s.docExemptions = {};
+          s.docExemptions[fieldKey] = result.exemption;
+          self.selectedProject.settings = JSON.stringify(s);
+          var idx = self.projects.findIndex(function(p) { return p.id === projectId; });
+          if (idx !== -1) self.projects[idx] = self.selectedProject;
+          self.renderProjectList();
+          self.renderProjectDetail();
+          toast('Exemption recorded', 'success');
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          console.error('setProjectDocExemption failed:', err);
+          toast('Exemption failed: ' + (err && err.message || 'Unknown'), 'error');
+        })
+        .setProjectDocExemption(projectId, fieldKey, String(reason).trim());
+    });
+  },
+
+  clearExemption(fieldKey) {
+    if (!this.selectedProject) return;
+    var projectId = this.selectedProject.id;
+    var self = this;
+    ConfirmModal('Remove this exemption? The field will count toward compliance again.', {
+      title: 'Remove Exemption',
+      confirmText: 'Remove',
+      cancelText: 'Cancel'
+    }).then(function(confirmed) {
+      if (!confirmed) return;
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (!result || !result.success) { toast((result && result.error) || 'Failed to clear exemption', 'error'); return; }
+          var s = self._getSettings();
+          if (s.docExemptions) { delete s.docExemptions[fieldKey]; self.selectedProject.settings = JSON.stringify(s); }
+          var idx = self.projects.findIndex(function(p) { return p.id === projectId; });
+          if (idx !== -1) self.projects[idx] = self.selectedProject;
+          self.renderProjectList();
+          self.renderProjectDetail();
+          toast('Exemption removed', 'success');
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          console.error('clearProjectDocExemption failed:', err);
+          toast('Failed: ' + (err && err.message || 'Unknown'), 'error');
+        })
+        .clearProjectDocExemption(projectId, fieldKey);
+    });
+  },
+
+  _buildComplianceRequirements(project, settings, relatedCountArg) {
+    var type = String(settings.projectType || project.projectType || '').trim();
+    var isDeploymentType = type === 'Web Application' || type === 'Data Visualization';
+    var hasVal = function(v) {
+      if (v === null || v === undefined) return false;
+      if (typeof v === 'boolean') return v === true;
+      if (Array.isArray(v)) return v.length > 0;
+      var str = String(v).trim();
+      if (!str || str === '[]' || str === '{}' || str === 'null' || str === 'undefined' || str === 'TBD') return false;
+      return true;
+    };
+    var hasMulti = function(v) {
+      if (!v) return false;
+      if (Array.isArray(v)) return v.filter(function(x) { return String(x || '').trim(); }).length > 0;
+      if (typeof v === 'string') {
+        try { var parsed = JSON.parse(v); if (Array.isArray(parsed)) return parsed.filter(function(x) { return String(x || '').trim(); }).length > 0; } catch (e) {}
+        return v.split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean).length > 0;
+      }
+      return false;
+    };
+    var boolDefined = function(v) {
+      return v === true || v === false || v === 'true' || v === 'false' || v === 'TRUE' || v === 'FALSE';
+    };
+    var boolTrue = function(v) { return v === true || v === 'true' || v === 'TRUE'; };
+    var deployedPublicly = boolTrue(settings.deployedPublicly);
+    var activeGas = boolTrue(settings.activeGas);
+    var activeDmp = boolTrue(settings.activeDataMgmt);
+    var locationKeys = ['standaloneAppLink', 'd2dLink', 'aasIntranetLink', 'gsaLink', 'tableauLink'];
+    var hasAnyLocation = locationKeys.some(function(k) { return hasVal(settings[k]); });
+    var relatedCount = typeof relatedCountArg === 'number' ? relatedCountArg : (Array.isArray(this._relatedAssetsForSelected) ? this._relatedAssetsForSelected.length : 0);
+
+    var reqs = [
+      { key: 'googleDriveFolder', label: 'Google Drive Folder', filled: hasVal(settings.googleDriveFolder) },
+      { key: 'githubLinks', label: 'Git Repository', filled: hasVal(settings.githubLinks), exemptable: true },
+      { key: 'ownerId', label: 'Primary Tech Owner', filled: hasVal(project.ownerId) },
+      { key: 'secondaryUsers', label: 'Backup Owner(s)', filled: hasMulti(settings.secondaryUsers) },
+      { key: 'projectCode', label: 'Project ID', filled: hasVal(settings.projectCode) },
+      { key: 'startDate', label: 'Project Start Date', filled: hasVal(project.startDate) },
+      { key: 'contractCurrent', label: 'Current Contract Ownership', filled: hasVal(settings.contractCurrent) },
+      { key: 'description', label: 'Project Description', filled: hasVal(project.description) },
+      { key: 'devDocs', label: 'Development Documentation', filled: hasVal(settings.devDocs) },
+      { key: 'techStack', label: 'Tech Stack', filled: hasMulti(settings.techStack) },
+      { key: 'activeGas', label: 'Active GAS Project', filled: boolDefined(settings.activeGas) },
+      { key: 'relatedDataAssets', label: 'Related Data Assets', filled: relatedCount > 0, exemptable: true },
+      { key: 'activeDataMgmt', label: 'Active Data Management Process', filled: boolDefined(settings.activeDataMgmt) },
+      { key: 'dataDictionaries', label: 'Data Dictionary', filled: hasVal(settings.dataDictionaries) },
+      { key: 'userGuides', label: 'User Guide', filled: hasVal(settings.userGuides), exemptable: true },
+      { key: 'supportRunbook', label: 'Support Runbook', filled: hasVal(settings.supportRunbook) }
+    ];
+
+    if (isDeploymentType) {
+      reqs.splice(2, 0, { key: 'deployedPublicly', label: 'Deployed Publicly', filled: boolDefined(settings.deployedPublicly) });
+      if (deployedPublicly) {
+        reqs.splice(3, 0,
+          { key: 'deploymentLocation', label: 'Deployment Location', filled: hasMulti(settings.deploymentLocation) },
+          { key: 'deploymentLink', label: 'Deployment Link (any of Standalone/D2D/AAS/GSA/Tableau)', filled: hasAnyLocation }
+        );
+      }
+    }
+
+    if (activeGas) {
+      var gasIdx = reqs.findIndex(function(r) { return r.key === 'activeGas'; }) + 1;
+      reqs.splice(gasIdx, 0,
+        { key: 'gasProjectUid', label: 'GAS Project Link', filled: hasVal(settings.gasProjectUid) }
+      );
+    }
+
+    if (activeDmp) {
+      var dmpIdx = reqs.findIndex(function(r) { return r.key === 'activeDataMgmt'; }) + 1;
+      reqs.splice(dmpIdx, 0,
+        { key: 'dataSourceFiles', label: 'Data Source File(s)', filled: hasVal(settings.dataSourceFiles) },
+        { key: 'dataCadence', label: 'Data Refresh Cadence', filled: hasVal(settings.dataCadence) },
+        { key: 'dataSourceExplain', label: 'How is Data Sourced', filled: hasVal(settings.dataSourceExplain) }
+      );
+    }
+
+    return reqs;
   },
 
   renderProjectDetail() {
@@ -417,11 +1141,14 @@ var ProjectPage = {
       { id: 'updates', label: 'Updates' }
     ];
     var self = this;
-    var tabBar = '<div class="px-6 flex items-center gap-1 flex-shrink-0 overflow-x-auto" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">' +
-      tabs.map(function(t) {
-        return '<button onclick="_pc(\'ProjectPage\',\'switchTab\',\'' + t.id + '\')" class="co-tab' +
-          (self.activeTab === t.id ? ' co-tab-active' : '') + '">' + t.label + '</button>';
-      }).join('') + '</div>';
+    var tabsHtml = tabs.map(function(t) {
+      return '<button onclick="_pc(\'ProjectPage\',\'switchTab\',\'' + t.id + '\')" class="co-tab' +
+        (self.activeTab === t.id ? ' co-tab-active' : '') + '">' + t.label + '</button>';
+    }).join('');
+    var tabBar = '<div class="px-6 flex items-center justify-between gap-3 flex-shrink-0" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">' +
+      '<div class="flex items-center gap-1 overflow-x-auto">' + tabsHtml + '</div>' +
+      '<div class="flex items-center gap-1 flex-shrink-0">' + this._buildDetailHeaderActions() + '</div>' +
+      '</div>';
     var tabContent = '';
     if (this.activeTab === 'details') tabContent = this._buildDetailsTab();
     else if (this.activeTab === 'deployment') tabContent = this._buildSettingsTab('deployment');
@@ -431,8 +1158,109 @@ var ProjectPage = {
     else if (this.activeTab === 'requirements') tabContent = this._buildRequirementsTab();
     else if (this.activeTab === 'releases') tabContent = this._buildReleases();
     else if (this.activeTab === 'updates') tabContent = this._buildUpdates();
-    var pingBar = this._buildPingBar();
-    container.innerHTML = pingBar + tabBar + '<div class="flex-1 overflow-y-auto p-6">' + tabContent + '</div>';
+    container.innerHTML = tabBar + '<div class="flex-1 overflow-y-auto p-6">' + tabContent + '</div>';
+  },
+
+  _buildDetailHeaderActions() {
+    if (!this.selectedProject) return '';
+    var role = (typeof State !== 'undefined' && State.user && State.user.role) ? String(State.user.role).toLowerCase() : '';
+    var canOverride = role === 'admin' || role === 'manager';
+    var originHtml = '';
+    if (typeof originBadge === 'function') {
+      var badge = originBadge(this.selectedProject, { showInternal: true });
+      if (badge) {
+        var pencil = canOverride
+          ? '<button type="button" class="co-origin-override-btn" onclick="_pc(\'ProjectPage\',\'_promptOverrideOrigin\')" title="Override origin" aria-label="Override project origin"><i class="fas fa-pen text-[10px]"></i></button>'
+          : '';
+        originHtml = '<span class="inline-flex items-center mr-2">' + badge + pencil + '</span>';
+      }
+    }
+    if (!canOverride) return originHtml;
+    var menu = originHtml + '<div class="relative" id="projDetailActionsWrap">' +
+      '<button onclick="_pc(\'ProjectPage\',\'_togglePingMenu\')" class="co-detail-action" title="Ping owner" aria-label="Ping owner" aria-haspopup="true" aria-expanded="false">' +
+        '<i class="fas fa-bell text-[12px]"></i>' +
+      '</button>' +
+      '<div id="projPingMenu" class="hidden absolute right-0 top-full mt-1 z-30 min-w-[220px] rounded-lg shadow-lg overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);" role="menu">' +
+        '<div class="px-3 py-2 text-[11px] font-medium uppercase tracking-wide" style="color:var(--co-gray-400);border-bottom:1px solid var(--co-border-subtle);">Ping owner for</div>' +
+        ['Requirements Gathering','Incomplete Documentation','Update'].map(function(reason) {
+          return '<button onclick="_pc(\'ProjectPage\',\'_pingFromMenu\',\'' + reason + '\')" class="w-full text-left px-3 py-2 text-[13px] flex items-center gap-2 transition-colors" style="color:var(--co-ink);" onmouseover="this.style.background=\'var(--co-surface-sunken)\'" onmouseout="this.style.background=\'transparent\'" role="menuitem">' +
+            '<i class="fas fa-paper-plane text-[11px]" style="color:var(--co-gray-400);"></i>' +
+            '<span>' + reason + '</span></button>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+    return menu;
+  },
+
+  _togglePingMenu() {
+    var menu = document.getElementById('projPingMenu');
+    if (!menu) return;
+    var willOpen = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden');
+    var btn = menu.parentElement && menu.parentElement.querySelector('button[aria-haspopup="true"]');
+    if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    if (willOpen) {
+      setTimeout(function() {
+        document.addEventListener('click', ProjectPage._pingMenuClickAway, { capture: true, once: true });
+      }, 0);
+    }
+  },
+
+  _pingMenuClickAway(e) {
+    var menu = document.getElementById('projPingMenu');
+    if (!menu || menu.classList.contains('hidden')) return;
+    var wrap = document.getElementById('projDetailActionsWrap');
+    if (wrap && wrap.contains(e.target)) {
+      document.addEventListener('click', ProjectPage._pingMenuClickAway, { capture: true, once: true });
+      return;
+    }
+    menu.classList.add('hidden');
+    var btn = wrap && wrap.querySelector('button[aria-haspopup="true"]');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  },
+
+  _promptOverrideOrigin() {
+    if (!this.selectedProject) return;
+    var p = this.selectedProject;
+    var current = p.origin || 'internal';
+    var next = current === 'client' ? 'internal' : 'client';
+    var label = next === 'client' ? 'Client (external)' : 'Internal';
+    var self = this;
+    if (typeof ConfirmModal !== 'function') return;
+    ConfirmModal('Reclassify "' + (p.name || 'this project') + '" as ' + label + '? This change is recorded in the audit log.', {
+      title: 'Override Project Origin',
+      confirmText: 'Reclassify as ' + label,
+      cancelText: 'Cancel'
+    }).then(function(confirmed) {
+      if (!confirmed) return;
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(resp) {
+          showLoading(false);
+          if (!resp || !resp.success) { toast((resp && resp.error) || 'Failed to override origin', 'error'); return; }
+          if (resp.project) {
+            self.selectedProject = resp.project;
+            var idx = self.projects.findIndex(function(x) { return x.id === resp.project.id; });
+            if (idx !== -1) self.projects[idx] = resp.project;
+          }
+          self.renderProjectList();
+          self.renderProjectDetail();
+          toast('Origin set to ' + (resp.origin || next), 'success');
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          console.error('setProjectOrigin failed:', err);
+          toast('Override failed: ' + (err && err.message || 'Unknown'), 'error');
+        })
+        .setProjectOrigin(p.id, next, '');
+    });
+  },
+
+  _pingFromMenu(reason) {
+    var menu = document.getElementById('projPingMenu');
+    if (menu) menu.classList.add('hidden');
+    this._pendingPingReason = reason || 'Update';
+    this.pingOwner();
   },
 
   _buildSettingsTab(groupKey) {
@@ -440,9 +1268,39 @@ var ProjectPage = {
     var settings = this._getSettings();
     var isEditingThis = this.isEditing && this.editingTab === groupKey;
     var groupLabels = { deployment: 'Deployment', ownership: 'Ownership', infrastructure: 'Infrastructure', documentation: 'Documentation & Links' };
+    var projectType = settings.projectType || (this.selectedProject && this.selectedProject.projectType) || '';
+    var isDeploymentEligibleType = projectType === 'Web Application' || projectType === 'Data Visualization';
+    var deploymentDisabled = groupKey === 'deployment' && !isDeploymentEligibleType;
+    var boolTrue = function(v) { return v === true || v === 'true' || v === 'TRUE'; };
+    var deployedPublicly = boolTrue(settings.deployedPublicly);
+    var LOCATION_KEYS = { deploymentLocation: true, standaloneAppLink: true, d2dLink: true, aasIntranetLink: true, gsaLink: true, tableauLink: true };
+    var GAS_CONDITIONAL_KEYS = { gasProjectUid: true, gasContainerFile: true };
+    var DMP_CONDITIONAL_KEYS = { dataSourceFiles: true, dataCadence: true, dataSourceExplain: true };
+    var activeGas = boolTrue(settings.activeGas);
+    var activeDmp = boolTrue(settings.activeDataMgmt);
+    var fieldIsLocked = function(key) {
+      if (deploymentDisabled) return 'Deployment fields apply only to Web Application or Data Visualization projects.';
+      if (groupKey === 'deployment' && !deployedPublicly && LOCATION_KEYS[key]) return 'Set "Deployed Publicly" to Yes to edit this field.';
+      if (GAS_CONDITIONAL_KEYS[key] && !activeGas) return 'Enable "Active GAS Project" to edit this field.';
+      if (DMP_CONDITIONAL_KEYS[key] && !activeDmp) return 'Enable "Active Data Management Process" to edit this field.';
+      return null;
+    };
+    var disabledBanner = '';
+    if (deploymentDisabled) {
+      disabledBanner = '<div class="mb-4 flex items-start gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">' +
+        '<i class="fas fa-info-circle mt-0.5"></i>' +
+        '<div class="flex-1"><span class="font-medium">Deployment section not applicable.</span> ' +
+        'This project is ' + (projectType ? 'type "' + escapeHtml(projectType) + '"' : 'missing a Project Type') + '. ' +
+        'Deployment fields apply only to Web Application or Data Visualization projects.</div></div>';
+    }
+    if (groupKey === 'deployment' && isDeploymentEligibleType && !deployedPublicly) {
+      disabledBanner += '<div class="mb-4 flex items-start gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700">' +
+        '<i class="fas fa-lock mt-0.5 text-gray-400"></i>' +
+        '<div class="flex-1">Location fields are disabled because <span class="font-medium">Deployed Publicly</span> is set to No. Set it to Yes to enable location fields.</div></div>';
+    }
 
     if (isEditingThis) {
-      var fields = schema.map(function(field) {
+      var fieldHtmlArr = schema.map(function(field) {
         var val = settings[field.key];
         if (field.deprecated) {
           if (!val && val !== false && val !== 0) return '';
@@ -451,9 +1309,16 @@ var ProjectPage = {
         }
         var inputHtml = '';
         if (field.type === 'boolean') {
+          var hasExplicitValue = !(val === undefined || val === null || val === '');
+          var boolVal = null;
+          if (hasExplicitValue) boolVal = (val === true || val === 'true' || val === 'TRUE');
+          else if (field.defaultValue === true) boolVal = true;
+          else if (field.defaultValue === false) boolVal = false;
+          var placeholder = boolVal === null ? '<option value="" disabled selected hidden>-- Select --</option>' : '';
           inputHtml = '<select id="editSetting_' + field.key + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
-            '<option value="false"' + (!val ? ' selected' : '') + '>No</option>' +
-            '<option value="true"' + (val ? ' selected' : '') + '>Yes</option></select>';
+            placeholder +
+            '<option value="false"' + (boolVal === false ? ' selected' : '') + '>No</option>' +
+            '<option value="true"' + (boolVal === true ? ' selected' : '') + '>Yes</option></select>';
         } else if (field.type === 'textarea') {
           inputHtml = '<textarea id="editSetting_' + field.key + '" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none">' + escapeHtml(String(val || '')) + '</textarea>';
         } else if (field.type === 'date') {
@@ -461,7 +1326,8 @@ var ProjectPage = {
           inputHtml = '<input id="editSetting_' + field.key + '" type="date" value="' + escapeHtml(dateVal) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
         } else if (field.type === 'taxonomy_select') {
           var options = (ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[field.key]) || [];
-          var optionsHtml = '<option value="">-- Select --</option>';
+          var hasSelection = !!val;
+          var optionsHtml = '<option value="" disabled' + (hasSelection ? '' : ' selected') + ' hidden>-- Select --</option>';
           options.forEach(function(opt) {
             optionsHtml += '<option value="' + escapeHtml(opt) + '"' + (opt === String(val || '') ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
           });
@@ -471,7 +1337,8 @@ var ProjectPage = {
           inputHtml = '<select id="editSetting_' + field.key + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' + optionsHtml + '</select>';
         } else if (field.type === 'static_select') {
           var opts = (field.optionsKey && ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[field.optionsKey]) || [];
-          var soHtml = '<option value="">-- Select --</option>';
+          var hasStaticSelection = !!val;
+          var soHtml = '<option value="" disabled' + (hasStaticSelection ? '' : ' selected') + ' hidden>-- Select --</option>';
           opts.forEach(function(opt) {
             soHtml += '<option value="' + escapeHtml(opt) + '"' + (opt === String(val || '') ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
           });
@@ -491,6 +1358,40 @@ var ProjectPage = {
               '<span class="text-sm text-gray-900">' + escapeHtml(opt) + '</span></label>';
           }).join('');
           inputHtml = '<div class="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">' + checkboxes + '</div>';
+        } else if (field.type === 'static_search_select') {
+          var ssOpts = (field.sourceKind && typeof _getPersonnelLabels === 'function')
+            ? _getPersonnelLabels(field.sourceKind)
+            : ((field.optionsKey && ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[field.optionsKey]) || []);
+          var listId = 'dl_' + field.key + '_' + Math.random().toString(36).slice(2, 8);
+          var dlOpts = ssOpts.map(function(o) { return '<option value="' + escapeHtml(o) + '"></option>'; }).join('');
+          inputHtml = '<input id="editSetting_' + field.key + '" type="text" list="' + listId + '" value="' + escapeHtml(String(val || '')) + '" placeholder="Start typing a name or email…" autocomplete="off" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">' +
+            '<datalist id="' + listId + '">' + dlOpts + '</datalist>';
+        } else if (field.type === 'static_search_multiselect') {
+          var smsOpts = (field.sourceKind && typeof _getPersonnelLabels === 'function')
+            ? _getPersonnelLabels(field.sourceKind)
+            : ((field.optionsKey && ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[field.optionsKey]) || []);
+          var smsVal = val;
+          if (typeof smsVal === 'string') {
+            try { var smsParsed = JSON.parse(smsVal); smsVal = Array.isArray(smsParsed) ? smsParsed : smsVal.split(/[,;\n]/); }
+            catch(e) { smsVal = smsVal.split(/[,;\n]/); }
+          }
+          if (!Array.isArray(smsVal)) smsVal = smsVal ? [String(smsVal)] : [];
+          smsVal = smsVal.map(function(x) { return String(x || '').trim(); }).filter(Boolean);
+          var smsListId = 'dl_' + field.key + '_' + Math.random().toString(36).slice(2, 8);
+          var smsDlOpts = smsOpts.map(function(o) { return '<option value="' + escapeHtml(o) + '"></option>'; }).join('');
+          var smsChips = smsVal.map(function(t, i) {
+            return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+              escapeHtml(t) +
+              '<button type="button" onclick="ProjectPage._removeTag(\'' + field.key + '\',' + i + ')" class="text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+          }).join('') || '<span class="text-xs text-gray-400">No entries yet</span>';
+          inputHtml = '<div id="tagList_' + field.key + '" class="flex flex-wrap mb-2">' + smsChips + '</div>' +
+            '<input type="hidden" id="editSetting_' + field.key + '" value="' + escapeHtml(JSON.stringify(smsVal)) + '">' +
+            '<div class="flex items-center gap-2">' +
+              '<input id="tagInput_' + field.key + '" type="text" list="' + smsListId + '" placeholder="Start typing a name or email…" autocomplete="off" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" ' +
+              'onkeydown="if(event.key===\'Enter\'){event.preventDefault();ProjectPage._addTag(\'' + field.key + '\',this.value);this.value=\'\';}">' +
+              '<button type="button" onclick="var i=document.getElementById(\'tagInput_' + field.key + '\');ProjectPage._addTag(\'' + field.key + '\',i.value);i.value=\'\';" class="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"><i class="fas fa-plus text-xs mr-1"></i>Add</button>' +
+            '</div>' +
+            '<datalist id="' + smsListId + '">' + smsDlOpts + '</datalist>';
         } else if (field.type === 'taxonomy_multiselect') {
           var tmOpts = (ProjectPage._taxonomyValues && ProjectPage._taxonomyValues[field.key]) || [];
           var tmVal = val;
@@ -504,31 +1405,82 @@ var ProjectPage = {
           }).join('');
           inputHtml = '<div class="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">' + tmChecks + '</div>';
         } else if (field.type === 'drive_picker') {
-          var dpVal = val || '';
-          var dpDisplay = '';
+          var dpVal = val;
+          var dpObj = null;
           if (dpVal) {
-            try { var dpObj = JSON.parse(dpVal); dpDisplay = dpObj.name || dpObj.url || dpVal; } catch(e) { dpDisplay = dpVal; }
+            if (typeof dpVal === 'string') {
+              try { dpObj = JSON.parse(dpVal); } catch(e) { dpObj = { name: dpVal, url: dpVal }; }
+            } else if (typeof dpVal === 'object') {
+              dpObj = dpVal;
+            }
           }
-          inputHtml = '<div class="flex items-center gap-2">' +
-            '<input id="editSetting_' + field.key + '" type="text" value="' + escapeHtml(typeof dpVal === 'object' ? JSON.stringify(dpVal) : String(dpVal)) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" readonly placeholder="No file selected">' +
-            '<button type="button" onclick="ProjectPage._uploadSettingFile(\'' + field.key + '\',false)" class="flex-shrink-0 px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-upload text-xs mr-1"></i>Upload</button>' +
-            '<button type="button" onclick="ProjectPage._linkSettingUrl(\'' + field.key + '\',false)" class="flex-shrink-0 px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-link text-xs mr-1"></i>URL</button>' +
+          var dpHiddenVal = dpObj ? JSON.stringify(dpObj) : '';
+          var dpName = dpObj ? (dpObj.name || dpObj.url || 'File') : '';
+          var dpUrl = dpObj ? (dpObj.url || '') : '';
+          var dpChip = dpObj
+            ? '<span class="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-200 max-w-full">' +
+                '<i class="fas fa-file text-[10px] text-gray-400"></i>' +
+                (dpUrl ? '<a href="' + escapeHtml(dpUrl) + '" target="_blank" class="truncate hover:underline" title="' + escapeHtml(dpName) + '">' + escapeHtml(dpName) + '</a>'
+                       : '<span class="truncate" title="' + escapeHtml(dpName) + '">' + escapeHtml(dpName) + '</span>') +
+                '<button type="button" onclick="ProjectPage._clearSingleDriveFile(\'' + field.key + '\')" class="text-gray-400 hover:text-gray-700 leading-none ml-0.5" title="Remove"><i class="fas fa-times text-[10px]"></i></button>' +
+              '</span>'
+            : '<span class="text-xs text-gray-400">No file selected</span>';
+          var templateBtn = '';
+          if (field.template) {
+            var tpl = ProjectPage._docTemplates && ProjectPage._docTemplates[field.template];
+            if (tpl && tpl.url) {
+              templateBtn = '<a href="' + escapeHtml(tpl.url) + '" target="_blank" class="flex-shrink-0 px-3 py-1.5 border border-indigo-200 text-indigo-700 text-xs rounded-lg hover:bg-indigo-50 transition-colors" title="Open template in a new tab"><i class="fas fa-file-download text-[10px] mr-1"></i>Template</a>';
+            } else {
+              templateBtn = '<button type="button" onclick="_pc(\'ProjectPage\',\'promptSetDocTemplate\',\'' + escapeHtml(field.template) + '\',\'' + escapeHtml(field.label) + '\')" class="flex-shrink-0 px-3 py-1.5 border border-gray-200 text-gray-500 text-xs rounded-lg hover:bg-gray-50 transition-colors" title="No template configured — click to set one (admin only)"><i class="fas fa-file-download text-[10px] mr-1"></i>Template</button>';
+            }
+          }
+          var dpUploadLabel = dpObj ? 'Replace' : 'Upload';
+          var dpLinkLabel = dpObj ? 'Replace URL' : 'URL';
+          inputHtml = '<div id="dp_chip_' + field.key + '" class="mb-2 flex items-center">' + dpChip + '</div>' +
+            '<input type="hidden" id="editSetting_' + field.key + '" value="' + escapeHtml(dpHiddenVal) + '">' +
+            '<div class="flex items-center gap-2 flex-wrap">' +
+              '<button type="button" onclick="ProjectPage._uploadSettingFile(\'' + field.key + '\',false)" class="flex-shrink-0 px-3 py-1.5 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-upload text-[10px] mr-1"></i>' + dpUploadLabel + '</button>' +
+              '<button type="button" onclick="ProjectPage._linkSettingUrl(\'' + field.key + '\',false)" class="flex-shrink-0 px-3 py-1.5 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-link text-[10px] mr-1"></i>' + dpLinkLabel + '</button>' +
+              templateBtn +
             '</div>';
         } else if (field.type === 'drive_picker_multi') {
           var dpmVal = val;
-          if (typeof dpmVal === 'string') { try { dpmVal = JSON.parse(dpmVal); } catch(e) { dpmVal = []; } }
+          if (typeof dpmVal === 'string') {
+            var dpmTrimmed = dpmVal.trim();
+            if (dpmTrimmed.charAt(0) === '{') {
+              try { dpmVal = [JSON.parse(dpmTrimmed)]; } catch(e) { dpmVal = [{ name: dpmTrimmed, url: dpmTrimmed }]; }
+            } else if (dpmTrimmed.charAt(0) === '[') {
+              try { dpmVal = JSON.parse(dpmTrimmed); } catch(e) { dpmVal = []; }
+            } else {
+              dpmVal = dpmTrimmed ? [{ name: dpmTrimmed, url: dpmTrimmed }] : [];
+            }
+          }
           if (!Array.isArray(dpmVal)) dpmVal = dpmVal ? [dpmVal] : [];
           var dpmTags = dpmVal.map(function(f, idx) {
             var fname = typeof f === 'object' ? (f.name || f.url || 'File') : String(f);
-            return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
-              escapeHtml(fname) +
-              '<button type="button" onclick="ProjectPage._removeDriveFile(\'' + field.key + '\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+            var furl = typeof f === 'object' ? (f.url || '') : String(f);
+            var nameNode = furl
+              ? '<a href="' + escapeHtml(furl) + '" target="_blank" class="hover:underline truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</a>'
+              : '<span class="truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</span>';
+            return '<span class="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-200 mr-1 mb-1 max-w-full">' +
+              '<i class="fas fa-file text-[10px] text-gray-400"></i>' +
+              nameNode +
+              '<button type="button" onclick="ProjectPage._removeDriveFile(\'' + field.key + '\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-[10px]"></i></button></span>';
           }).join('') || '<span class="text-xs text-gray-400">No files selected</span>';
+          var dpmTemplateBtn = '';
+          if (field.template) {
+            var dpmTpl = ProjectPage._docTemplates && ProjectPage._docTemplates[field.template];
+            if (dpmTpl && dpmTpl.url) {
+              dpmTemplateBtn += '<a href="' + escapeHtml(dpmTpl.url) + '" target="_blank" class="flex-shrink-0 px-3 py-1.5 border border-indigo-200 text-indigo-700 text-xs rounded-lg hover:bg-indigo-50 transition-colors" title="Open the admin-provided template in a new tab"><i class="fas fa-file-download text-[10px] mr-1"></i>Template</a>';
+            }
+            dpmTemplateBtn += '<button type="button" onclick="_pc(\'ProjectPage\',\'generateDocFromTemplate\',\'' + escapeHtml(field.key) + '\',\'' + escapeHtml(field.template) + '\',\'' + escapeHtml(field.label) + '\')" class="flex-shrink-0 px-3 py-1.5 border border-emerald-200 text-emerald-700 text-xs rounded-lg hover:bg-emerald-50 transition-colors" title="Generate a Google Doc from the COLONY built-in template, pre-filled with this project\'s metadata"><i class="fas fa-magic text-[10px] mr-1"></i>Generate from COLONY</button>';
+          }
           inputHtml = '<div id="dpm_tags_' + field.key + '" class="flex flex-wrap mb-2">' + dpmTags + '</div>' +
             '<input type="hidden" id="editSetting_' + field.key + '" value="' + escapeHtml(JSON.stringify(dpmVal)) + '">' +
-            '<div class="flex items-center gap-2">' +
-              '<button type="button" onclick="ProjectPage._uploadSettingFile(\'' + field.key + '\',true)" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-upload text-xs mr-1"></i>Upload Files</button>' +
-              '<button type="button" onclick="ProjectPage._linkSettingUrl(\'' + field.key + '\',true)" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-link text-xs mr-1"></i>Add URL</button>' +
+            '<div class="flex items-center gap-2 flex-wrap">' +
+              '<button type="button" onclick="ProjectPage._uploadSettingFile(\'' + field.key + '\',true)" class="flex-shrink-0 px-3 py-1.5 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-upload text-[10px] mr-1"></i>Upload Files</button>' +
+              '<button type="button" onclick="ProjectPage._linkSettingUrl(\'' + field.key + '\',true)" class="flex-shrink-0 px-3 py-1.5 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-link text-[10px] mr-1"></i>Add URL</button>' +
+              dpmTemplateBtn +
             '</div>';
         } else if (field.type === 'data_assets') {
           inputHtml = ProjectPage._buildRelatedDataAssets() || '<span class="text-gray-400 text-sm py-2 block">No linked data assets</span>';
@@ -536,34 +1488,77 @@ var ProjectPage = {
         } else if (field.type === 'userlist') {
           return '';
         } else if (field.type === 'computed_doc') {
-          var dc = ProjectPage._computeDocCompleteness();
-          var badgeColor = dc.pct >= 100 ? 'bg-green-100 text-green-800' : dc.pct >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
-          var missingHtml = dc.missing.length ? '<p class="text-xs text-gray-400 mt-1">Missing: ' + dc.missing.map(function(m) { return '<em>' + escapeHtml(m) + '</em>'; }).join(', ') + '</p>' : '';
-          inputHtml = '<div class="py-2"><span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ' + badgeColor + '">' + dc.pct + '% (' + dc.filled + '/' + dc.total + ')</span>' + missingHtml + '</div>';
+          inputHtml = ProjectPage._renderComplianceBlock(true);
+        } else if (field.type === 'tag_list') {
+          var tagArr = val;
+          if (typeof tagArr === 'string') {
+            try { var parsed = JSON.parse(tagArr); tagArr = Array.isArray(parsed) ? parsed : tagArr.split(/[,\n]/); }
+            catch(e) { tagArr = tagArr.split(/[,\n]/); }
+          }
+          if (!Array.isArray(tagArr)) tagArr = tagArr ? [String(tagArr)] : [];
+          tagArr = tagArr.map(function(x) { return String(x || '').trim(); }).filter(Boolean);
+          var tagChips = tagArr.map(function(t, i) {
+            return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+              escapeHtml(t) +
+              '<button type="button" onclick="ProjectPage._removeTag(\'' + field.key + '\',' + i + ')" class="text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+          }).join('') || '<span class="text-xs text-gray-400">No entries yet</span>';
+          inputHtml = '<div id="tagList_' + field.key + '" class="flex flex-wrap mb-2">' + tagChips + '</div>' +
+            '<input type="hidden" id="editSetting_' + field.key + '" value="' + escapeHtml(JSON.stringify(tagArr)) + '">' +
+            '<div class="flex items-center gap-2">' +
+              '<input id="tagInput_' + field.key + '" type="text" placeholder="Type and press Enter to add" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" ' +
+              'onkeydown="if(event.key===\'Enter\'){event.preventDefault();ProjectPage._addTag(\'' + field.key + '\',this.value);this.value=\'\';}">' +
+              '<button type="button" onclick="var i=document.getElementById(\'tagInput_' + field.key + '\');ProjectPage._addTag(\'' + field.key + '\',i.value);i.value=\'\';" class="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"><i class="fas fa-plus text-xs mr-1"></i>Add</button>' +
+            '</div>';
         } else {
           inputHtml = '<input id="editSetting_' + field.key + '" type="' + (field.type === 'url' ? 'url' : 'text') + '" value="' + escapeHtml(String(val || '')) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
         }
-        return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + '</div>';
-      }).filter(Boolean).join('');
-
-      return '<div class="bg-white border border-gray-200 rounded-lg p-6 w-full">' +
-        '<h2 class="text-base font-semibold text-gray-900 mb-5">Edit ' + groupLabels[groupKey] + '</h2>' +
-        '<div class="space-y-4">' + fields + '</div>' +
-        '<div class="flex items-center gap-3 mt-6">' +
+        var hintHtml = field.hint ? '<p class="text-xs text-gray-500 mt-1 italic">' + escapeHtml(field.hint) + '</p>' : '';
+        var lockMsg = fieldIsLocked(field.key);
+        if (lockMsg) {
+          var lockedHint = '<p class="text-xs text-gray-500 mt-1 italic"><i class="fas fa-lock mr-1 text-gray-400"></i>' + escapeHtml(lockMsg) + '</p>';
+          return '<div class="opacity-60"><label class="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' +
+            '<div class="pointer-events-none">' + inputHtml + '</div>' + lockedHint + '</div>';
+        }
+        return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + hintHtml + '</div>';
+      });
+      var actionBarEdit = '<div class="flex items-center gap-3 mt-6">' +
         '<button onclick="_pc(\'ProjectPage\',\'saveSettings\',\'' + groupKey + '\')" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Changes</button>' +
         '<button onclick="_pc(\'ProjectPage\',\'cancelEditing\')" class="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
-        '</div></div>';
+        '</div>';
+      if (groupKey === 'documentation') {
+        var compIdxE = -1;
+        for (var ci = 0; ci < schema.length; ci++) { if (schema[ci].type === 'computed_doc') { compIdxE = ci; break; } }
+        var restHtmlE = fieldHtmlArr.filter(function(_, i) { return i !== compIdxE; }).filter(Boolean).join('');
+        var compBlockE = ProjectPage._renderComplianceBlock(true);
+        return '<div class="co-docs-grid">' +
+          '<div class="co-docs-pane-left bg-white border border-gray-200 rounded-lg self-start overflow-hidden">' + compBlockE + '</div>' +
+          '<div class="co-docs-pane-right bg-white border border-gray-200 rounded-lg p-5 w-full">' +
+            disabledBanner +
+            '<h2 class="text-[15px] font-semibold text-gray-900 mb-4">Edit ' + groupLabels[groupKey] + '</h2>' +
+            '<div class="space-y-4">' + restHtmlE + '</div>' +
+            actionBarEdit +
+          '</div>' +
+        '</div>';
+      }
+      var fields = fieldHtmlArr.filter(Boolean).join('');
+      return '<div class="bg-white border border-gray-200 rounded-lg p-6 w-full">' +
+        disabledBanner +
+        '<h2 class="text-base font-semibold text-gray-900 mb-5">Edit ' + groupLabels[groupKey] + '</h2>' +
+        '<div class="space-y-4">' + fields + '</div>' +
+        actionBarEdit + '</div>';
     }
 
-    var rows = schema.map(function(field) {
+    var rowHtmlArr = schema.map(function(field) {
       var val = settings[field.key];
       if (field.deprecated && !val && val !== false && val !== 0) return '';
       var display = '';
       if (field.type === 'boolean') {
         if (val === true || val === 'true' || val === 'TRUE') {
           display = '<span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-700 text-white"><i class="fas fa-check text-xs"></i> Yes</span>';
-        } else {
+        } else if (val === false || val === 'false' || val === 'FALSE') {
           display = '<span class="text-gray-400 text-sm">No</span>';
+        } else {
+          display = '<span class="text-gray-400 text-sm">-</span>';
         }
       } else if (field.type === 'url') {
         if (val) {
@@ -574,14 +1569,29 @@ var ProjectPage = {
         } else {
           display = '<span class="text-gray-400 text-sm">-</span>';
         }
-      } else if (field.type === 'static_select') {
+      } else if (field.type === 'static_select' || field.type === 'static_search_select') {
         display = val ? '<span class="text-sm text-gray-900">' + escapeHtml(String(val)) + '</span>' : '<span class="text-gray-400 text-sm">-</span>';
-      } else if (field.type === 'static_multiselect') {
+      } else if (field.type === 'static_multiselect' || field.type === 'static_search_multiselect') {
         var msArr = val;
         if (typeof msArr === 'string') { try { msArr = JSON.parse(msArr); } catch(e) { msArr = msArr ? [msArr] : []; } }
         if (!Array.isArray(msArr)) msArr = [];
         if (msArr.length) {
           display = msArr.map(function(v) {
+            return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(v) + '</span>';
+          }).join('');
+        } else {
+          display = '<span class="text-gray-400 text-sm">None</span>';
+        }
+      } else if (field.type === 'tag_list') {
+        var tlArr = val;
+        if (typeof tlArr === 'string') {
+          try { var parsed = JSON.parse(tlArr); tlArr = Array.isArray(parsed) ? parsed : tlArr.split(/[,\n]/); }
+          catch(e) { tlArr = tlArr.split(/[,\n]/); }
+        }
+        if (!Array.isArray(tlArr)) tlArr = tlArr ? [String(tlArr)] : [];
+        tlArr = tlArr.map(function(x) { return String(x || '').trim(); }).filter(Boolean);
+        if (tlArr.length) {
+          display = tlArr.map(function(v) {
             return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(v) + '</span>';
           }).join('');
         } else {
@@ -613,18 +1623,37 @@ var ProjectPage = {
         } else {
           display = '<span class="text-gray-400 text-sm">-</span>';
         }
+        if (field.template) {
+          var readTpl = ProjectPage._docTemplates && ProjectPage._docTemplates[field.template];
+          if (readTpl && readTpl.url) {
+            display += ' <a href="' + escapeHtml(readTpl.url) + '" target="_blank" class="inline-flex items-center gap-1 ml-2 text-[11px] px-2 py-0.5 border border-indigo-200 text-indigo-700 rounded hover:bg-indigo-50" title="Download the template"><i class="fas fa-file-download text-[10px]"></i>Template</a>';
+          }
+        }
       } else if (field.type === 'drive_picker_multi') {
         var dpmArr = val;
-        if (typeof dpmArr === 'string') { try { dpmArr = JSON.parse(dpmArr); } catch(e) { dpmArr = []; } }
+        if (typeof dpmArr === 'string') {
+          var trimmedDpm = dpmArr.trim();
+          if (trimmedDpm.charAt(0) === '{') {
+            try { dpmArr = [JSON.parse(trimmedDpm)]; } catch(e) { dpmArr = [{ name: trimmedDpm, url: trimmedDpm }]; }
+          } else {
+            try { dpmArr = JSON.parse(trimmedDpm); } catch(e) { dpmArr = trimmedDpm ? [{ name: trimmedDpm, url: trimmedDpm }] : []; }
+          }
+        }
         if (!Array.isArray(dpmArr)) dpmArr = dpmArr ? [dpmArr] : [];
         if (dpmArr.length) {
           display = dpmArr.map(function(f) {
             var fObj = typeof f === 'object' ? f : { url: f, name: f };
-            return '<a href="' + escapeHtml(fObj.url || '#') + '" target="_blank" class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1 hover:bg-gray-200">' +
-              '<i class="fas fa-file text-xs text-gray-400"></i>' + escapeHtml(fObj.name || 'File') + '<i class="fas fa-external-link-alt text-xs text-gray-300 ml-0.5"></i></a>';
+            return '<a href="' + escapeHtml(fObj.url || '#') + '" target="_blank" class="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-200 mr-1 mb-1 hover:bg-gray-200 max-w-full">' +
+              '<i class="fas fa-file text-[10px] text-gray-400"></i><span class="truncate" title="' + escapeHtml(fObj.name || 'File') + '">' + escapeHtml(fObj.name || 'File') + '</span><i class="fas fa-external-link-alt text-[10px] text-gray-300 ml-0.5"></i></a>';
           }).join('');
         } else {
           display = '<span class="text-gray-400 text-sm">-</span>';
+        }
+        if (field.template) {
+          var readMultiTpl = ProjectPage._docTemplates && ProjectPage._docTemplates[field.template];
+          if (readMultiTpl && readMultiTpl.url) {
+            display += ' <a href="' + escapeHtml(readMultiTpl.url) + '" target="_blank" class="inline-flex items-center gap-1 ml-2 text-[11px] px-2 py-0.5 border border-indigo-200 text-indigo-700 rounded hover:bg-indigo-50" title="Download the template"><i class="fas fa-file-download text-[10px]"></i>Template</a>';
+          }
         }
       } else if (field.type === 'data_assets') {
         var daHtml = ProjectPage._buildRelatedDataAssets();
@@ -642,11 +1671,7 @@ var ProjectPage = {
           display = '<span class="text-gray-400 text-sm">None</span>';
         }
       } else if (field.type === 'computed_doc') {
-        var dc = ProjectPage._computeDocCompleteness();
-        var badgeColor = dc.pct >= 100 ? 'bg-green-100 text-green-800' : dc.pct >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
-        var reqLabels = dc.allLabels || [];
-        var reqHtml = reqLabels.length ? '<p class="text-xs text-gray-500 mt-2">Requirements: ' + reqLabels.map(function(r) { return '<em class="' + (dc.missing.indexOf(r) !== -1 ? 'text-red-400' : 'text-green-600') + '">' + escapeHtml(r) + '</em>'; }).join(', ') + '</p>' : '';
-        display = '<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ' + badgeColor + '">' + dc.pct + '% (' + dc.filled + '/' + dc.total + ')</span>' + reqHtml;
+        display = ProjectPage._renderComplianceBlock(false);
       } else if (field.type === 'textarea') {
         display = val ? '<p class="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">' + escapeHtml(String(val)) + '</p>' : '<span class="text-gray-400 text-sm">-</span>';
       } else if (field.type === 'date') {
@@ -661,16 +1686,42 @@ var ProjectPage = {
       } else {
         display = val ? '<span class="text-sm text-gray-900">' + escapeHtml(String(val)) + '</span>' : '<span class="text-gray-400 text-sm">-</span>';
       }
-      return '<div class="px-4 py-3 flex items-start gap-4">' +
-        '<span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-40 flex-shrink-0 mt-0.5">' + escapeHtml(field.label) + '</span>' +
+      var lockMsg = fieldIsLocked(field.key);
+      var rowClass = lockMsg ? 'px-4 py-3 flex items-start gap-4 opacity-50 bg-gray-50' : 'px-4 py-3 flex items-start gap-4';
+      var lockedLabel = lockMsg ? ' <i class="fas fa-lock ml-1 text-[10px] text-gray-400" title="' + escapeHtml(lockMsg) + '"></i>' : '';
+      return '<div class="' + rowClass + '">' +
+        '<span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-40 flex-shrink-0 mt-0.5">' + escapeHtml(field.label) + lockedLabel + '</span>' +
         '<div class="flex-1 min-w-0">' + display + '</div></div>';
-    }).join('');
+    });
 
+    var editBtn = deploymentDisabled
+      ? '<span class="text-xs text-gray-400 italic">Editing locked for this project type</span>'
+      : '<button onclick="_pc(\'ProjectPage\',\'startEditingTab\',\'' + groupKey + '\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-pencil-alt text-xs"></i> Edit</button>';
+
+    if (groupKey === 'documentation') {
+      var compIdxR = -1;
+      for (var cri = 0; cri < schema.length; cri++) { if (schema[cri].type === 'computed_doc') { compIdxR = cri; break; } }
+      var restRowHtml = rowHtmlArr.filter(function(_, i) { return i !== compIdxR; }).filter(Boolean).join('');
+      var compBlock = this._renderComplianceBlock(false);
+      return '<div class="w-full">' +
+        disabledBanner +
+        '<div class="flex items-center justify-between mb-4">' +
+          '<h2 class="text-base font-semibold text-gray-900">' + groupLabels[groupKey] + '</h2>' +
+          editBtn +
+        '</div>' +
+        '<div class="co-docs-grid">' +
+          '<div class="co-docs-pane-left bg-white border border-gray-200 rounded-lg self-start overflow-hidden">' + compBlock + '</div>' +
+          '<div class="co-docs-pane-right bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' + restRowHtml + '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    var rows = rowHtmlArr.join('');
     return '<div class="w-full">' +
+      disabledBanner +
       '<div class="flex items-center justify-between mb-4">' +
       '<h2 class="text-base font-semibold text-gray-900">' + groupLabels[groupKey] + '</h2>' +
-      '<button onclick="_pc(\'ProjectPage\',\'startEditingTab\',\'' + groupKey + '\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">' +
-      '<i class="fas fa-pencil-alt text-xs"></i> Edit</button></div>' +
+      editBtn + '</div>' +
       '<div class="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' + rows + '</div></div>';
   },
 
@@ -692,6 +1743,15 @@ var ProjectPage = {
         settings[field.key] = selected;
         return;
       }
+      if (field.type === 'static_search_multiselect') {
+        var smsEl = document.getElementById('editSetting_' + field.key);
+        if (smsEl) {
+          try { settings[field.key] = JSON.parse(smsEl.value || '[]'); } catch (e) { settings[field.key] = []; }
+        } else {
+          settings[field.key] = [];
+        }
+        return;
+      }
       if (field.type === 'drive_picker' || field.type === 'drive_picker_multi') {
         var dpEl = document.getElementById('editSetting_' + field.key);
         if (dpEl) {
@@ -699,10 +1759,21 @@ var ProjectPage = {
         }
         return;
       }
+      if (field.type === 'tag_list') {
+        var tagEl = document.getElementById('editSetting_' + field.key);
+        if (tagEl) {
+          try { settings[field.key] = JSON.parse(tagEl.value); } catch(e) { settings[field.key] = []; }
+        }
+        return;
+      }
       var el = document.getElementById('editSetting_' + field.key);
       if (!el) return;
       if (field.type === 'boolean') {
-        settings[field.key] = el.value === 'true';
+        if (el.value === '' || el.value === null || el.value === undefined) {
+          delete settings[field.key];
+        } else {
+          settings[field.key] = el.value === 'true';
+        }
       } else {
         settings[field.key] = el.value || '';
       }
@@ -733,10 +1804,129 @@ var ProjectPage = {
   resolveUserName(emailOrName) {
     if (!emailOrName) return '-';
     if (State.users) {
-      var match = State.users.find(function(u) { return u.email && u.email.toLowerCase() === emailOrName.toLowerCase(); });
-      if (match && match.name) return match.name;
+      var lc = emailOrName.toLowerCase();
+      var byEmail = State.users.find(function(u) { return u.email && u.email.toLowerCase() === lc; });
+      if (byEmail && byEmail.name) return byEmail.name;
+      var key = this._ownerKey(emailOrName);
+      if (key) {
+        var byName = State.users.find(function(u) { return u.name && this._ownerKey(u.name) === key; }.bind(this));
+        if (byName && byName.name) return byName.name;
+      }
     }
     return emailOrName;
+  },
+
+  _isEmailLike(value) {
+    var s = String(value || '').trim();
+    return !!s && s.indexOf('@') !== -1 && s.lastIndexOf('.') > s.indexOf('@');
+  },
+
+  _renderOwnerCell(p, settings) {
+    var ownerId = String((p && p.ownerId) || '').trim();
+    var isAdmin = (typeof State !== 'undefined' && State.user && State.user.role === 'admin');
+    if (ownerId) {
+      var label = this.resolveUserName(ownerId);
+      var resolved = this._isEmailLike(ownerId) || label !== ownerId;
+      if (resolved) {
+        return '<span class="text-sm text-gray-900">' + escapeHtml(label) + '</span>';
+      }
+      var btn = isAdmin ? this._renderLinkOwnerButton(p.id, ownerId) : '';
+      return '<span class="inline-flex items-center gap-2"><span class="inline-flex items-center gap-1 text-sm text-amber-700" title="Stored as a name, not linked to a user account.">' +
+        '<i class="fas fa-link-slash text-xs"></i>' + escapeHtml(label) + '</span>' + btn + '</span>';
+    }
+    var pending = settings && settings.pendingOwnerName ? String(settings.pendingOwnerName).trim() : '';
+    if (pending) {
+      var pendBtn = isAdmin ? this._renderLinkOwnerButton(p.id, pending) : '';
+      return '<span class="inline-flex items-center gap-2"><span class="inline-flex items-center gap-1 text-sm text-amber-700" title="Pending — will auto-link when this person requests access.">' +
+        '<i class="fas fa-clock text-xs"></i>' + escapeHtml(pending) + ' (pending)</span>' + pendBtn + '</span>';
+    }
+    return '<span class="text-gray-400 text-sm">-</span>';
+  },
+
+  _renderLinkOwnerButton(projectId, currentName) {
+    var safeName = String(currentName || '').replace(/'/g, "\\'");
+    return '<button type="button" onclick="_pc(\'ProjectPage\',\'openLinkOwnerDialog\',\'' + projectId + '\',\'' + escapeHtml(safeName) + '\')" class="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-full" title="Link this name to a user account">' +
+      '<i class="fas fa-link text-xs"></i>Link</button>';
+  },
+
+  openLinkOwnerDialog(projectId, currentName) {
+    var allUsers = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var self = this;
+    var key = self._ownerKey(currentName);
+    var suggested = allUsers.find(function(u) { return u.name && self._ownerKey(u.name) === key; });
+    var sortedUsers = allUsers.slice().sort(function(a, b) {
+      return String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''));
+    });
+    var options = sortedUsers.map(function(u) {
+      var val = u.email || '';
+      var label = u.name ? (u.name + ' (' + (u.email || '') + ')') : (u.email || u.id);
+      var sel = (suggested && u.email === suggested.email) ? ' selected' : '';
+      return '<option value="' + escapeHtml(val) + '"' + sel + '>' + escapeHtml(label) + '</option>';
+    }).join('');
+    var modalId = 'linkOwnerModal';
+    var existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40';
+    modal.innerHTML =
+      '<div class="bg-white rounded-lg shadow-xl w-full max-w-md p-5">' +
+      '<h3 class="text-base font-semibold text-gray-900 mb-1">Link Owner</h3>' +
+      '<p class="text-xs text-gray-500 mb-4">Replace <strong>' + escapeHtml(currentName) + '</strong> on this project with a user account.</p>' +
+      '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">User</label>' +
+      '<select id="linkOwnerSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">' +
+        '<option value="">— Unassign —</option>' + options +
+      '</select>' +
+      '<div class="flex justify-end gap-2 mt-5">' +
+      '<button type="button" onclick="_pc(\'ProjectPage\',\'closeLinkOwnerDialog\')" class="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancel</button>' +
+      '<button type="button" onclick="_pc(\'ProjectPage\',\'submitLinkOwner\',\'' + projectId + '\')" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Link</button>' +
+      '</div></div>';
+    document.body.appendChild(modal);
+  },
+
+  closeLinkOwnerDialog() {
+    var m = document.getElementById('linkOwnerModal');
+    if (m) m.remove();
+  },
+
+  submitLinkOwner(projectId) {
+    var sel = document.getElementById('linkOwnerSelect');
+    var email = sel ? sel.value : '';
+    var self = this;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        self.closeLinkOwnerDialog();
+        if (!result || !result.success) {
+          toast((result && result.error) || 'Failed to link owner', 'error');
+          return;
+        }
+        toast(email ? 'Owner linked' : 'Owner cleared', 'success');
+        self.loadProjects();
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        self.closeLinkOwnerDialog();
+        console.error('linkProjectOwner failed:', error);
+        toast(error.message || 'Failed to link owner', 'error');
+      })
+      .linkProjectOwner(projectId, email);
+  },
+
+  _renderSecondaryOwnerCell(secondaryUsers, settings) {
+    var rendered = this.renderSecondaryUserTags(secondaryUsers);
+    var pending = (settings && Array.isArray(settings.pendingSecondaryUsers)) ? settings.pendingSecondaryUsers : [];
+    if (pending.length) {
+      var self = this;
+      var pendingHtml = pending.map(function(name) {
+        return '<span class="inline-block bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded-full border border-amber-200 mr-1 mb-1" title="Backup not yet linked to an account.">' +
+          escapeHtml(String(name)) + ' (pending)</span>';
+      }).join('');
+      if (!secondaryUsers || !secondaryUsers.length) return '<div class="flex flex-wrap">' + pendingHtml + '</div>';
+      return '<div class="flex flex-wrap">' + rendered + pendingHtml + '</div>';
+    }
+    return '<div class="flex flex-wrap">' + rendered + '</div>';
   },
 
   getSecondaryUsers(project) {
@@ -750,15 +1940,31 @@ var ProjectPage = {
   renderSecondaryUserTags(users) {
     if (!users || !users.length) return '<span class="text-gray-400 text-sm">None assigned</span>';
     var self = this;
-    return users.map(function(email) { return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(self.resolveUserName(email)) + '</span>'; }).join('');
+    return users.map(function(v) {
+      var raw = String(v || '').trim();
+      var label = self.resolveUserName(raw);
+      var isEmail = self._isEmailLike(raw);
+      var resolvedToUser = label !== raw;
+      if (isEmail || resolvedToUser) {
+        return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(label) + '</span>';
+      }
+      return '<span class="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded-full border border-amber-200 mr-1 mb-1" title="Stored as a name. Will auto-link when this user signs up, or edit to pick a user.">' +
+        '<i class="fas fa-link-slash text-xs"></i>' + escapeHtml(label) + '</span>';
+    }).join('');
   },
 
   _renderEditSecondaryUserTags() {
     var users = this._editSecondaryUsers;
     if (!users.length) return '<p class="text-xs text-gray-400">No secondary users added</p>';
-    return users.map(function(email, idx) {
-      return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
-        escapeHtml(email) +
+    return users.map(function(val, idx) {
+      var s = String(val || '');
+      var isEmail = s.indexOf('@') !== -1;
+      var styles = isEmail
+        ? 'bg-gray-100 text-gray-700 border-gray-200'
+        : 'bg-amber-50 text-amber-700 border-amber-200';
+      var label = isEmail ? s : (s + ' (pending)');
+      return '<span class="inline-flex items-center gap-1 ' + styles + ' text-xs px-2 py-0.5 rounded-full border mr-1 mb-1">' +
+        escapeHtml(label) +
         '<button type="button" onclick="_pc(\'ProjectPage\',\'removeEditSecondaryUser\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button>' +
         '</span>';
     }).join('');
@@ -822,16 +2028,10 @@ var ProjectPage = {
 
     var self = this;
     var secondaryUsers = this.getSecondaryUsers(p);
-    var linkedIds = this._parseMultiVal(settings.linkedProjectIds || settings.linkedProjectId);
     var backupTech = this._parseMultiVal(settings.backupTechOwners);
     var intendedU = this._parseMultiVal(settings.intendedUsers);
     var aiVal = this._resolveAiInvolved(settings.isAiInvolved);
 
-    var linkedHtml = linkedIds.length ? linkedIds.map(function(lid) {
-      var proj = self._projectOptions.find(function(po) { return po.id === lid; });
-      var label = proj ? proj.name : lid;
-      return '<a onclick="_pc(\'ProjectPage\',\'selectProject\',\'' + escapeHtml(lid) + '\')" class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1 cursor-pointer hover:bg-gray-200">' + escapeHtml(label) + '</a>';
-    }).join('') : '<span class="text-gray-400 text-sm">-</span>';
 
     var backupTechHtml = backupTech.length ? backupTech.map(function(n) {
       return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(n) + '</span>';
@@ -841,8 +2041,11 @@ var ProjectPage = {
       return '<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' + escapeHtml(u) + '</span>';
     }).join('') : '<span class="text-gray-400 text-sm">-</span>';
 
-    var r = function(label, val) {
-      return '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-40 flex-shrink-0 mt-0.5">' + label + '</span><div class="flex-1 min-w-0">' + val + '</div></div>';
+    var r = function(label, val, tooltip) {
+      var tipHtml = tooltip
+        ? ' <span title="' + escapeHtml(tooltip) + '" class="inline-flex text-gray-400 hover:text-gray-600 cursor-help"><i class="fas fa-info-circle text-[10px]"></i></span>'
+        : '';
+      return '<div class="px-4 py-3 flex items-start gap-4"><span class="text-xs font-medium text-gray-500 uppercase tracking-wide w-40 flex-shrink-0 mt-0.5">' + label + tipHtml + '</span><div class="flex-1 min-w-0">' + val + '</div></div>';
     };
     var tv = function(v) { return v ? '<span class="text-sm text-gray-900">' + escapeHtml(String(v)) + '</span>' : '<span class="text-gray-400 text-sm">-</span>'; };
     var dv = function(v) { return self.formatDate(v); };
@@ -853,20 +2056,19 @@ var ProjectPage = {
       : '<span class="text-gray-400 text-sm">Not generated</span> ' +
         '<button onclick="_pc(\'ProjectPage\',\'generateProjectCode\')" class="ml-2 px-2 py-0.5 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 transition-colors"><i class="fas fa-cog text-xs mr-1"></i>Generate</button>';
 
-    var projectStatusLabel = (p.status || '').charAt(0).toUpperCase() + (p.status || '').slice(1);
-    var projectStatusHtml = projectStatusLabel
-      ? '<span class="inline-flex items-center gap-1.5 text-sm text-gray-900"><span class="w-2 h-2 rounded-full ' + self._statusDotColor(p.status) + '"></span>' + escapeHtml(projectStatusLabel) + '</span>'
+    var projectStatusValue = self._projectStatusValue(p, settings);
+    var projectStatusHtml = projectStatusValue
+      ? '<span class="inline-flex items-center gap-1.5 text-sm text-gray-900"><span class="w-2 h-2 rounded-full ' + self._statusDotColor(projectStatusValue) + '"></span>' + escapeHtml(projectStatusValue) + '</span>'
       : '<span class="text-gray-400 text-sm">-</span>';
 
     var pane1 =
       '<div class="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">' +
       '<div class="px-4 py-2 bg-gray-50 rounded-t-lg"><span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Project Information</span></div>' +
       r('Project ID', projectCodeHtml) +
-      r('Primary Owner', tv(this.resolveUserName(p.ownerId))) +
+      r('Primary Owner', this._renderOwnerCell(p, settings)) +
+      r('Backup Owner(s)', this._renderSecondaryOwnerCell(secondaryUsers, settings), 'Backup team members who can step in when the primary owner is overloaded or unavailable. Tasks flagged for Pick Ups surface to this pool.') +
       r('Item Created Date', '<span class="text-sm text-gray-900">' + dv(p.createdAt) + '</span>') +
-      r('Surge Users', '<div class="flex flex-wrap">' + this.renderSecondaryUserTags(secondaryUsers) + '</div>') +
-      r('Linked Project ID(s)', '<div class="flex flex-wrap">' + linkedHtml + '</div>') +
-      r('Gov Project Owners', tv(settings.govProjectOwners)) +
+      r('Gov Project Owners', this._renderTagDisplay(settings.govProjectOwners)) +
       r('Project Status', projectStatusHtml) +
       r('Development Status', tv(settings.developmentPhase)) +
       r('Development Priority', tv(settings.developmentPriority)) +
@@ -877,7 +2079,7 @@ var ProjectPage = {
       '<div class="px-4 py-2 bg-gray-50 rounded-t-lg"><span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Timeline</span></div>' +
       r('Gov Request Recv Date', '<span class="text-sm text-gray-900">' + dv(settings.govRequestDate) + '</span>') +
       r('Requested By', tv(settings.requestedBy)) +
-      r('Project Start Date', '<span class="text-sm text-gray-900">' + dv(p.startDate) + '</span>') +
+      r('Project Start Date', '<span class="text-sm text-gray-900">' + self.formatMonthYear(p.startDate) + '</span>') +
       r('First Delivery Date', '<span class="text-sm text-gray-900">' + dv(settings.firstDeployDate) + '</span>') +
       r('Project Retired Date', '<span class="text-sm text-gray-900">' + dv(settings.projectRetiredDate) + '</span>') +
       '</div>';
@@ -888,7 +2090,6 @@ var ProjectPage = {
       r('AI Involved', tv(aiVal)) +
       r('Intended User(s)', '<div class="flex flex-wrap">' + intendedHtml + '</div>') +
       r('Workstream', tv(settings.workstream || p.workstream)) +
-      r('Project Category', tv(settings.projectCategory)) +
       r('Project Type', tv(settings.projectType)) +
       r('SDMs Supported', tv(settings.sdmSupported)) +
       r('Modular Build', settings.isModular ? '<span class="text-sm text-gray-900">Yes</span>' : '<span class="text-gray-400 text-sm">No</span>') +
@@ -922,6 +2123,21 @@ var ProjectPage = {
         '</div>';
     }
 
+    var projectType = settings.projectType || p.projectType || '';
+    var dataAssetTypes = ['Data Pipeline', 'Database'];
+    var isDataAssetType = dataAssetTypes.indexOf(projectType) !== -1;
+    var alreadyMigrated = !!settings.migratedToAssetId;
+    var migrateBtn = (isDataAssetType && !alreadyMigrated && !isArchived)
+      ? '<button onclick="_pc(\'ProjectPage\',\'migrateToDataAsset\')" class="flex items-center gap-2 px-3 py-1.5 border border-indigo-300 text-indigo-700 text-sm rounded-lg hover:bg-indigo-50 transition-colors" title="Move this project to Data Assets"><i class="fas fa-exchange-alt text-xs"></i> Move to Data Assets</button>'
+      : '';
+    var migratedBanner = alreadyMigrated
+      ? '<div class="mb-4 flex items-start gap-3 p-3 rounded-lg border border-indigo-200 bg-indigo-50 text-sm text-indigo-800">' +
+        '<i class="fas fa-info-circle mt-0.5"></i>' +
+        '<div class="flex-1">This project was migrated to a Data Asset on ' + escapeHtml(self.formatDate(settings.migratedAt) || '') + '. ' +
+        '<button onclick="_pc(\'ProjectPage\',\'goToMigratedAsset\',\'' + escapeHtml(settings.migratedToAssetId) + '\')" class="underline font-medium">View Data Asset</button>' +
+        '</div></div>'
+      : '';
+
     return '<div class="w-full">' +
       '<div class="flex items-start justify-between mb-6"><div>' +
       '<div class="flex items-center gap-3">' +
@@ -930,12 +2146,14 @@ var ProjectPage = {
       '</div>' +
       (p.description ? '<p class="text-sm text-gray-600 mt-2 leading-relaxed">' + escapeHtml(p.description) + '</p>' : '') +
       '</div>' +
-      '<div class="flex items-center gap-2 flex-shrink-0 ml-4">' +
+      '<div class="flex items-center gap-2 flex-shrink-0 ml-4 flex-wrap justify-end">' +
       '<button onclick="_pc(\'ProjectPage\',\'startEditingTab\',\'details\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-pencil-alt text-xs"></i> Edit</button>' +
+      migrateBtn +
       (!isArchived ? '<button onclick="_pc(\'ProjectPage\',\'archiveProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-amber-300 text-amber-700 text-sm rounded-lg hover:bg-amber-50 transition-colors"><i class="fas fa-archive text-xs"></i> Archive</button>'
         : '<button onclick="_pc(\'ProjectPage\',\'unarchiveProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors"><i class="fas fa-box-open text-xs"></i> Unarchive</button>') +
       '<button onclick="_pc(\'ProjectPage\',\'deleteProject\')" class="flex items-center gap-2 px-3 py-1.5 border border-red-300 text-red-600 text-sm rounded-lg hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i> Delete</button>' +
       '</div></div>' +
+      migratedBanner +
       '<div class="grid grid-cols-2 gap-6">' + pane1 + pane2 + '</div>' +
       bottomSection +
       modulesSection +
@@ -944,16 +2162,59 @@ var ProjectPage = {
 
   _buildDetailsEdit(p, settings) {
     var self = this;
-    this._editSecondaryUsers = this.getSecondaryUsers(p);
+    var resolvedSecondary = this.getSecondaryUsers(p);
+    var pendingSecondary = (settings && Array.isArray(settings.pendingSecondaryUsers)) ? settings.pendingSecondaryUsers.slice() : [];
+    this._editSecondaryUsers = resolvedSecondary.concat(pendingSecondary);
     var allUsers = (typeof State !== 'undefined' && State.users) ? State.users : [];
-    var ownerOptions = allUsers.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '"' + ((u.email || u.id) === p.ownerId ? ' selected' : '') + '>' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('');
+
+    var rawOwner = String(p.ownerId || '').trim();
+    var pendingOwnerName = settings && settings.pendingOwnerName ? String(settings.pendingOwnerName).trim() : '';
+    var resolvedOwnerEmail = '';
+    var legacyOwnerLabel = '';
+    if (rawOwner) {
+      var rawLc = rawOwner.toLowerCase();
+      var byEmail = allUsers.find(function(u) { return u.email && u.email.toLowerCase() === rawLc; });
+      if (byEmail) {
+        resolvedOwnerEmail = byEmail.email;
+      } else {
+        var rawKey = self._ownerKey(rawOwner);
+        var byName = allUsers.find(function(u) { return rawKey && self._ownerKey(u.name) === rawKey; });
+        if (byName && byName.email) {
+          resolvedOwnerEmail = byName.email;
+        } else {
+          legacyOwnerLabel = rawOwner;
+        }
+      }
+    } else if (pendingOwnerName) {
+      var pendKey = self._ownerKey(pendingOwnerName);
+      var byPending = allUsers.find(function(u) { return pendKey && self._ownerKey(u.name) === pendKey; });
+      if (byPending && byPending.email) {
+        resolvedOwnerEmail = byPending.email;
+      } else {
+        legacyOwnerLabel = pendingOwnerName + ' (pending)';
+      }
+    }
+
+    var sortedUsers = allUsers.slice().sort(function(a, b) {
+      return String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''));
+    });
+    var ownerOptions = sortedUsers.map(function(u) {
+      var val = u.email || u.id;
+      var label = u.name || u.email || u.id;
+      var sel = (val.toLowerCase() === String(resolvedOwnerEmail || '').toLowerCase()) ? ' selected' : '';
+      return '<option value="' + escapeHtml(val) + '"' + sel + '>' + escapeHtml(label) + '</option>';
+    }).join('');
+    if (legacyOwnerLabel) {
+      ownerOptions = '<option value="' + escapeHtml(rawOwner || pendingOwnerName) + '" selected>⚠ ' + escapeHtml(legacyOwnerLabel) + ' — pick a user to link</option>' + ownerOptions;
+    }
 
     var cls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400';
     var lbl = function(text) { return '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + text + '</label>'; };
 
     var buildSelect = function(id, optionsKey, currentVal) {
       var opts = (optionsKey && self._taxonomyValues && self._taxonomyValues[optionsKey]) || [];
-      var html = '<option value="">-- Select --</option>';
+      var hasSel = !!currentVal;
+      var html = '<option value="" disabled' + (hasSel ? '' : ' selected') + ' hidden>-- Select --</option>';
       opts.forEach(function(opt) {
         html += '<option value="' + escapeHtml(opt) + '"' + (opt === String(currentVal || '') ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
       });
@@ -965,7 +2226,8 @@ var ProjectPage = {
 
     var buildTaxonomySelect = function(id, key, currentVal) {
       var opts = (self._taxonomyValues && self._taxonomyValues[key]) || [];
-      var html = '<option value="">-- Select --</option>';
+      var hasSel = !!currentVal;
+      var html = '<option value="" disabled' + (hasSel ? '' : ' selected') + ' hidden>-- Select --</option>';
       opts.forEach(function(opt) {
         html += '<option value="' + escapeHtml(opt) + '"' + (opt === String(currentVal || '') ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
       });
@@ -987,56 +2249,46 @@ var ProjectPage = {
         }).join('') + '</div>';
     };
 
-    var buildProjectPicker = function() {
-      var linked = self._parseMultiVal(settings.linkedProjectIds || settings.linkedProjectId);
-      self._editLinkedProjects = linked.slice();
-      var tags = linked.map(function(lid, idx) {
-        var proj = self._projectOptions.find(function(po) { return po.id === lid; });
-        var label = proj ? proj.name : lid;
-        return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
-          escapeHtml(label) +
-          '<button type="button" onclick="_pc(\'ProjectPage\',\'removeLinkedProject\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
-      }).join('') || '<span class="text-xs text-gray-400">None linked</span>';
-      var available = self._projectOptions.filter(function(po) { return po.id !== p.id && linked.indexOf(po.id) === -1; });
-      var dropdown = available.length ?
-        '<select id="editLinkedProjectSelect" class="' + cls + ' bg-white mt-2"><option value="">Select a project to link...</option>' +
-        available.map(function(po) { return '<option value="' + escapeHtml(po.id) + '">' + escapeHtml(po.name) + '</option>'; }).join('') + '</select>' +
-        '<button type="button" onclick="_pc(\'ProjectPage\',\'addLinkedProject\')" class="mt-2 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Add</button>'
-        : '<p class="text-xs text-gray-400 mt-2">No available projects</p>';
-      return '<div id="editLinkedProjectTags" class="flex flex-wrap">' + tags + '</div>' + '<div id="editLinkedProjectDropdownWrap">' + dropdown + '</div>';
-    };
-
     var aiVal = this._resolveAiInvolved(settings.isAiInvolved);
 
     var pane1 =
       '<div class="space-y-4">' +
       '<div>' + lbl('Project Name') + '<input id="editProjectName" type="text" value="' + escapeHtml(p.name || '') + '" class="' + cls + '"></div>' +
       '<div>' + lbl('Primary Owner') + '<select id="editProjectOwner" class="' + cls + ' bg-white"><option value="">Unassigned</option>' + ownerOptions + '</select></div>' +
-      '<div>' + lbl('Secondary / Surge Users') +
+      '<div>' + lbl('Backup Owner(s)') +
+        '<p class="text-xs text-gray-500 mt-0 mb-2 italic">Backup team members who can pick up tasks when the primary owner is overloaded or unavailable.</p>' +
         '<div id="editSecondaryUserTags" class="flex flex-wrap mb-2">' + this._renderEditSecondaryUserTags() + '</div>' +
         '<div id="editSecondaryUserDropdownWrap">' + this._buildSecondaryUserDropdown() + '</div></div>' +
       '<div>' + lbl('Description') + '<textarea id="editProjectDesc" rows="3" class="' + cls + ' resize-none">' + escapeHtml(p.description || '') + '</textarea></div>' +
-      '<div>' + lbl('Linked Project ID(s)') + buildProjectPicker() + '</div>' +
-      '<div>' + lbl('Government Project Owners') + '<input id="editSetting_govProjectOwners" type="text" value="' + escapeHtml(settings.govProjectOwners || '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('Government Project Owners') + this._buildGovOwnersPicker(settings.govProjectOwners) + '</div>' +
       '<div>' + lbl('Project Status') +
-        '<select id="editProjectStatus" class="' + cls + ' bg-white">' +
-          ['active','completed','paused','archived'].map(function(s) {
-            var label = s.charAt(0).toUpperCase() + s.slice(1);
-            return '<option value="' + s + '"' + (s === String(p.status || '').toLowerCase() ? ' selected' : '') + '>' + label + '</option>';
-          }).join('') +
-        '</select></div>' +
+        (function() {
+          var statuses = self._worklogStatuses();
+          var current = settings.projectStatus || self._deriveWorklogStatusFromLifecycle(p.status);
+          var html = '<option value="" disabled' + (current ? '' : ' selected') + ' hidden>-- Select --</option>';
+          statuses.forEach(function(s) {
+            html += '<option value="' + escapeHtml(s) + '"' + (s === current ? ' selected' : '') + '>' + escapeHtml(s) + '</option>';
+          });
+          if (current && statuses.indexOf(current) === -1) {
+            html += '<option value="' + escapeHtml(current) + '" selected>' + escapeHtml(current) + ' (legacy)</option>';
+          }
+          return '<select id="editProjectStatus" class="' + cls + ' bg-white">' + html + '</select>';
+        })() +
+      '</div>' +
       '<div>' + lbl('Development Status') + buildSelect('editSetting_developmentPhase', 'developmentPhase', settings.developmentPhase) + '</div>' +
       '<div>' + lbl('Development Priority') + buildSelect('editSetting_developmentPriority', 'developmentPriority', settings.developmentPriority) + '</div>' +
       '</div>';
 
+    var lockedCls = cls + ' bg-gray-50 cursor-not-allowed';
     var pane2 =
       '<div class="space-y-4">' +
-      '<div>' + lbl('Version') + '<input id="editProjectVersion" type="text" value="' + escapeHtml(p.version || '') + '" class="' + cls + '"></div>' +
-      '<div>' + lbl('Repository URL') + '<input id="editProjectRepo" type="url" value="' + escapeHtml(p.repoUrl || '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('Version') +
+        '<input id="editProjectVersion" type="text" value="' + escapeHtml(p.version || '') + '" readonly class="' + lockedCls + '">' +
+        '<p class="text-xs text-gray-500 mt-1 italic"><i class="fas fa-lock text-[10px] mr-1"></i>Locked. Update via Release Notes.</p></div>' +
       '<div class="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-3">' +
       '<div class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Timeline</div>' +
       '<div>' + lbl('Initial Gov Request Received Date') + '<input id="editSetting_govRequestDate" type="date" value="' + (settings.govRequestDate ? String(settings.govRequestDate).substring(0, 10) : '') + '" class="' + cls + '"></div>' +
-      '<div>' + lbl('Project Start Date') + '<input id="editProjectStart" type="date" value="' + (p.startDate ? p.startDate.substring(0, 10) : '') + '" class="' + cls + '"></div>' +
+      '<div>' + lbl('Project Start Date') + MonthYearPicker.buildHtml('editProjectStart', p.startDate ? String(p.startDate).substring(0, 7) : '', cls) + '</div>' +
       '<div>' + lbl('First Delivery / Prod Deployment Date') + '<input id="editSetting_firstDeployDate" type="date" value="' + (settings.firstDeployDate ? String(settings.firstDeployDate).substring(0, 10) : '') + '" class="' + cls + '"></div>' +
       '<div>' + lbl('Project Retired Date') + '<input id="editSetting_projectRetiredDate" type="date" value="' + (settings.projectRetiredDate ? String(settings.projectRetiredDate).substring(0, 10) : '') + '" class="' + cls + '"></div>' +
       '</div>' +
@@ -1047,9 +2299,8 @@ var ProjectPage = {
       '<div class="space-y-4 mt-6">' +
       '<div>' + lbl('AI Involved') + buildSelect('editSetting_isAiInvolved', 'aiInvolved', aiVal) + '</div>' +
       '<div>' + lbl('Intended User(s)') + buildMultiCheck('intendedUsers', 'intendedUsers', settings.intendedUsers) + '</div>' +
-      '<div class="grid grid-cols-2 gap-4">' +
+      '<div class="grid grid-cols-3 gap-4">' +
       '<div>' + lbl('Workstream') + buildTaxonomySelect('editSetting_workstream', 'workstream', settings.workstream || p.workstream) + '</div>' +
-      '<div>' + lbl('Project Category') + buildTaxonomySelect('editSetting_projectCategory', 'projectCategory', settings.projectCategory) + '</div>' +
       '<div>' + lbl('Project Type') + buildSelect('editSetting_projectType', 'projectTypeCode', settings.projectType) + '</div>' +
       '<div>' + lbl('SDMs Supported') + buildTaxonomySelect('editSetting_sdmSupported', 'sdmSupported', settings.sdmSupported) + '</div>' +
       '</div>' +
@@ -1070,22 +2321,6 @@ var ProjectPage = {
       '<button onclick="_pc(\'ProjectPage\',\'saveProject\')" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Save Changes</button>' +
       '<button onclick="_pc(\'ProjectPage\',\'cancelEditing\')" class="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
       '</div></div>';
-  },
-
-  _editLinkedProjects: [],
-
-  addLinkedProject() {
-    var sel = document.getElementById('editLinkedProjectSelect');
-    if (!sel || !sel.value) return;
-    if (this._editLinkedProjects.indexOf(sel.value) === -1) {
-      this._editLinkedProjects.push(sel.value);
-    }
-    this.renderProjectDetail();
-  },
-
-  removeLinkedProject(idx) {
-    this._editLinkedProjects.splice(idx, 1);
-    this.renderProjectDetail();
   },
 
   _addDriveFiles(fieldKey, files) {
@@ -1119,9 +2354,115 @@ var ProjectPage = {
     }
     container.innerHTML = files.map(function(f, idx) {
       var fname = typeof f === 'object' ? (f.name || f.url || 'File') : String(f);
+      var furl = typeof f === 'object' ? (f.url || '') : String(f);
+      var nameNode = furl
+        ? '<a href="' + escapeHtml(furl) + '" target="_blank" class="hover:underline truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</a>'
+        : '<span class="truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</span>';
+      return '<span class="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-200 mr-1 mb-1 max-w-full">' +
+        '<i class="fas fa-file text-[10px] text-gray-400"></i>' +
+        nameNode +
+        '<button type="button" onclick="ProjectPage._removeDriveFile(\'' + fieldKey + '\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-[10px]"></i></button></span>';
+    }).join('');
+  },
+
+  _clearSingleDriveFile(fieldKey) {
+    var el = document.getElementById('editSetting_' + fieldKey);
+    if (el) el.value = '';
+    this._refreshSingleDriveFile(fieldKey, null);
+  },
+
+  generateDocFromTemplate(fieldKey, templateKey, label) {
+    var self = this;
+    var projectId = this.selectedProject && this.selectedProject.id;
+    if (!projectId) { toast('No project selected', 'error'); return; }
+    ConfirmModal('Generate a new Google Doc for "' + label + '" from the COLONY template? It will be saved in this project\'s Drive folder, pre-filled with project metadata, and attached to this field.', {
+      title: 'Generate ' + label,
+      confirmText: 'Generate',
+      cancelText: 'Cancel'
+    }).then(function(ok) {
+      if (!ok) return;
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (!result || !result.success || !result.file) {
+            toast((result && result.error) || 'Failed to generate template', 'error');
+            return;
+          }
+          var existingEl = document.getElementById('editSetting_' + fieldKey);
+          var existingArr = [];
+          if (existingEl) {
+            try { existingArr = JSON.parse(existingEl.value || '[]'); } catch (e) { existingArr = []; }
+            if (!Array.isArray(existingArr)) existingArr = existingArr ? [existingArr] : [];
+          }
+          existingArr.push({ id: result.file.id, name: result.file.name, url: result.file.url, mimeType: result.file.mimeType });
+          if (existingEl) existingEl.value = JSON.stringify(existingArr);
+          self._refreshDriveFileTags(fieldKey, existingArr);
+          toast('Generated: ' + result.file.name, 'success');
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          console.error('generateDocFromBuiltinTemplate failed:', err);
+          toast('Failed: ' + (err && err.message || 'Unknown'), 'error');
+        })
+        .generateDocFromBuiltinTemplate(projectId, templateKey);
+    });
+  },
+
+  _refreshSingleDriveFile(fieldKey, fileObj) {
+    var chip = document.getElementById('dp_chip_' + fieldKey);
+    if (!chip) return;
+    if (!fileObj) {
+      chip.innerHTML = '<span class="text-xs text-gray-400">No file selected</span>';
+      return;
+    }
+    var fname = fileObj.name || fileObj.url || 'File';
+    var furl = fileObj.url || '';
+    var nameNode = furl
+      ? '<a href="' + escapeHtml(furl) + '" target="_blank" class="truncate hover:underline" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</a>'
+      : '<span class="truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</span>';
+    chip.innerHTML = '<span class="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full border border-gray-200 max-w-full">' +
+      '<i class="fas fa-file text-[10px] text-gray-400"></i>' +
+      nameNode +
+      '<button type="button" onclick="ProjectPage._clearSingleDriveFile(\'' + fieldKey + '\')" class="text-gray-400 hover:text-gray-700 leading-none ml-0.5" title="Remove"><i class="fas fa-times text-[10px]"></i></button></span>';
+  },
+
+  _addTag(fieldKey, value) {
+    value = String(value || '').trim();
+    if (!value) return;
+    var el = document.getElementById('editSetting_' + fieldKey);
+    if (!el) return;
+    var current = [];
+    try { current = JSON.parse(el.value); } catch(e) { current = []; }
+    if (!Array.isArray(current)) current = [];
+    if (current.indexOf(value) !== -1) return;
+    current.push(value);
+    el.value = JSON.stringify(current);
+    this._refreshTagList(fieldKey, current);
+  },
+
+  _removeTag(fieldKey, idx) {
+    var el = document.getElementById('editSetting_' + fieldKey);
+    if (!el) return;
+    var current = [];
+    try { current = JSON.parse(el.value); } catch(e) { current = []; }
+    if (!Array.isArray(current)) current = [];
+    current.splice(idx, 1);
+    el.value = JSON.stringify(current);
+    this._refreshTagList(fieldKey, current);
+  },
+
+  _refreshTagList(fieldKey, tags) {
+    var container = document.getElementById('tagList_' + fieldKey);
+    if (!container) return;
+    if (!tags.length) {
+      container.innerHTML = '<span class="text-xs text-gray-400">No entries yet</span>';
+      return;
+    }
+    container.innerHTML = tags.map(function(t, idx) {
       return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
-        escapeHtml(fname) +
-        '<button type="button" onclick="ProjectPage._removeDriveFile(\'' + fieldKey + '\',' + idx + ')" class="ml-0.5 text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+        escapeHtml(t) +
+        '<button type="button" onclick="ProjectPage._removeTag(\'' + fieldKey + '\',' + idx + ')" class="text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
     }).join('');
   },
 
@@ -1139,10 +2480,14 @@ var ProjectPage = {
       return map[status] || '#9ca3af';
     };
     var items = related.map(function(da) {
+      var typeChip = da.assetType
+        ? '<span class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full ml-2" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">' + escapeHtml(da.assetType) + '</span>'
+        : '';
       return '<div class="flex items-center gap-3 py-2 px-4 hover:bg-gray-50 cursor-pointer rounded transition-colors" ' +
         'onclick="if(typeof switchView===\'function\'){switchView(\'dataassets\');setTimeout(function(){if(typeof DataAssetPage!==\'undefined\')DataAssetPage.selectAsset(\'' + escapeHtml(da.id) + '\');},200);}">' +
         '<span class="w-2 h-2 rounded-full flex-shrink-0" style="background-color:' + statusColor(da.status) + '"></span>' +
         '<span class="text-sm text-gray-900">' + escapeHtml(da.assetName || '-') + '</span>' +
+        typeChip +
         '<span class="text-xs text-gray-400 ml-auto">' + escapeHtml(da.assetOwner || '') + '</span>' +
         '</div>';
     }).join('');
@@ -1184,6 +2529,14 @@ var ProjectPage = {
   _buildReleases() {
     var p = this.selectedProject;
     var releases = this.parseJsonField(p.releaseNotes).slice().reverse();
+    var changelogEntries = this.parseJsonField(p.changelog);
+    var changelogByVersion = {};
+    changelogEntries.forEach(function(e) {
+      var v = e && e.relatedVersion ? String(e.relatedVersion).trim() : '';
+      if (!v) return;
+      if (!changelogByVersion[v]) changelogByVersion[v] = [];
+      changelogByVersion[v].push(e);
+    });
     var suggestedVersion = this._suggestNextVersion(p.version, 'patch');
     var sectionFields = ['added', 'changed', 'fixed', 'removed', 'security'];
     var addForm = this.showAddRelease ? '<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">' +
@@ -1220,13 +2573,34 @@ var ProjectPage = {
       } else if (r.notes) {
         bodyHtml = '<p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap mt-2">' + escapeHtml(r.notes) + '</p>';
       }
+      var linkedEntries = changelogByVersion[String(r.version || '').trim()] || [];
+      var linkedHtml = '';
+      if (linkedEntries.length) {
+        var typeBadge = {
+          update: { icon: 'fa-arrow-up', label: 'Update', cls: 'bg-gray-100 text-gray-600' },
+          decision: { icon: 'fa-gavel', label: 'Decision', cls: 'bg-gray-200 text-gray-700' },
+          incident: { icon: 'fa-exclamation-triangle', label: 'Incident', cls: 'bg-red-100 text-red-700' },
+          milestone: { icon: 'fa-flag', label: 'Milestone', cls: 'bg-gray-800 text-white' }
+        };
+        linkedHtml = '<div class="mt-3 pt-3 border-t border-gray-100">' +
+          '<p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2"><i class="fas fa-link text-xs mr-1"></i>Changelog entries for this release (' + linkedEntries.length + ')</p>' +
+          '<ul class="space-y-1.5">' + linkedEntries.map(function(e) {
+            var cfg = typeBadge[e.type] || typeBadge.update;
+            var author = (e.author || 'Unknown').split('@')[0];
+            return '<li class="flex items-start gap-2 text-sm text-gray-700">' +
+              '<span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ' + cfg.cls + ' flex-shrink-0 mt-0.5"><i class="fas ' + cfg.icon + ' text-[10px]"></i>' + cfg.label + '</span>' +
+              '<span class="flex-1"><span class="text-gray-800">' + escapeHtml(e.message || '') + '</span>' +
+              '<span class="text-xs text-gray-400 ml-2">' + escapeHtml(author) + ' · ' + self.formatDate(e.date) + '</span></span></li>';
+          }).join('') + '</ul></div>';
+      }
       return '<div class="bg-white border border-gray-200 rounded-lg p-4 mb-3">' +
         '<div class="flex items-center gap-2 flex-wrap">' +
         '<span class="bg-gray-900 text-white text-xs px-2 py-0.5 rounded-full font-mono">' + escapeHtml(r.version || '') + '</span>' +
         (tLabel ? '<span class="text-xs px-2 py-0.5 rounded-full ' + tClass + '">' + tLabel + '</span>' : '') +
+        (linkedEntries.length ? '<span class="text-xs text-gray-500"><i class="fas fa-link text-[10px] mr-1"></i>' + linkedEntries.length + ' changelog ' + (linkedEntries.length === 1 ? 'entry' : 'entries') + '</span>' : '') +
         '<span class="text-xs text-gray-400 ml-auto">' + self.formatDate(r.date) + '</span></div>' +
         (r.summary ? '<p class="text-sm font-medium text-gray-800 mt-2">' + escapeHtml(r.summary) + '</p>' : '') +
-        bodyHtml + '</div>';
+        bodyHtml + linkedHtml + '</div>';
     }).join('') : '<div class="text-center py-10 text-gray-400"><i class="fas fa-tag text-2xl mb-2 text-gray-300 block"></i><p class="text-sm">No releases yet</p></div>';
     return '<div class="w-full"><div class="flex items-center justify-between mb-4">' +
       '<h2 class="text-base font-semibold text-gray-900">Release Notes</h2><div class="flex items-center gap-2">' +
@@ -1284,7 +2658,6 @@ var ProjectPage = {
 
   toggleAddRelease(show) { this.showAddRelease = show; this.renderProjectDetail(); },
   toggleAddUpdate(show) { this.showAddUpdate = show; this.renderProjectDetail(); },
-  toggleEmailRelease(show) { this.showEmailRelease = show; this.renderProjectDetail(); },
 
   _buildEmailReleaseModal() {
     var p = this.selectedProject;
@@ -1299,13 +2672,37 @@ var ProjectPage = {
         '<input type="checkbox" class="releaseEmailRecipient rounded border-gray-300 text-gray-900 focus:ring-gray-400" value="' + escapeHtml(u.email) + '">' +
         '<span class="text-sm text-gray-700">' + label + '</span></label>';
     }).join('');
+
+    var groups = this._recipientGroups || [];
+    var groupCheckboxes = groups.map(function(g) {
+      var memberCount = (g.members || []).length;
+      var preview = (g.members || []).slice(0, 3).map(function(m) { return m.email; }).join(', ');
+      if (memberCount > 3) preview += ', +' + (memberCount - 3) + ' more';
+      return '<label class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">' +
+        '<input type="checkbox" class="releaseEmailGroup rounded border-gray-300 text-gray-900 focus:ring-gray-400" value="' + escapeHtml(g.id) + '" data-emails="' + escapeHtml((g.members || []).map(function(m) { return m.email; }).join(',')) + '">' +
+        '<span class="flex-1 min-w-0 text-sm text-gray-800">' +
+        '<span class="font-medium">' + escapeHtml(g.name) + '</span>' +
+        '<span class="text-xs text-gray-500 ml-2">' + memberCount + ' ' + (memberCount === 1 ? 'member' : 'members') + (preview ? ' — ' + escapeHtml(preview) : '') + '</span>' +
+        '</span></label>';
+    }).join('');
+    var groupSection = '<div class="border border-gray-300 rounded-lg bg-white max-h-32 overflow-y-auto p-2">' +
+      (groups.length
+        ? groupCheckboxes
+        : '<p class="text-xs text-gray-400 px-2 py-1">No saved groups for this project. Click "Manage Groups" to create one.</p>') +
+      '</div>';
+
     var defaultIntro = 'Hi team,\n\nPlease find the latest release notes for ' + (p.name || 'this project') + ' below. Let us know if you have any questions.';
     return '<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">' +
       '<h3 class="text-sm font-semibold text-gray-900 mb-3"><i class="fas fa-envelope text-gray-400 mr-1.5"></i>Send Release Notes via Email</h3>' +
       '<div class="space-y-3">' +
       '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Release Version</label>' +
       '<select id="emailReleaseVersion" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' + versionOpts + '</select></div>' +
-      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Recipients</label>' +
+      '<div>' +
+      '<div class="flex items-center justify-between mb-1">' +
+      '<label class="block text-xs font-medium text-gray-600 uppercase tracking-wide">Recipient Groups</label>' +
+      '<button type="button" onclick="_pc(\'ProjectPage\',\'openRecipientGroupsModal\')" class="text-xs text-gray-700 hover:text-gray-900 underline-offset-2 hover:underline"><i class="fas fa-cog text-[10px] mr-1"></i>Manage Groups</button>' +
+      '</div>' + groupSection + '</div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Individual Recipients</label>' +
       '<div class="border border-gray-300 rounded-lg bg-white max-h-40 overflow-y-auto p-2">' +
       (userCheckboxes || '<p class="text-sm text-gray-400 p-2">No users found</p>') + '</div>' +
       '<div class="mt-2"><label class="block text-xs font-medium text-gray-500 mb-1">Additional emails <span class="normal-case text-gray-400 font-normal">(comma-separated)</span></label>' +
@@ -1317,7 +2714,7 @@ var ProjectPage = {
       '<div class="flex items-center gap-3 pt-1">' +
       '<button onclick="_pc(\'ProjectPage\',\'sendReleaseEmail\')" class="flex items-center gap-2 px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"><i class="fas fa-paper-plane text-xs"></i> Send Email</button>' +
       '<button onclick="_pc(\'ProjectPage\',\'toggleEmailRelease\',false)" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button></div>' +
-      '</div></div>';
+      '</div>' + (this.showRecipientGroupsModal ? this._buildRecipientGroupsModal() : '') + '</div>';
   },
 
   sendReleaseEmail() {
@@ -1326,15 +2723,24 @@ var ProjectPage = {
     var screenshotUrl = (document.getElementById('emailReleaseScreenshot') || {}).value || '';
     var extraEmails = (document.getElementById('emailReleaseExtraRecipients') || {}).value || '';
 
-    var recipients = [];
-    var checkboxes = document.querySelectorAll('.releaseEmailRecipient:checked');
-    checkboxes.forEach(function(cb) { if (cb.value) recipients.push(cb.value); });
+    var dedup = {};
+    var pushEmail = function(raw) {
+      if (!raw) return;
+      var email = String(raw).trim().toLowerCase();
+      if (!email || email.indexOf('@') === -1) return;
+      dedup[email] = true;
+    };
+    document.querySelectorAll('.releaseEmailRecipient:checked').forEach(function(cb) {
+      if (cb.value) pushEmail(cb.value);
+    });
+    document.querySelectorAll('.releaseEmailGroup:checked').forEach(function(cb) {
+      var emails = (cb.getAttribute('data-emails') || '').split(',');
+      emails.forEach(pushEmail);
+    });
     if (extraEmails.trim()) {
-      extraEmails.split(',').forEach(function(e) {
-        var trimmed = e.trim();
-        if (trimmed && trimmed.indexOf('@') !== -1) recipients.push(trimmed);
-      });
+      extraEmails.split(',').forEach(pushEmail);
     }
+    var recipients = Object.keys(dedup);
 
     if (!recipients.length) { toast('Select at least one recipient', 'error'); return; }
     if (!version) { toast('Select a release version', 'error'); return; }
@@ -1369,6 +2775,213 @@ var ProjectPage = {
       .sendReleaseNotesEmail(this.selectedProject.id, payload);
   },
 
+  loadRecipientGroups(force) {
+    if (!this.selectedProject) return;
+    var projectId = this.selectedProject.id;
+    if (!force && this._recipientGroupsLoaded && this._recipientGroupsProjectId === projectId) return;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          self._recipientGroups = result.groups || [];
+          self._recipientGroupsLoaded = true;
+          self._recipientGroupsProjectId = projectId;
+          if (self.showEmailRelease || self.showRecipientGroupsModal) {
+            self.renderProjectDetail();
+          }
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error('loadRecipientGroups failed:', error);
+      })
+      .getRecipientGroups(projectId);
+  },
+
+  toggleEmailRelease(show) {
+    this.showEmailRelease = show;
+    if (show) this.loadRecipientGroups();
+    this.renderProjectDetail();
+  },
+
+  openRecipientGroupsModal() {
+    this.showRecipientGroupsModal = true;
+    this._editingGroupId = null;
+    this.loadRecipientGroups(true);
+    this.renderProjectDetail();
+  },
+
+  closeRecipientGroupsModal() {
+    this.showRecipientGroupsModal = false;
+    this._editingGroupId = null;
+    this.renderProjectDetail();
+  },
+
+  startNewRecipientGroup() {
+    this._editingGroupId = '__new__';
+    this.renderProjectDetail();
+  },
+
+  startEditRecipientGroup(groupId) {
+    this._editingGroupId = groupId;
+    this.renderProjectDetail();
+  },
+
+  _buildRecipientGroupsModal() {
+    var self = this;
+    var groups = this._recipientGroups || [];
+    var allUsers = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var rowsHtml = groups.length ? groups.map(function(g) {
+      var memberCount = (g.members || []).length;
+      var preview = (g.members || []).slice(0, 4).map(function(m) { return m.email; }).join(', ');
+      if (memberCount > 4) preview += ', +' + (memberCount - 4) + ' more';
+      return '<div class="flex items-start justify-between border border-gray-200 rounded-lg p-3 mb-2 bg-white">' +
+        '<div class="flex-1 min-w-0 pr-3">' +
+        '<div class="text-sm font-semibold text-gray-900">' + escapeHtml(g.name) + '</div>' +
+        (g.description ? '<div class="text-xs text-gray-500 mt-0.5">' + escapeHtml(g.description) + '</div>' : '') +
+        '<div class="text-xs text-gray-500 mt-1">' + memberCount + ' ' + (memberCount === 1 ? 'member' : 'members') + (preview ? ' • ' + escapeHtml(preview) : '') + '</div>' +
+        '</div>' +
+        '<div class="flex items-center gap-1 flex-shrink-0">' +
+        '<button onclick="_pc(\'ProjectPage\',\'startEditRecipientGroup\',\'' + escapeHtml(g.id) + '\')" class="px-2 py-1 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"><i class="fas fa-pencil-alt text-[10px]"></i></button>' +
+        '<button onclick="_pc(\'ProjectPage\',\'confirmDeleteRecipientGroup\',\'' + escapeHtml(g.id) + '\')" class="px-2 py-1 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50"><i class="fas fa-trash text-[10px]"></i></button>' +
+        '</div></div>';
+    }).join('') : '<p class="text-xs text-gray-400 px-1 py-2">No groups yet. Click "New Group" to create one.</p>';
+
+    var editorHtml = '';
+    if (this._editingGroupId) {
+      var editing = this._editingGroupId === '__new__'
+        ? { id: '', name: '', description: '', members: [] }
+        : (groups.find(function(g) { return g.id === self._editingGroupId; }) || { id: '', name: '', description: '', members: [] });
+      var existingEmails = {};
+      (editing.members || []).forEach(function(m) { existingEmails[String(m.email).toLowerCase()] = true; });
+      var userCheckboxes = allUsers.filter(function(u) { return u.email && u.active !== false; }).map(function(u) {
+        var key = String(u.email).toLowerCase();
+        var checked = existingEmails[key] ? ' checked' : '';
+        var label = u.name ? escapeHtml(u.name) + ' (' + escapeHtml(u.email) + ')' : escapeHtml(u.email);
+        return '<label class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">' +
+          '<input type="checkbox" class="rgEditMember rounded border-gray-300 text-gray-900 focus:ring-gray-400" value="' + escapeHtml(u.email) + '"' + checked + '>' +
+          '<span class="text-sm text-gray-700">' + label + '</span></label>';
+      }).join('');
+      var externalEmails = (editing.members || []).filter(function(m) {
+        var key = String(m.email).toLowerCase();
+        return !allUsers.some(function(u) { return u.email && String(u.email).toLowerCase() === key; });
+      }).map(function(m) { return m.email; }).join(', ');
+      editorHtml = '<div class="border-t border-gray-200 mt-3 pt-3">' +
+        '<h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">' + (this._editingGroupId === '__new__' ? 'New Group' : 'Edit Group') + '</h4>' +
+        '<div class="space-y-3">' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Group Name</label>' +
+        '<input id="rgEditName" type="text" value="' + escapeHtml(editing.name || '') + '" placeholder="e.g. Release Stakeholders" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" /></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Description <span class="normal-case text-gray-400 font-normal">(optional)</span></label>' +
+        '<input id="rgEditDescription" type="text" value="' + escapeHtml(editing.description || '') + '" placeholder="Short note about this group" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" /></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Members</label>' +
+        '<div class="border border-gray-300 rounded-lg bg-white max-h-40 overflow-y-auto p-2">' + (userCheckboxes || '<p class="text-xs text-gray-400 p-2">No active users</p>') + '</div>' +
+        '<div class="mt-2"><label class="block text-xs font-medium text-gray-500 mb-1">External emails <span class="normal-case text-gray-400 font-normal">(comma-separated, stakeholders without COLONY accounts)</span></label>' +
+        '<input id="rgEditExternal" type="text" value="' + escapeHtml(externalEmails) + '" placeholder="stakeholder@company.com" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" /></div></div>' +
+        '<div class="flex items-center gap-2 pt-1">' +
+        '<button onclick="_pc(\'ProjectPage\',\'saveRecipientGroup\')" class="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"><i class="fas fa-save text-xs mr-1"></i>Save Group</button>' +
+        '<button onclick="ProjectPage._editingGroupId=null;ProjectPage.renderProjectDetail();" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
+        '</div></div></div>';
+    }
+
+    return '<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)_pc(\'ProjectPage\',\'closeRecipientGroupsModal\')">' +
+      '<div class="bg-white border border-gray-200 rounded-lg shadow-xl w-full max-w-xl max-h-[80vh] flex flex-col">' +
+      '<div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">' +
+      '<h3 class="text-sm font-semibold text-gray-900"><i class="fas fa-users text-gray-400 mr-1.5"></i>Recipient Groups · ' + escapeHtml(this.selectedProject.name || '') + '</h3>' +
+      '<button onclick="_pc(\'ProjectPage\',\'closeRecipientGroupsModal\')" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>' +
+      '</div>' +
+      '<div class="flex-1 overflow-y-auto p-4">' + rowsHtml + editorHtml + '</div>' +
+      '<div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between flex-shrink-0">' +
+      '<button onclick="_pc(\'ProjectPage\',\'startNewRecipientGroup\')" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-700 transition-colors"><i class="fas fa-plus text-[10px]"></i>New Group</button>' +
+      '<button onclick="_pc(\'ProjectPage\',\'closeRecipientGroupsModal\')" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition-colors">Done</button>' +
+      '</div></div></div>';
+  },
+
+  saveRecipientGroup() {
+    if (!this.selectedProject) return;
+    var nameEl = document.getElementById('rgEditName');
+    var descEl = document.getElementById('rgEditDescription');
+    var extEl = document.getElementById('rgEditExternal');
+    var name = nameEl ? nameEl.value.trim() : '';
+    if (!name) { toast('Group name is required', 'error'); return; }
+    var memberMap = {};
+    var pushMember = function(email, displayName, type) {
+      if (!email) return;
+      var key = String(email).trim().toLowerCase();
+      if (!key || key.indexOf('@') === -1) return;
+      memberMap[key] = { email: key, displayName: displayName || '', memberType: type || 'user' };
+    };
+    document.querySelectorAll('.rgEditMember:checked').forEach(function(cb) {
+      var email = cb.value;
+      var users = (typeof State !== 'undefined' && State.users) ? State.users : [];
+      var match = users.find(function(u) { return u.email === email; });
+      pushMember(email, match ? (match.name || '') : '', 'user');
+    });
+    if (extEl && extEl.value) {
+      extEl.value.split(',').forEach(function(raw) { pushMember(raw, '', 'external'); });
+    }
+    var members = Object.keys(memberMap).map(function(k) { return memberMap[k]; });
+    if (!members.length) { toast('Add at least one member', 'error'); return; }
+
+    var payload = {
+      projectId: this.selectedProject.id,
+      name: name,
+      description: descEl ? descEl.value.trim() : '',
+      members: members
+    };
+    var self = this;
+    var isUpdate = this._editingGroupId && this._editingGroupId !== '__new__';
+    if (isUpdate) payload.id = this._editingGroupId;
+    showLoading(true);
+    var endpoint = isUpdate
+      ? google.script.run.withSuccessHandler(handleSuccess).withFailureHandler(handleFailure).updateRecipientGroup(payload)
+      : google.script.run.withSuccessHandler(handleSuccess).withFailureHandler(handleFailure).saveRecipientGroup(payload);
+
+    function handleSuccess(result) {
+      showLoading(false);
+      if (!result || !result.success) {
+        toast((result && result.error) || 'Failed to save group', 'error');
+        return;
+      }
+      self._editingGroupId = null;
+      self.loadRecipientGroups(true);
+      toast(isUpdate ? 'Group updated' : 'Group created', 'success');
+    }
+    function handleFailure(error) {
+      showLoading(false);
+      console.error('saveRecipientGroup failed:', error);
+      toast('Failed to save group', 'error');
+    }
+  },
+
+  confirmDeleteRecipientGroup(groupId) {
+    var group = (this._recipientGroups || []).find(function(g) { return g.id === groupId; });
+    var name = group ? group.name : 'this group';
+    var self = this;
+    ConfirmModal('Delete recipient group "' + name + '"? This cannot be undone.', {
+      title: 'Delete Group?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    }).then(function(confirmed) {
+      if (!confirmed) return;
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (!result || !result.success) {
+            toast((result && result.error) || 'Failed to delete group', 'error');
+            return;
+          }
+          self.loadRecipientGroups(true);
+          toast('Group deleted', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          console.error('deleteRecipientGroup failed:', error);
+          toast('Failed to delete group', 'error');
+        })
+        .deleteRecipientGroup(groupId);
+    });
+  },
+
   startEditing() {
     this.isEditing = true;
     this.editingTab = 'details';
@@ -1384,20 +2997,64 @@ var ProjectPage = {
   saveProject() {
     var name = (document.getElementById('editProjectName') || {}).value || '';
     var description = (document.getElementById('editProjectDesc') || {}).value || '';
-    var startDate = (document.getElementById('editProjectStart') || {}).value || '';
+    var rawStart = (document.getElementById('editProjectStart') || {}).value || '';
+    var startDate = /^\d{4}-\d{2}$/.test(rawStart) ? (rawStart + '-15') : rawStart;
     var endEl = document.getElementById('editProjectEnd');
     var endDate = endEl ? endEl.value : (this.selectedProject && this.selectedProject.endDate) || '';
-    var version = (document.getElementById('editProjectVersion') || {}).value || '';
-    var repoUrl = (document.getElementById('editProjectRepo') || {}).value || '';
+    var versionEl = document.getElementById('editProjectVersion');
+    var version = versionEl ? versionEl.value : (this.selectedProject && this.selectedProject.version) || '';
+    var repoUrl = (this.selectedProject && this.selectedProject.repoUrl) || '';
     var ownerId = (document.getElementById('editProjectOwner') || {}).value || '';
     var statusEl = document.getElementById('editProjectStatus');
-    var status = statusEl ? statusEl.value : (this.selectedProject && this.selectedProject.status) || '';
+    var worklogStatus = statusEl ? String(statusEl.value || '').trim() : '';
+    var status;
+    if (worklogStatus) {
+      status = this._deriveLifecycleFromWorklogStatus(worklogStatus);
+    } else {
+      status = (this.selectedProject && this.selectedProject.status) || 'active';
+    }
     if (!name.trim()) { toast('Project name is required', 'error'); return; }
     var existingSettings = this._getSettings();
-    existingSettings.secondaryUsers = this._editSecondaryUsers.slice();
-    existingSettings.linkedProjectIds = this._editLinkedProjects.slice();
+    if (worklogStatus) existingSettings.projectStatus = worklogStatus;
+    else delete existingSettings.projectStatus;
+    var allUsersForSave = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var resolveByNameUnique = function(rawName) {
+      var k = self._ownerKey(rawName);
+      if (!k) return null;
+      var matches = allUsersForSave.filter(function(u) { return u.name && self._ownerKey(u.name) === k; });
+      if (matches.length === 1 && matches[0].email) return matches[0].email.toLowerCase();
+      return null;
+    };
+    if (ownerId && ownerId.indexOf('@') === -1) {
+      var resolvedEmail = resolveByNameUnique(ownerId);
+      if (resolvedEmail) ownerId = resolvedEmail;
+    }
+    if (ownerId && ownerId.indexOf('@') !== -1) {
+      if (existingSettings.pendingOwnerName) delete existingSettings.pendingOwnerName;
+    } else if (ownerId && ownerId.indexOf('@') === -1) {
+      existingSettings.pendingOwnerName = ownerId;
+      ownerId = '';
+    } else {
+      delete existingSettings.pendingOwnerName;
+    }
+    var sec = this._editSecondaryUsers.slice();
+    var resolvedSec = [];
+    var pendingSec = [];
+    sec.forEach(function(v) {
+      var sv = String(v || '').trim();
+      if (!sv) return;
+      if (sv.indexOf('@') !== -1) { resolvedSec.push(sv.toLowerCase()); return; }
+      var resolved = resolveByNameUnique(sv);
+      if (resolved) resolvedSec.push(resolved);
+      else pendingSec.push(sv);
+    });
+    var dedupSec = [];
+    resolvedSec.forEach(function(e) { if (dedupSec.indexOf(e) === -1) dedupSec.push(e); });
+    existingSettings.secondaryUsers = dedupSec;
+    if (pendingSec.length) existingSettings.pendingSecondaryUsers = pendingSec;
+    else delete existingSettings.pendingSecondaryUsers;
     var detailsSettingsFields = [
-      { id: 'editSetting_govProjectOwners', key: 'govProjectOwners' },
+      { id: 'editSetting_govProjectOwners', key: 'govProjectOwners', parseJson: true },
       { id: 'editSetting_developmentPriority', key: 'developmentPriority' },
       { id: 'editSetting_developmentPhase', key: 'developmentPhase' },
       { id: 'editSetting_govRequestDate', key: 'govRequestDate' },
@@ -1406,13 +3063,17 @@ var ProjectPage = {
       { id: 'editSetting_projectRetiredDate', key: 'projectRetiredDate' },
       { id: 'editSetting_isAiInvolved', key: 'isAiInvolved' },
       { id: 'editSetting_workstream', key: 'workstream' },
-      { id: 'editSetting_projectCategory', key: 'projectCategory' },
       { id: 'editSetting_projectType', key: 'projectType' },
       { id: 'editSetting_sdmSupported', key: 'sdmSupported' }
     ];
     detailsSettingsFields.forEach(function(f) {
       var el = document.getElementById(f.id);
-      if (el) existingSettings[f.key] = el.value || '';
+      if (!el) return;
+      if (f.parseJson) {
+        try { existingSettings[f.key] = JSON.parse(el.value || '[]'); } catch (e) { existingSettings[f.key] = []; }
+      } else {
+        existingSettings[f.key] = el.value || '';
+      }
     });
     var intendedChecks = document.querySelectorAll('input[data-ms-field="intendedUsers"]');
     var intendedArr = [];
@@ -1425,11 +3086,36 @@ var ProjectPage = {
     }
     var tags = [];
     if (existingSettings.workstream) tags.push(existingSettings.workstream);
-    if (existingSettings.projectCategory) tags.push(existingSettings.projectCategory);
     if (existingSettings.projectType) tags.push(existingSettings.projectType);
     if (existingSettings.sdmSupported) tags.push(existingSettings.sdmSupported);
     var settings = JSON.stringify(existingSettings);
     var payload = { id: this.selectedProject.id, name: name, description: description, status: status, startDate: startDate, endDate: endDate, version: version, repoUrl: repoUrl, tags: JSON.stringify(tags), ownerId: ownerId, settings: settings };
+
+    var prevSettings = this._getSettings();
+    var prevPhase = (prevSettings && prevSettings.developmentPhase) || (this.selectedProject && this.selectedProject.developmentPhase) || '';
+    var nextPhase = existingSettings.developmentPhase || '';
+    var isStoppingNow = nextPhase === 'Stopped' && prevPhase !== 'Stopped';
+    if (isStoppingNow) {
+      var dependents = this._findRelatedAssetsFor(this.selectedProject.id) || [];
+      if (dependents.length > 0) {
+        var preview = dependents.slice(0, 5).map(function(da) {
+          var t = da.assetType ? ' (' + da.assetType + ')' : '';
+          return da.assetName + t;
+        }).join(', ');
+        if (dependents.length > 5) preview += ', +' + (dependents.length - 5) + ' more';
+        var msg = 'Setting Development Status to "Stopped" will affect ' + dependents.length + ' Data Asset' + (dependents.length === 1 ? '' : 's') + ': ' + preview + '. Save anyway?';
+        var self = this;
+        ConfirmModal(msg, { title: 'Stop project with linked Data Assets?', confirmText: 'Save & Stop', cancelText: 'Cancel' }).then(function(confirmed) {
+          if (!confirmed) return;
+          self._submitSaveProject(payload);
+        });
+        return;
+      }
+    }
+    this._submitSaveProject(payload);
+  },
+
+  _submitSaveProject(payload) {
     showLoading(true);
     google.script.run
       .withSuccessHandler((result) => {
@@ -1486,12 +3172,12 @@ var ProjectPage = {
     if (existing) existing.remove();
 
     var workstreamOpts = ['Business Intelligence', 'Business Development', 'Financial Management', 'Workforce Management', 'Customer Experience', 'Quality Management', 'Contractor Use'];
-    var projectTypeOpts = ['Web Application', 'Data Pipeline', 'Database', 'Data Visualization'];
+    var projectTypeOpts = ['Web Application', 'Data Visualization'];
     var contractOpts = ['AMPS', 'Forward', 'SQuAT'];
 
     var p = this.selectedProject;
     var settings = this._getSettings();
-    var currentStartDate = (p.startDate && p.startDate !== 'TBD') ? String(p.startDate).substring(0, 10) : (settings.govRequestDate ? String(settings.govRequestDate).substring(0, 10) : '');
+    var currentStartDate = (p.startDate && p.startDate !== 'TBD') ? String(p.startDate).substring(0, 7) : (settings.govRequestDate ? String(settings.govRequestDate).substring(0, 7) : '');
     var currentWorkstream = settings.workstream || p.workstream || '';
     var currentProjectType = settings.projectType || p.projectType || '';
     var currentContract = settings.contractInitial || '';
@@ -1506,13 +3192,13 @@ var ProjectPage = {
     var lbl = function(text) { return '<label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + text + '</label>'; };
     var buildSelect = function(id, opts, cur) {
       return '<select id="' + id + '" class="' + cls + ' bg-white">' +
-        '<option value="">-- Select --</option>' +
+        '<option value="" disabled' + (cur ? '' : ' selected') + ' hidden>-- Select --</option>' +
         opts.map(function(o) { return '<option value="' + escapeHtml(o) + '"' + (o === cur ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; }).join('') +
         '</select>';
     };
 
     if (needStart) {
-      fieldHtml += '<div>' + lbl('Project Start Date') + '<input id="pidFieldStartDate" type="date" value="' + escapeHtml(currentStartDate) + '" class="' + cls + '"></div>';
+      fieldHtml += '<div>' + lbl('Project Start Date') + MonthYearPicker.buildHtml('pidFieldStartDate', currentStartDate, cls) + '</div>';
     }
     if (needWorkstream) {
       fieldHtml += '<div>' + lbl('Workstream') + buildSelect('pidFieldWorkstream', workstreamOpts, currentWorkstream) + '</div>';
@@ -1698,7 +3384,7 @@ var ProjectPage = {
     var startEl = document.getElementById('pidFieldStartDate');
     if (startEl) {
       if (!startEl.value) { toast('Project Start Date is required', 'error'); return; }
-      updates.startDate = startEl.value;
+      updates.startDate = /^\d{4}-\d{2}$/.test(startEl.value) ? (startEl.value + '-15') : startEl.value;
     }
     var wsEl = document.getElementById('pidFieldWorkstream');
     if (wsEl) {
@@ -1776,6 +3462,93 @@ var ProjectPage = {
         toast('Failed to generate Project ID', 'error');
       })
       .generateProjectCode(this.selectedProject.id);
+  },
+
+  migrateToDataAsset() {
+    if (!this.selectedProject) return;
+    var projectId = this.selectedProject.id;
+    var projectName = this.selectedProject.name || projectId;
+    var self = this;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(preview) {
+        showLoading(false);
+        if (!preview || !preview.success) {
+          toast((preview && preview.error) || 'Cannot migrate this project', 'error');
+          return;
+        }
+        var lines = ['Move "' + projectName + '" to Data Assets?'];
+        lines.push('');
+        lines.push('Project Type: ' + preview.project.projectType);
+        if (preview.taskCount > 0) {
+          lines.push(preview.taskCount + ' task' + (preview.taskCount === 1 ? '' : 's') +
+            ' (' + preview.openTaskCount + ' open) will remain on the archived project.');
+        }
+        if (preview.inboundLinkCount > 0) {
+          lines.push(preview.inboundLinkCount + ' other project' + (preview.inboundLinkCount === 1 ? '' : 's') +
+            ' reference this one as a linked project. Those links will still resolve to the archived project.');
+        }
+        lines.push('');
+        lines.push('A new Data Asset will be created with the mapped fields. This project will be archived with a pointer to the new asset.');
+        ConfirmModal(lines.join('\n'), {
+          title: 'Move to Data Assets',
+          confirmText: 'Migrate',
+          cancelText: 'Cancel'
+        }).then(function(confirmed) {
+          if (!confirmed) return;
+          showLoading(true);
+          google.script.run
+            .withSuccessHandler(function(result) {
+              showLoading(false);
+              if (!result || !result.success) {
+                toast((result && result.error) || 'Migration failed', 'error');
+                return;
+              }
+              self.selectedProject.status = 'archived';
+              try {
+                var s = typeof self.selectedProject.settings === 'string'
+                  ? JSON.parse(self.selectedProject.settings || '{}')
+                  : (self.selectedProject.settings || {});
+                s.migratedToAssetId = result.asset.id;
+                s.migratedAt = new Date().toISOString();
+                self.selectedProject.settings = JSON.stringify(s);
+              } catch (e) {}
+              var idx = self.projects.findIndex(function(p) { return p.id === projectId; });
+              if (idx !== -1) self.projects[idx] = self.selectedProject;
+              self.renderProjectList();
+              self.renderProjectDetail();
+              ConfirmModal('"' + projectName + '" was migrated to Data Assets.', {
+                title: 'Migration Complete',
+                confirmText: 'Go to Data Assets',
+                cancelText: 'Stay Here'
+              }).then(function(goNow) {
+                if (goNow && typeof switchView === 'function') switchView('dataassets');
+              });
+            })
+            .withFailureHandler(function(error) {
+              showLoading(false);
+              console.error('migrateProjectToDataAsset failed:', error);
+              toast('Migration failed: ' + (error && error.message || 'Unknown error'), 'error');
+            })
+            .migrateProjectToDataAsset(projectId);
+        });
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        console.error('previewProjectMigration failed:', error);
+        toast('Preview failed: ' + (error && error.message || 'Unknown error'), 'error');
+      })
+      .previewProjectMigration(projectId);
+  },
+
+  goToMigratedAsset(assetId) {
+    if (!assetId) return;
+    if (typeof switchView === 'function') switchView('dataassets');
+    setTimeout(function() {
+      if (typeof DataAssetPage !== 'undefined' && DataAssetPage.selectAsset) {
+        try { DataAssetPage.selectAsset(assetId); } catch (e) {}
+      }
+    }, 400);
   },
 
   async archiveProject() {
@@ -1960,6 +3733,19 @@ var ProjectPage = {
     } catch (e) { return dateStr; }
   },
 
+  formatMonthYear(dateStr) {
+    if (!dateStr || dateStr === 'TBD') return '-';
+    var s = String(dateStr);
+    var m = s.match(/^(\d{4})-(\d{2})/);
+    if (m) return m[2] + '/' + m[1];
+    try {
+      var d = new Date(s);
+      if (isNaN(d.getTime())) return s;
+      var mm = String(d.getMonth() + 1).padStart(2, '0');
+      return mm + '/' + d.getFullYear();
+    } catch (e) { return s; }
+  },
+
   exportProjectsCsv() {
     showLoading(true);
     google.script.run
@@ -2069,7 +3855,10 @@ var ProjectPage = {
 
   pingOwner() {
     if (!this.selectedProject) return;
-    var reason = (document.getElementById('projPingReason') || {}).value || 'Update';
+    var menuReason = this._pendingPingReason || '';
+    this._pendingPingReason = null;
+    var legacyEl = document.getElementById('projPingReason');
+    var reason = menuReason || (legacyEl ? legacyEl.value : '') || 'Update';
     var projectId = this.selectedProject.id;
     var self = this;
     showLoading(true);
@@ -2296,6 +4085,30 @@ var ProjectPage = {
     this.renderProjectDetail();
   },
 
+  _resolveReqFieldSeed(field, existingData) {
+    if (existingData && existingData[field.key] !== undefined && existingData[field.key] !== null && existingData[field.key] !== '') {
+      return existingData[field.key];
+    }
+    if (!field.target) return existingData ? existingData[field.key] : undefined;
+    var project = this.selectedProject || {};
+    var settings = this._getSettings();
+    if (field.target.indexOf('project.') === 0) {
+      var key = field.target.substring('project.'.length);
+      var v = project[key];
+      if (v === undefined || v === null || v === '') v = settings[key];
+      if (typeof v === 'string') {
+        try { var parsed = JSON.parse(v); if (Array.isArray(parsed)) return parsed; } catch (e) {}
+        if (v.indexOf(',') !== -1) return v.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      }
+      return v;
+    }
+    if (field.target.indexOf('settings.') === 0) {
+      var sKey = field.target.substring('settings.'.length);
+      return settings[sKey];
+    }
+    return existingData ? existingData[field.key] : undefined;
+  },
+
   _buildRequirementsEditor(templateId) {
     var templates = this._getReqTemplates();
     var tmpl = templates.find(function(t) { return t.id === templateId; });
@@ -2304,16 +4117,17 @@ var ProjectPage = {
     var existing = (req.templates || []).find(function(e) { return e.templateId === templateId; });
     var existingData = (existing && existing.data) || {};
     var tv = this._taxonomyValues || {};
+    var self = this;
 
     var fieldsHtml = tmpl.fields.map(function(field) {
-      var val = existingData[field.key];
+      var val = self._resolveReqFieldSeed(field, existingData);
       var inputHtml = '';
       var id = 'reqField_' + field.key;
       if (field.type === 'textarea') {
         inputHtml = '<textarea id="' + id + '" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 resize-y">' + escapeHtml(String(val || '')) + '</textarea>';
       } else if (field.type === 'taxonomy_select') {
         var opts = (tv[field.key] || []).map(function(o) { return '<option value="' + escapeHtml(o) + '"' + (o === val ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; }).join('');
-        inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"><option value="">-- Select --</option>' + opts + '</select>';
+        inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"><option value="" disabled' + (val ? '' : ' selected') + ' hidden>-- Select --</option>' + opts + '</select>';
       } else if (field.type === 'taxonomy_multiselect') {
         var list = Array.isArray(val) ? val : (val ? String(val).split(',').map(function(s) { return s.trim(); }) : []);
         var mopts = (tv[field.key] || []).map(function(o) {
@@ -2324,7 +4138,7 @@ var ProjectPage = {
       } else if (field.type === 'static_select') {
         var staticOpts = (field.optionsKey && tv[field.optionsKey]) || [];
         var sopts = staticOpts.map(function(o) { return '<option value="' + escapeHtml(o) + '"' + (o === val ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; }).join('');
-        inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"><option value="">-- Select --</option>' + sopts + '</select>';
+        inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"><option value="" disabled' + (val ? '' : ' selected') + ' hidden>-- Select --</option>' + sopts + '</select>';
       } else if (field.type === 'drive_picker' || field.type === 'drive_picker_multi') {
         var display = '';
         if (field.type === 'drive_picker' && val) {
@@ -2343,9 +4157,10 @@ var ProjectPage = {
       } else {
         inputHtml = '<input id="' + id + '" type="text" value="' + escapeHtml(String(val || '')) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400">';
       }
+      var hintHtml = field.hint ? '<p class="text-xs text-gray-500 mt-1 italic">' + escapeHtml(field.hint) + '</p>' : '';
       return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' +
         escapeHtml(field.label) + (field.required ? ' <span class="text-red-500">*</span>' : '') +
-        '</label>' + inputHtml + '</div>';
+        '</label>' + inputHtml + hintHtml + '</div>';
     }).join('');
 
     return '<div class="space-y-4">' +
@@ -2356,6 +4171,7 @@ var ProjectPage = {
       '</div>' +
       '<div class="grid grid-cols-1 gap-3 p-4 border border-gray-200 rounded-lg bg-white">' + fieldsHtml + '</div>' +
       '<div class="flex items-center justify-end gap-2">' +
+        '<button onclick="_pc(\'ProjectPage\',\'cancelReqTemplate\')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancel</button>' +
         '<button onclick="_pc(\'ProjectPage\',\'saveReqTemplate\',\'' + escapeHtml(templateId) + '\',\'draft\')" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Save Draft</button>' +
         '<button onclick="_pc(\'ProjectPage\',\'saveReqTemplate\',\'' + escapeHtml(templateId) + '\',\'complete\')" class="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">Mark Complete</button>' +
       '</div></div>';
@@ -2474,6 +4290,7 @@ var ProjectPage = {
         } else {
           var el = document.getElementById('editSetting_' + fieldKey);
           if (el) el.value = JSON.stringify(uploaded[0]);
+          self._refreshSingleDriveFile(fieldKey, uploaded[0]);
         }
       });
     });
@@ -2490,6 +4307,7 @@ var ProjectPage = {
         } else {
           var el = document.getElementById('editSetting_' + fieldKey);
           if (el) el.value = JSON.stringify(entry);
+          self._refreshSingleDriveFile(fieldKey, entry);
         }
       });
     });

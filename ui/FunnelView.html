@@ -1074,7 +1074,6 @@ var FunnelPage = {
       { key: 'githubLinks', label: 'Git Repository' },
       { key: 'devDocs', label: 'Development Documentation' },
       { key: 'designDocs', label: 'Design Documentation' },
-      { key: 'sops', label: 'SOPs (Internal)' },
       { key: 'userGuides', label: 'User Guides' },
       { key: 'dataDictionaries', label: 'Data Dictionaries' }
     ];
@@ -1111,7 +1110,7 @@ var FunnelPage = {
             '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Owner</label>' +
               '<select id="npimOwner" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400">' + userOptions + '</select></div>' +
             '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Start Date</label>' +
-              '<input id="npimStartDate" type="date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" value="' + escapeHtml((mapped.startDate || '').toString().substring(0, 10)) + '"></div>' +
+              '<input id="npimStartDate" type="month" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" value="' + escapeHtml((mapped.startDate || '').toString().substring(0, 7)) + '"></div>' +
             '<div class="col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Tags (comma-separated)</label>' +
               '<input id="npimTags" type="text" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"></div>' +
           '</div>' +
@@ -1148,7 +1147,7 @@ var FunnelPage = {
         name: name,
         description: document.getElementById('npimDescription').value || '',
         ownerId: owner,
-        startDate: document.getElementById('npimStartDate').value || '',
+        startDate: (function() { var v = document.getElementById('npimStartDate').value || ''; return /^\d{4}-\d{2}$/.test(v) ? (v + '-15') : v; })(),
         tags: document.getElementById('npimTags').value || ''
       };
       if (includePrefills) {

@@ -33,6 +33,167 @@ function setCpmdWorkbookId(workbookId) {
   return true;
 }
 
+var FED_STAFFING_ROLES = {
+  personnel:    { label: 'General Personnel Roster',     defaultSheet: 'Personnel'   },
+  govOwners:    { label: 'Government Project Owners',    defaultSheet: 'GovOwners'   },
+  stakeholders: { label: 'Primary Gov Stakeholders',     defaultSheet: 'Stakeholders' }
+};
+
+function _fedStaffingAssertRole_(role) {
+  if (!role || !FED_STAFFING_ROLES.hasOwnProperty(role)) {
+    throw new Error('Unknown Fed Staffing role: ' + role);
+  }
+  return role;
+}
+
+function getFedStaffingWorkbookId() {
+  return PropertiesService.getScriptProperties().getProperty('FED_STAFFING_WORKBOOK_ID') || '';
+}
+
+function _fedStaffingClearAllCaches_() {
+  try {
+    var wbId = PropertiesService.getScriptProperties().getProperty('FED_STAFFING_WORKBOOK_ID');
+    if (!wbId) return;
+    var cache = CacheService.getScriptCache();
+    var keys = Object.keys(FED_STAFFING_ROLES).map(function(r) { return 'FED_STAFFING_CACHE_' + wbId + '_' + r; });
+    cache.removeAll(keys);
+  } catch (e) {}
+}
+
+function setFedStaffingWorkbookId(workbookId) {
+  var prev = PropertiesService.getScriptProperties().getProperty('FED_STAFFING_WORKBOOK_ID');
+  if (prev) {
+    try {
+      var cache = CacheService.getScriptCache();
+      var prevKeys = Object.keys(FED_STAFFING_ROLES).map(function(r) { return 'FED_STAFFING_CACHE_' + prev + '_' + r; });
+      cache.removeAll(prevKeys);
+    } catch (e) {}
+  }
+  if (workbookId) {
+    PropertiesService.getScriptProperties().setProperty('FED_STAFFING_WORKBOOK_ID', workbookId);
+  } else {
+    PropertiesService.getScriptProperties().deleteProperty('FED_STAFFING_WORKBOOK_ID');
+  }
+  _fedStaffingClearAllCaches_();
+  return true;
+}
+
+function getFedStaffingSheetMap() {
+  var raw = PropertiesService.getScriptProperties().getProperty('FED_STAFFING_SHEETS');
+  var map = {};
+  if (raw) {
+    try { map = JSON.parse(raw) || {}; } catch (e) { map = {}; }
+  }
+  Object.keys(FED_STAFFING_ROLES).forEach(function(role) {
+    if (!map[role]) map[role] = FED_STAFFING_ROLES[role].defaultSheet;
+  });
+  return map;
+}
+
+function getFedStaffingSheetName(role) {
+  _fedStaffingAssertRole_(role || 'personnel');
+  return getFedStaffingSheetMap()[role || 'personnel'];
+}
+
+function setFedStaffingSheet(role, sheetName) {
+  _fedStaffingAssertRole_(role);
+  var raw = PropertiesService.getScriptProperties().getProperty('FED_STAFFING_SHEETS');
+  var map = {};
+  if (raw) {
+    try { map = JSON.parse(raw) || {}; } catch (e) { map = {}; }
+  }
+  if (sheetName) map[role] = String(sheetName);
+  else delete map[role];
+  PropertiesService.getScriptProperties().setProperty('FED_STAFFING_SHEETS', JSON.stringify(map));
+  try {
+    var wbId = getFedStaffingWorkbookId();
+    if (wbId) CacheService.getScriptCache().remove('FED_STAFFING_CACHE_' + wbId + '_' + role);
+  } catch (e) {}
+  return true;
+}
+
+function _toTitleCase_(s) {
+  if (!s) return '';
+  return String(s).trim().toLowerCase().replace(/\b\w/g, function(m) { return m.toUpperCase(); });
+}
+
+function _fedStaffingReadRoster_(wbId, sheetName) {
+  var ss = SpreadsheetApp.openById(wbId);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  var headers = data[0].map(function(h) { return String(h || '').trim().toLowerCase(); });
+  var findCol = function(names) {
+    for (var n = 0; n < names.length; n++) {
+      var idx = headers.indexOf(names[n]);
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+  var firstIdx = findCol(['first name', 'firstname', 'first']);
+  var lastIdx = findCol(['last name', 'lastname', 'last']);
+  var displayIdx = findCol(['display name', 'displayname']);
+  var nameIdx = findCol(['full name', 'name', 'stakeholder', 'owner']);
+  var emailIdx = findCol(['email', 'email address', 'e-mail']);
+  var statusIdx = findCol(['status', 'active', 'employment status']);
+  var typeIdx = findCol(['type', 'employment type', 'category']);
+  var titleIdx = findCol(['title', 'role', 'position']);
+  var orgIdx = findCol(['org', 'organization', 'org code', 'ipt', 'division', 'bu', 'contract task', 'contract']);
+  var results = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (statusIdx !== -1) {
+      var status = String(row[statusIdx] || '').trim().toLowerCase();
+      if (status && status !== 'active' && status !== 'yes' && status !== 'true' && status !== '1') continue;
+    }
+    if (typeIdx !== -1) {
+      var t = String(row[typeIdx] || '').trim().toLowerCase();
+      if (t.indexOf('employee') !== 0) continue;
+    }
+    var name = '';
+    if (firstIdx !== -1 || lastIdx !== -1) {
+      var first = firstIdx !== -1 ? _toTitleCase_(row[firstIdx]) : '';
+      var last = lastIdx !== -1 ? _toTitleCase_(row[lastIdx]) : '';
+      name = (first + ' ' + last).trim();
+    }
+    if (!name && displayIdx !== -1) name = _toTitleCase_(row[displayIdx]);
+    if (!name && nameIdx !== -1) name = _toTitleCase_(row[nameIdx]);
+    if (!name) continue;
+    var email = emailIdx !== -1 ? String(row[emailIdx] || '').trim().toLowerCase() : '';
+    var title = titleIdx !== -1 ? String(row[titleIdx] || '').trim() : '';
+    var org = orgIdx !== -1 ? String(row[orgIdx] || '').trim() : '';
+    var rowType = typeIdx !== -1 ? String(row[typeIdx] || '').trim() : '';
+    var entry = { name: name, email: email, title: title, org: org };
+    if (rowType) entry.type = rowType;
+    entry.label = email ? (name + ' (' + email + ')') : name;
+    results.push(entry);
+  }
+  results.sort(function(a, b) { return a.name.localeCompare(b.name); });
+  return results;
+}
+
+function getFedStaffingPersonnel(role) {
+  role = _fedStaffingAssertRole_(role || 'personnel');
+  var wbId = getFedStaffingWorkbookId();
+  if (!wbId) return [];
+  var sheetName = getFedStaffingSheetMap()[role];
+  if (!sheetName) return [];
+  var cacheKey = 'FED_STAFFING_CACHE_' + wbId + '_' + role;
+  try {
+    var cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+  try {
+    var results = _fedStaffingReadRoster_(wbId, sheetName);
+    try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(results), 1800); } catch (e) {}
+    return results;
+  } catch (error) {
+    console.error('getFedStaffingPersonnel failed for role ' + role + ':', error);
+    return [];
+  }
+}
+
 function getCpmdPersonnel() {
   var wbId = getCpmdWorkbookId();
   if (!wbId) return [];
@@ -51,12 +212,14 @@ function getCpmdPersonnel() {
       var row = data[i];
       var status = String(row[7] || '').trim();
       if (status.toLowerCase() !== 'active') continue;
-      var first = String(row[2] || '').trim();
-      var last = String(row[3] || '').trim();
-      var email = String(row[5] || '').trim();
+      var first = _toTitleCase_(row[2]);
+      var last = _toTitleCase_(row[3]);
+      var email = String(row[5] || '').trim().toLowerCase();
       if (!first && !last) continue;
       var name = (first + ' ' + last).trim();
-      results.push({ name: name, email: email });
+      var entry = { name: name, email: email };
+      entry.label = email ? (name + ' (' + email + ')') : name;
+      results.push(entry);
     }
     results.sort(function(a, b) { return a.name.localeCompare(b.name); });
     try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(results), 1800); } catch (e) {}
@@ -68,6 +231,8 @@ function getCpmdPersonnel() {
 }
 
 var WORKLOG_STATUS_MAP = {
+  '00-Ideation': 'active',
+  '01-Requirements Gathering': 'active',
   '02-In Development': 'active',
   '03-Deployed (Actively Maintained)': 'active',
   '04-Deployed (Inactive-Not Maintained)': 'archived',
@@ -188,11 +353,30 @@ function buildWorklogTags(row) {
   });
 }
 
-function buildWorklogSettings(row) {
+function buildWorklogSettings(row, ownerIndex) {
   var C = WORKLOG_COL;
   var s = {};
   var backups = String(row[C.backupOwners] || '').split(',').map(function(b) { return b.trim(); }).filter(Boolean);
-  if (backups.length > 0) s.secondaryUsers = backups;
+  if (backups.length > 0) {
+    var resolved = [];
+    var pending = [];
+    var seenEmails = {};
+    backups.forEach(function(b) {
+      if (typeof _resolveOwnerToEmail_ === 'function' && ownerIndex) {
+        var r = _resolveOwnerToEmail_(b, ownerIndex);
+        if (r.email) {
+          var e = r.email.toLowerCase();
+          if (!seenEmails[e]) { resolved.push(e); seenEmails[e] = true; }
+        } else {
+          pending.push(b);
+        }
+      } else {
+        pending.push(b);
+      }
+    });
+    if (resolved.length > 0) s.secondaryUsers = resolved;
+    if (pending.length > 0) s.pendingSecondaryUsers = pending;
+  }
   if (row[C.workstream]) s.workstream = String(row[C.workstream]).trim();
   if (row[C.projectCategory]) s.projectCategory = String(row[C.projectCategory]).trim();
   if (row[C.projectType]) s.projectType = String(row[C.projectType]).trim();
@@ -283,6 +467,14 @@ function importProjectsFromWorkLog(workbookId) {
   var columns = sheetHeaders;
   var currentUser = getCurrentUserEmail();
   var timestamp = now();
+  var ownerIndex = {};
+  try {
+    if (typeof _buildUserOwnerIndex_ === 'function' && typeof getAllUsers === 'function') {
+      ownerIndex = _buildUserOwnerIndex_(getAllUsers());
+    }
+  } catch (ownerLookupErr) {
+    console.error('Owner index build failed; falling back to raw values:', ownerLookupErr);
+  }
 
   var rows = [];
   var imported = [];
@@ -302,10 +494,26 @@ function importProjectsFromWorkLog(workbookId) {
     var projectId = generateProjectAcronym(name, generatedIds);
     var statusStr = String(row[C.projectStatus] || '').trim();
     var tags = buildWorklogTags(row);
-    var settings = buildWorklogSettings(row);
+    var settings = buildWorklogSettings(row, ownerIndex);
     if (!settings.developmentPhase && statusStr) {
       var phasePrefix = statusStr.substring(0, 3);
       if (WORKLOG_PHASE_MAP[phasePrefix]) settings.developmentPhase = WORKLOG_PHASE_MAP[phasePrefix];
+    }
+    if (statusStr) settings.projectStatus = statusStr;
+
+    var rawOwner = String(row[C.projectOwner] || '').trim();
+    var resolvedOwner = '';
+    if (rawOwner && typeof _resolveOwnerToEmail_ === 'function') {
+      var r = _resolveOwnerToEmail_(rawOwner, ownerIndex);
+      if (r.email) {
+        resolvedOwner = r.email;
+      } else {
+        settings.pendingOwnerName = rawOwner;
+      }
+    } else if (rawOwner) {
+      settings.pendingOwnerName = rawOwner;
+    } else {
+      resolvedOwner = currentUser;
     }
 
     var project = {
@@ -313,7 +521,7 @@ function importProjectsFromWorkLog(workbookId) {
       name: sanitize(name),
       description: sanitize(String(row[C.description] || '')),
       status: WORKLOG_STATUS_MAP[statusStr] || 'active',
-      ownerId: String(row[C.projectOwner] || currentUser).trim(),
+      ownerId: resolvedOwner,
       startDate: convertWorklogDate(row[C.startDate]),
       endDate: convertWorklogDate(row[C.retiredDate]),
       createdAt: timestamp,
@@ -369,6 +577,14 @@ function syncWorklogSettings(workbookId) {
   var existingProjects = getAllProjects();
   var nameMap = {};
   existingProjects.forEach(function(p) { nameMap[p.name.toLowerCase().trim()] = p; });
+  var ownerIndex = {};
+  try {
+    if (typeof _buildUserOwnerIndex_ === 'function' && typeof getAllUsers === 'function') {
+      ownerIndex = _buildUserOwnerIndex_(getAllUsers());
+    }
+  } catch (ownerLookupErr) {
+    console.error('Owner index build failed; falling back to raw values:', ownerLookupErr);
+  }
 
   var updated = [];
   var skipped = [];
@@ -381,7 +597,7 @@ function syncWorklogSettings(workbookId) {
     var existing = nameMap[name.toLowerCase()];
     if (!existing) { skipped.push(name); continue; }
 
-    var newSettings = buildWorklogSettings(row);
+    var newSettings = buildWorklogSettings(row, ownerIndex);
     var currentSettings = {};
     try { currentSettings = typeof existing.settings === 'string' ? JSON.parse(existing.settings) : (existing.settings || {}); } catch (e) { currentSettings = {}; }
 
@@ -390,6 +606,9 @@ function syncWorklogSettings(workbookId) {
         currentSettings[key] = newSettings[key];
       }
     });
+    if (!newSettings.pendingSecondaryUsers && currentSettings.pendingSecondaryUsers) {
+      delete currentSettings.pendingSecondaryUsers;
+    }
 
     var newTags = buildWorklogTags(row);
     var statusStr = String(row[C.projectStatus] || '').trim();
@@ -397,11 +616,27 @@ function syncWorklogSettings(workbookId) {
       var phasePrefix = statusStr.substring(0, 3);
       if (WORKLOG_PHASE_MAP[phasePrefix]) currentSettings.developmentPhase = WORKLOG_PHASE_MAP[phasePrefix];
     }
+    if (statusStr) currentSettings.projectStatus = statusStr;
+    var rawOwnerUpdate = String(row[C.projectOwner] || '').trim();
+    var resolvedOwnerUpdate = existing.ownerId || '';
+    if (rawOwnerUpdate && typeof _resolveOwnerToEmail_ === 'function') {
+      var ru = _resolveOwnerToEmail_(rawOwnerUpdate, ownerIndex);
+      if (ru.email) {
+        resolvedOwnerUpdate = ru.email;
+        delete currentSettings.pendingOwnerName;
+      } else {
+        if (!_isEmailLike_(existing.ownerId)) resolvedOwnerUpdate = '';
+        currentSettings.pendingOwnerName = rawOwnerUpdate;
+      }
+    } else if (rawOwnerUpdate) {
+      if (!_isEmailLike_(existing.ownerId)) resolvedOwnerUpdate = '';
+      currentSettings.pendingOwnerName = rawOwnerUpdate;
+    }
     var updates = {
       settings: JSON.stringify(currentSettings),
       tags: JSON.stringify(newTags),
       description: sanitize(String(row[C.description] || existing.description || '')),
-      ownerId: String(row[C.projectOwner] || existing.ownerId || '').trim(),
+      ownerId: resolvedOwnerUpdate,
       repoUrl: String(row[C.githubLinks] || existing.repoUrl || '').trim(),
       startDate: convertWorklogDate(row[C.startDate]) || existing.startDate,
       endDate: convertWorklogDate(row[C.retiredDate]) || existing.endDate
@@ -488,7 +723,9 @@ function importDataAssetsFromWorkLog(workbookId) {
       dataSharingDocLink: String(row[C.dataSharingDocLink] || '').trim(),
       createdAt: timestamp,
       updatedAt: timestamp,
-      lastUpdatedBy: currentUser
+      lastUpdatedBy: currentUser,
+      assetType: '',
+      bucketId: ''
     };
 
     rows.push(objectToRow(asset, columns));

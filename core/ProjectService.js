@@ -1,7 +1,17 @@
 function saveNewProject(projectData) {
-  const result = createProject(projectData);
-  invalidateProjectCache();
-  return result;
+  try {
+    const project = createProject(projectData);
+    invalidateProjectCache();
+    return { success: true, project: project };
+  } catch (error) {
+    console.error('saveNewProject failed:', error);
+    return {
+      success: false,
+      error: error.message,
+      code: error.code || null,
+      suggestedType: error.suggestedType || null
+    };
+  }
 }
 
 function loadProjects() {
@@ -38,8 +48,33 @@ function getProjectDetailsList() {
       var pid = tasks[i].projectId;
       if (pid) countMap[pid] = (countMap[pid] || 0) + 1;
     }
+    var assetCountMap = {};
+    try {
+      if (typeof getAllDataAssetsOptimized === 'function') {
+        var assets = getAllDataAssetsOptimized();
+        for (var a = 0; a < assets.length; a++) {
+          var ids = String(assets[a].relatedProjects || '').split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+          ids.forEach(function(id) { assetCountMap[id] = (assetCountMap[id] || 0) + 1; });
+        }
+      }
+    } catch (e) {}
     for (var j = 0; j < projects.length; j++) {
-      projects[j].taskCount = countMap[projects[j].id] || 0;
+      var p = projects[j];
+      p.taskCount = countMap[p.id] || 0;
+      var count = assetCountMap[p.id] || 0;
+      var parsedSettings = _parseProjectSettings_(p);
+      var compliance = computeProjectCompliance(p, count, parsedSettings);
+      p.complianceRating = compliance.rating;
+      p.complianceScore = compliance.score;
+      p.complianceFilled = compliance.filled;
+      p.complianceTotal = compliance.total;
+      p.origin = _resolveProjectOrigin_(p, parsedSettings);
+      p.originSource = parsedSettings.originSource || 'auto';
+    }
+    var userRole = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (userRole === 'client') {
+      var userEmail = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+      projects = filterProjectsByUserRole(projects, [], userEmail, userRole);
     }
     return { success: true, projects: projects };
   } catch (error) {
@@ -52,7 +87,22 @@ function getProjectDetails(projectId) {
   try {
     const project = getProjectById(projectId);
     if (!project) return { success: false, error: 'Project not found' };
-    return { success: true, project: project };
+    var userRole = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (userRole === 'client') {
+      var userEmail = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+      var allowed = getClientAccessibleProjectIds(userEmail, [project]);
+      if (!allowed[project.id]) {
+        return { success: false, error: 'Project not found' };
+      }
+    }
+    var count = _countRelatedDataAssets_(projectId);
+    var compliance = computeProjectCompliance(project, count);
+    project.complianceRating = compliance.rating;
+    project.complianceScore = compliance.score;
+    project.complianceFilled = compliance.filled;
+    project.complianceTotal = compliance.total;
+    _decorateProjectOrigin_(project);
+    return { success: true, project: project, compliance: compliance };
   } catch (error) {
     console.error('getProjectDetails failed:', error);
     return { success: false, error: error.message };
@@ -76,26 +126,39 @@ function updateProjectDetails(payload) {
 
 function getProjectTaxonomyValues() {
   try {
+    var cached = null;
+    try { cached = VersionedCache.get('PROJECT_TAXONOMY_CACHE'); } catch (e) {}
+    if (cached) return cached;
     var projects = getAllProjectsOptimized();
     var fields = CONFIG.TAXONOMY_FIELDS;
+    var MULTIVALUE_FIELDS = { techStack: true, deploymentLocation: true };
     var result = {};
     fields.forEach(function(f) { result[f] = {}; });
     projects.forEach(function(p) {
+      var parsedSettings = null;
       fields.forEach(function(f) {
         var val = p[f];
         if (!val) {
-          try {
-            var s = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {});
-            val = s[f];
-          } catch (e) {}
+          if (parsedSettings === null) {
+            try {
+              parsedSettings = typeof p.settings === 'string' ? JSON.parse(p.settings || '{}') : (p.settings || {});
+            } catch (e) { parsedSettings = {}; }
+          }
+          val = parsedSettings[f];
         }
         if (val) {
           var arr = val;
           if (typeof arr === 'string') {
             try { var parsed = JSON.parse(arr); if (Array.isArray(parsed)) arr = parsed; } catch(e) {}
           }
+          if (typeof arr === 'string' && MULTIVALUE_FIELDS[f] && arr.indexOf(',') !== -1) {
+            arr = arr.split(',');
+          }
           if (Array.isArray(arr)) {
-            arr.forEach(function(v) { if (v && String(v).trim() && v !== 'N/A' && v !== 'FALSE') result[f][String(v).trim()] = true; });
+            arr.forEach(function(v) {
+              var t = String(v || '').trim();
+              if (t && t !== 'N/A' && t !== 'FALSE') result[f][t] = true;
+            });
           } else if (String(val).trim() && val !== 'N/A' && val !== 'FALSE') {
             result[f][String(val).trim()] = true;
           }
@@ -103,13 +166,18 @@ function getProjectTaxonomyValues() {
       });
     });
     var hardcoded = CONFIG.TAXONOMY_OPTIONS || {};
+    var assetOnlyTypes = CONFIG.DATA_ASSET_PROJECT_TYPES || [];
     var sorted = {};
     fields.forEach(function(f) {
       var merged = Object.assign({}, result[f]);
       if (hardcoded[f]) {
         hardcoded[f].forEach(function(opt) { merged[opt] = true; });
       }
-      sorted[f] = Object.keys(merged).sort();
+      var keys = Object.keys(merged).sort();
+      if (f === 'projectType' && assetOnlyTypes.length) {
+        keys = keys.filter(function(v) { return assetOnlyTypes.indexOf(v) === -1; });
+      }
+      sorted[f] = keys;
     });
     sorted.biSmes = CONFIG.BI_SMES || [];
     sorted.aiInvolved = (CONFIG.TAXONOMY_OPTIONS && CONFIG.TAXONOMY_OPTIONS.aiInvolved) || [];
@@ -117,6 +185,7 @@ function getProjectTaxonomyValues() {
     sorted.contractOptions = (CONFIG.TAXONOMY_OPTIONS && CONFIG.TAXONOMY_OPTIONS.contractOptions) || [];
     sorted.dataCadence = (CONFIG.TAXONOMY_OPTIONS && CONFIG.TAXONOMY_OPTIONS.dataCadence) || [];
     sorted.projectTypeCode = CONFIG.PROJECT_TYPE_OPTIONS || [];
+    try { VersionedCache.put('PROJECT_TAXONOMY_CACHE', sorted, 900); } catch (e) {}
     return sorted;
   } catch (error) {
     console.error('getProjectTaxonomyValues failed:', error);
@@ -232,6 +301,522 @@ function deleteExistingProject(projectId) {
     return { success: true };
   } catch (error) {
     console.error('deleteExistingProject failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function _isEmailLike_(value) {
+  var s = String(value || '').trim();
+  if (!s) return false;
+  return s.indexOf('@') !== -1 && s.lastIndexOf('.') > s.indexOf('@');
+}
+
+function _normalizeOwnerKey_(value) {
+  return String(value || '').trim().toLowerCase().replace(/\./g, ' ').replace(/\s+/g, ' ');
+}
+
+function _buildUserOwnerIndex_(users) {
+  var byKey = {};
+  (users || []).forEach(function(u) {
+    if (!u || !u.email) return;
+    var keys = [];
+    if (u.name) keys.push(_normalizeOwnerKey_(u.name));
+    var prefix = String(u.email).split('@')[0];
+    if (prefix) keys.push(_normalizeOwnerKey_(prefix));
+    keys.forEach(function(k) {
+      if (!k) return;
+      if (!byKey[k]) byKey[k] = [];
+      if (byKey[k].indexOf(u.email) === -1) byKey[k].push(u.email);
+    });
+  });
+  return byKey;
+}
+
+function _resolveOwnerToEmail_(rawValue, ownerIndex) {
+  if (_isEmailLike_(rawValue)) return { email: String(rawValue).trim().toLowerCase(), match: 'email' };
+  var key = _normalizeOwnerKey_(rawValue);
+  if (!key) return { email: '', match: 'empty' };
+  var matches = ownerIndex && ownerIndex[key];
+  if (!matches || matches.length === 0) return { email: '', match: 'unmatched' };
+  if (matches.length === 1) return { email: matches[0], match: 'matched' };
+  return { email: '', match: 'ambiguous', candidates: matches.slice() };
+}
+
+function _userIdentityKeys_(email, name) {
+  var keys = {};
+  var emailLc = String(email || '').trim().toLowerCase();
+  if (emailLc) keys[emailLc] = true;
+  var nameKey = _normalizeOwnerKey_(name);
+  if (nameKey) keys[nameKey] = true;
+  if (emailLc.indexOf('@') !== -1) {
+    var prefixKey = _normalizeOwnerKey_(emailLc.split('@')[0]);
+    if (prefixKey) keys[prefixKey] = true;
+  }
+  return keys;
+}
+
+function _safeClaimForUser_(rawValue, emailLc, identity, ownerIndex) {
+  if (!rawValue) return false;
+  var s = String(rawValue).trim();
+  if (!s) return false;
+  if (s.toLowerCase() === emailLc) return false;
+  var k = _normalizeOwnerKey_(s);
+  if (!k || !identity[k]) return false;
+  var owners = ownerIndex && ownerIndex[k];
+  if (!owners || owners.length === 0) return true;
+  if (owners.length === 1 && owners[0] === emailLc) return true;
+  return false;
+}
+
+function backfillProjectOwnersForUser(email, name) {
+  var emailLc = String(email || '').trim().toLowerCase();
+  if (!emailLc) return { scanned: 0, updated: [] };
+  var callerEmail = String(getCurrentUserEmail() || '').toLowerCase();
+  var callerUser = callerEmail ? getUserByEmail(callerEmail) : null;
+  var isAdmin = callerUser && callerUser.role === 'admin';
+  var isSelf = callerEmail && callerEmail === emailLc;
+  if (!isAdmin && !isSelf) {
+    throw new Error('Permission denied: backfillProjectOwnersForUser');
+  }
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { scanned: 0, updated: [], error: 'Could not acquire lock for owner backfill' };
+  }
+  try {
+    var identity = _userIdentityKeys_(emailLc, name);
+    var users = (typeof getAllUsers === 'function') ? getAllUsers() : [];
+    var ownerIndex = _buildUserOwnerIndex_(users);
+    var projects = getAllProjectsOptimized();
+    var updated = [];
+    var skippedAmbiguous = [];
+
+    projects.forEach(function(p) {
+      if (!p) return;
+      var settings = {};
+      try { settings = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {}); }
+      catch (e) { settings = {}; }
+
+      var changes = {};
+      var settingsChanged = false;
+      var changeLog = [];
+      var ambiguous = [];
+
+      var rawOwner = String(p.ownerId || '').trim();
+      var ownerIsEmail = _isEmailLike_(rawOwner);
+      if (!ownerIsEmail && rawOwner) {
+        if (_safeClaimForUser_(rawOwner, emailLc, identity, ownerIndex)) {
+          changes.ownerId = emailLc;
+          changeLog.push({ field: 'ownerId', from: rawOwner, to: emailLc });
+        } else if (identity[_normalizeOwnerKey_(rawOwner)]) {
+          ambiguous.push({ field: 'ownerId', value: rawOwner });
+        }
+      }
+      if (!changes.ownerId && settings.pendingOwnerName) {
+        if (_safeClaimForUser_(settings.pendingOwnerName, emailLc, identity, ownerIndex)) {
+          changes.ownerId = emailLc;
+          changeLog.push({ field: 'ownerId', from: 'pending:' + settings.pendingOwnerName, to: emailLc });
+          delete settings.pendingOwnerName;
+          settingsChanged = true;
+        } else if (identity[_normalizeOwnerKey_(settings.pendingOwnerName)]) {
+          ambiguous.push({ field: 'pendingOwnerName', value: settings.pendingOwnerName });
+        }
+      }
+
+      var secondary = Array.isArray(settings.secondaryUsers) ? settings.secondaryUsers.slice() : [];
+      var pendingSecondary = Array.isArray(settings.pendingSecondaryUsers) ? settings.pendingSecondaryUsers.slice() : [];
+      var alreadyHasEmail = secondary.some(function(v) { return String(v || '').trim().toLowerCase() === emailLc; });
+      var nextSecondary = secondary.filter(function(v) {
+        var sv = String(v || '').trim();
+        if (!sv) return false;
+        if (_isEmailLike_(sv)) return true;
+        if (_safeClaimForUser_(sv, emailLc, identity, ownerIndex)) {
+          changeLog.push({ field: 'secondaryUsers', from: sv, to: emailLc });
+          return false;
+        }
+        if (identity[_normalizeOwnerKey_(sv)]) ambiguous.push({ field: 'secondaryUsers', value: sv });
+        return true;
+      });
+      var nextPending = pendingSecondary.filter(function(v) {
+        if (_safeClaimForUser_(v, emailLc, identity, ownerIndex)) {
+          changeLog.push({ field: 'pendingSecondaryUsers', from: v, to: emailLc });
+          return false;
+        }
+        if (identity[_normalizeOwnerKey_(v)]) ambiguous.push({ field: 'pendingSecondaryUsers', value: v });
+        return true;
+      });
+      var matchedInSecondary = nextSecondary.length !== secondary.length;
+      var matchedInPending = nextPending.length !== pendingSecondary.length;
+      if ((matchedInSecondary || matchedInPending) && !alreadyHasEmail) {
+        nextSecondary.push(emailLc);
+      }
+      if (matchedInSecondary || matchedInPending) {
+        settings.secondaryUsers = nextSecondary;
+        if (Array.isArray(settings.pendingSecondaryUsers)) {
+          if (nextPending.length === 0) delete settings.pendingSecondaryUsers;
+          else settings.pendingSecondaryUsers = nextPending;
+        }
+        settingsChanged = true;
+      }
+
+      if (ambiguous.length) {
+        skippedAmbiguous.push({ projectId: p.id, projectName: p.name || '', conflicts: ambiguous });
+      }
+
+      if (settingsChanged) changes.settings = JSON.stringify(settings);
+      if (Object.keys(changes).length === 0) return;
+      try {
+        updateProject(p.id, changes);
+        updated.push({ projectId: p.id, projectName: p.name || '', changes: changeLog });
+      } catch (e) {
+        console.error('backfillProjectOwnersForUser failed for ' + p.id + ':', e);
+      }
+    });
+
+    if (updated.length) {
+      invalidateProjectCache();
+      try { logActivity(emailLc, 'owner_backfilled', 'admin', '', { count: updated.length, ambiguous: skippedAmbiguous.length }); } catch (e) {}
+    }
+    return { scanned: projects.length, updated: updated, skippedAmbiguous: skippedAmbiguous };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function linkProjectOwner(projectId, email) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    if (!projectId) return { success: false, error: 'Project ID is required' };
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var emailLc = String(email || '').trim().toLowerCase();
+    var settings = {};
+    try { settings = typeof project.settings === 'string' ? JSON.parse(project.settings) : (project.settings || {}); } catch (e) { settings = {}; }
+    var updates = {};
+    if (emailLc) {
+      if (!_isEmailLike_(emailLc)) return { success: false, error: 'A valid email is required' };
+      var user = getUserByEmail(emailLc);
+      if (!user) return { success: false, error: 'No user found for ' + emailLc };
+      updates.ownerId = emailLc;
+      if (settings.pendingOwnerName) {
+        delete settings.pendingOwnerName;
+        updates.settings = JSON.stringify(settings);
+      }
+    } else {
+      updates.ownerId = '';
+    }
+    updateProject(projectId, updates);
+    invalidateProjectCache(projectId);
+    try { logActivity(getCurrentUserEmail(), 'owner_linked', 'project', projectId, { to: emailLc || '' }); } catch (e) {}
+    return { success: true, projectId: projectId, ownerId: emailLc };
+  } catch (error) {
+    console.error('linkProjectOwner failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function normalizeAllProjectOwners(options) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    options = options || {};
+    var apply = options.apply === true;
+    var lock = LockService.getScriptLock();
+    if (apply && !lock.tryLock(60000)) {
+      return { success: false, error: 'Could not acquire lock for normalization' };
+    }
+    try {
+      var users = (typeof getAllUsers === 'function') ? getAllUsers() : [];
+      var ownerIndex = _buildUserOwnerIndex_(users);
+      var emailLookup = {};
+      users.forEach(function(u) { if (u && u.email) emailLookup[String(u.email).toLowerCase()] = true; });
+      var projects = getAllProjectsOptimized();
+      var report = {
+        scanned: projects.length,
+        rewrittenOwner: 0,
+        rewrittenSecondary: 0,
+        movedToPendingOwner: 0,
+        movedToPendingSecondary: 0,
+        ambiguousOwner: [],
+        unresolvedOwner: [],
+        applied: [],
+        apply: apply,
+        timestamp: now()
+      };
+      var pendingChanges = [];
+
+      projects.forEach(function(p) {
+        if (!p) return;
+        var settings = {};
+        try { settings = typeof p.settings === 'string' ? JSON.parse(p.settings) : (p.settings || {}); }
+        catch (e) { settings = {}; }
+        var changes = {};
+        var settingsChanged = false;
+        var detail = { projectId: p.id, projectName: p.name || '', changes: [] };
+
+        var rawOwner = String(p.ownerId || '').trim();
+        if (rawOwner && !_isEmailLike_(rawOwner)) {
+          var resolved = _resolveOwnerToEmail_(rawOwner, ownerIndex);
+          if (resolved.match === 'matched') {
+            changes.ownerId = resolved.email;
+            detail.changes.push({ field: 'ownerId', from: rawOwner, to: resolved.email });
+            report.rewrittenOwner++;
+          } else if (resolved.match === 'ambiguous') {
+            report.ambiguousOwner.push({ projectId: p.id, projectName: p.name || '', currentOwnerId: rawOwner, candidates: resolved.candidates || [] });
+            if (settings.pendingOwnerName !== rawOwner) {
+              settings.pendingOwnerName = rawOwner;
+              changes.ownerId = '';
+              detail.changes.push({ field: 'ownerId', from: rawOwner, to: 'pending:' + rawOwner });
+              report.movedToPendingOwner++;
+              settingsChanged = true;
+            }
+          } else {
+            report.unresolvedOwner.push({ projectId: p.id, projectName: p.name || '', currentOwnerId: rawOwner });
+            if (settings.pendingOwnerName !== rawOwner) {
+              settings.pendingOwnerName = rawOwner;
+              changes.ownerId = '';
+              detail.changes.push({ field: 'ownerId', from: rawOwner, to: 'pending:' + rawOwner });
+              report.movedToPendingOwner++;
+              settingsChanged = true;
+            }
+          }
+        } else if (rawOwner && _isEmailLike_(rawOwner)) {
+          var lc = rawOwner.toLowerCase();
+          if (rawOwner !== lc) {
+            changes.ownerId = lc;
+            detail.changes.push({ field: 'ownerId', from: rawOwner, to: lc });
+          }
+        }
+
+        var secondary = Array.isArray(settings.secondaryUsers) ? settings.secondaryUsers.slice() : [];
+        var pendingSecondary = Array.isArray(settings.pendingSecondaryUsers) ? settings.pendingSecondaryUsers.slice() : [];
+        var nextSecondary = [];
+        var nextPending = pendingSecondary.slice();
+        var seen = {};
+        var secondaryChanged = false;
+        secondary.forEach(function(v) {
+          var sv = String(v || '').trim();
+          if (!sv) { secondaryChanged = true; return; }
+          if (_isEmailLike_(sv)) {
+            var lc = sv.toLowerCase();
+            if (!seen[lc]) { nextSecondary.push(lc); seen[lc] = true; }
+            if (lc !== sv) secondaryChanged = true;
+            return;
+          }
+          var r = _resolveOwnerToEmail_(sv, ownerIndex);
+          if (r.match === 'matched') {
+            if (!seen[r.email]) { nextSecondary.push(r.email); seen[r.email] = true; }
+            detail.changes.push({ field: 'secondaryUsers', from: sv, to: r.email });
+            report.rewrittenSecondary++;
+            secondaryChanged = true;
+          } else {
+            if (nextPending.indexOf(sv) === -1) {
+              nextPending.push(sv);
+              report.movedToPendingSecondary++;
+            }
+            detail.changes.push({ field: 'secondaryUsers', from: sv, to: 'pending:' + sv });
+            secondaryChanged = true;
+          }
+        });
+        if (secondaryChanged) {
+          settings.secondaryUsers = nextSecondary;
+          if (nextPending.length) settings.pendingSecondaryUsers = nextPending;
+          else delete settings.pendingSecondaryUsers;
+          settingsChanged = true;
+        }
+
+        if (settingsChanged) changes.settings = JSON.stringify(settings);
+        if (Object.keys(changes).length === 0) return;
+        pendingChanges.push({ projectId: p.id, changes: changes, detail: detail });
+      });
+
+      if (apply && pendingChanges.length) {
+        pendingChanges.forEach(function(pc) {
+          try {
+            updateProject(pc.projectId, pc.changes);
+            report.applied.push(pc.detail);
+          } catch (e) {
+            console.error('normalizeAllProjectOwners apply failed for ' + pc.projectId + ':', e);
+            report.unresolvedOwner.push({ projectId: pc.projectId, error: e.message });
+          }
+        });
+        invalidateProjectCache();
+        try { logActivity(getCurrentUserEmail(), 'normalized_project_owners', 'admin', '', { applied: report.applied.length, scanned: report.scanned }); } catch (e) {}
+      } else if (!apply) {
+        report.preview = pendingChanges.map(function(pc) { return pc.detail; });
+      }
+
+      return { success: true, report: report };
+    } finally {
+      if (apply) lock.releaseLock();
+    }
+  } catch (error) {
+    console.error('normalizeAllProjectOwners failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function repairProjectOwnerIds(options) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    options = options || {};
+    var apply = options.apply === true;
+    var users = (typeof getAllUsers === 'function') ? getAllUsers() : [];
+    var ownerIndex = _buildUserOwnerIndex_(users);
+    var projects = getAllProjectsOptimized();
+    var report = {
+      scanned: projects.length,
+      alreadyEmail: 0,
+      empty: 0,
+      matched: [],
+      ambiguous: [],
+      unmatched: [],
+      applied: [],
+      apply: apply,
+      timestamp: now()
+    };
+    var pending = [];
+    projects.forEach(function(p) {
+      if (!p) return;
+      var raw = p.ownerId || '';
+      if (_isEmailLike_(raw)) { report.alreadyEmail++; return; }
+      if (!String(raw).trim()) { report.empty++; return; }
+      var resolved = _resolveOwnerToEmail_(raw, ownerIndex);
+      var entry = { projectId: p.id, projectName: p.name || '', currentOwnerId: raw };
+      if (resolved.match === 'matched') {
+        entry.suggestedEmail = resolved.email;
+        report.matched.push(entry);
+        pending.push(entry);
+      } else if (resolved.match === 'ambiguous') {
+        entry.candidates = resolved.candidates || [];
+        report.ambiguous.push(entry);
+      } else {
+        report.unmatched.push(entry);
+      }
+    });
+
+    if (apply && pending.length) {
+      pending.forEach(function(entry) {
+        try {
+          updateProject(entry.projectId, { ownerId: entry.suggestedEmail });
+          report.applied.push({
+            projectId: entry.projectId,
+            projectName: entry.projectName,
+            from: entry.currentOwnerId,
+            to: entry.suggestedEmail
+          });
+        } catch (e) {
+          console.error('repairProjectOwnerIds apply failed for ' + entry.projectId + ':', e);
+          report.unmatched.push({
+            projectId: entry.projectId,
+            projectName: entry.projectName,
+            currentOwnerId: entry.currentOwnerId,
+            error: e.message
+          });
+        }
+      });
+      invalidateProjectCache();
+      logActivity(getCurrentUserEmail(), 'repaired_owner_ids', 'admin', '', { applied: report.applied.length, scanned: report.scanned });
+    }
+
+    return { success: true, report: report };
+  } catch (error) {
+    console.error('repairProjectOwnerIds failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function previewProjectMigration(projectId) {
+  try {
+    PermissionGuard.requirePermission('project:read', { projectId: projectId });
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    var projectType = String(settings.projectType || project.projectType || '').trim();
+    if ((CONFIG.DATA_ASSET_PROJECT_TYPES || []).indexOf(projectType) === -1) {
+      return { success: false, error: 'Project type "' + (projectType || 'unknown') + '" is not a Data Asset type.' };
+    }
+    var tasks = getAllTasksOptimized().filter(function(t) { return t.projectId === projectId; });
+    var openTasks = tasks.filter(function(t) { return String(t.status || '').toLowerCase() !== 'done'; });
+    var inboundLinks = getAllProjectsOptimized().filter(function(p) {
+      if (p.id === projectId) return false;
+      var s = _parseProjectSettings_(p);
+      var linked = s.linkedProjectId || s.linkedProjectIds;
+      if (!linked) return false;
+      if (Array.isArray(linked)) return linked.indexOf(projectId) !== -1;
+      try { var parsed = JSON.parse(linked); if (Array.isArray(parsed)) return parsed.indexOf(projectId) !== -1; } catch (e) {}
+      return String(linked).split(/[,;]/).map(function(s){return s.trim();}).indexOf(projectId) !== -1;
+    }).map(function(p) { return { id: p.id, name: p.name }; });
+    return {
+      success: true,
+      project: { id: project.id, name: project.name, projectType: projectType },
+      taskCount: tasks.length,
+      openTaskCount: openTasks.length,
+      inboundLinkCount: inboundLinks.length,
+      inboundLinks: inboundLinks
+    };
+  } catch (error) {
+    console.error('previewProjectMigration failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function migrateProjectToDataAsset(projectId) {
+  try {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+    PermissionGuard.requirePermission('dataasset:create');
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    var projectType = String(settings.projectType || project.projectType || '').trim();
+    if ((CONFIG.DATA_ASSET_PROJECT_TYPES || []).indexOf(projectType) === -1) {
+      return { success: false, error: 'Only Database and Data Pipeline projects can migrate to Data Assets.' };
+    }
+    var secondaryUsers = settings.secondaryUsers;
+    if (typeof secondaryUsers === 'string') {
+      try { var parsed = JSON.parse(secondaryUsers); if (Array.isArray(parsed)) secondaryUsers = parsed; } catch (e) {}
+    }
+    if (Array.isArray(secondaryUsers)) secondaryUsers = secondaryUsers.join(', ');
+    var deploymentLoc = settings.deploymentLocation;
+    if (Array.isArray(deploymentLoc)) deploymentLoc = deploymentLoc.join(', ');
+    else if (typeof deploymentLoc === 'string') {
+      try { var dParsed = JSON.parse(deploymentLoc); if (Array.isArray(dParsed)) deploymentLoc = dParsed.join(', '); } catch (e) {}
+    }
+    var techStack = settings.techStack;
+    if (Array.isArray(techStack)) techStack = techStack.join(', ');
+    else if (typeof techStack === 'string') {
+      try { var tParsed = JSON.parse(techStack); if (Array.isArray(tParsed)) techStack = tParsed.join(', '); } catch (e) {}
+    }
+    var env = deploymentLoc || techStack || '';
+    var assetPayload = {
+      status: 'Active',
+      assetOwner: project.ownerId || '',
+      backupOwner: secondaryUsers || '',
+      assetName: project.name || '',
+      dataSource: settings.dataSourceExplain || '',
+      targetFiles: settings.dataSourceFiles || '',
+      relatedProjects: settings.linkedProjectId || settings.linkedProjectIds || '',
+      primaryStakeholder: settings.clientOwner || '',
+      updateFrequency: settings.dataCadence || '',
+      updateSchedule: '',
+      automatedSchedule: settings.automatedSchedule || '',
+      currentEnvironment: env,
+      githubLink: settings.githubLinks || project.repoUrl || '',
+      dataSharingDocLink: settings.dataSharingDocLink || settings.googleDriveFolder || '',
+      jsonData: JSON.stringify({
+        migratedFromProjectId: project.id,
+        migratedAt: new Date().toISOString(),
+        originalDescription: project.description || '',
+        originalProjectType: projectType
+      })
+    };
+    var asset = createDataAsset(assetPayload);
+    settings.migratedToAssetId = asset.id;
+    settings.migratedAt = new Date().toISOString();
+    updateProject(projectId, { status: 'archived', settings: JSON.stringify(settings) });
+    invalidateProjectCache();
+    invalidateDataAssetCache();
+    return { success: true, asset: asset, projectId: projectId };
+  } catch (error) {
+    console.error('migrateProjectToDataAsset failed:', error);
     return { success: false, error: error.message };
   }
 }
@@ -448,6 +1033,70 @@ function loadCpmdPersonnel() {
   }
 }
 
+function _maskWorkbookId_(id) {
+  if (!id) return '';
+  var s = String(id);
+  if (s.length <= 10) return s.slice(0, 3) + '…';
+  return s.slice(0, 6) + '…' + s.slice(-4);
+}
+
+function getStoredFedStaffingConfig() {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    var wbId = getFedStaffingWorkbookId();
+    var roles = Object.keys(FED_STAFFING_ROLES).map(function(role) {
+      return {
+        role: role,
+        label: FED_STAFFING_ROLES[role].label,
+        sheetName: getFedStaffingSheetMap()[role] || '',
+        defaultSheet: FED_STAFFING_ROLES[role].defaultSheet
+      };
+    });
+    return {
+      success: true,
+      workbookId: wbId,
+      workbookIdMasked: _maskWorkbookId_(wbId),
+      configured: !!wbId,
+      roles: roles
+    };
+  } catch (error) {
+    console.error('getStoredFedStaffingConfig failed:', error);
+    return { success: false, error: error.message, roles: [] };
+  }
+}
+
+function saveFedStaffingWorkbookId(workbookId) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    setFedStaffingWorkbookId(workbookId);
+    return { success: true };
+  } catch (error) {
+    console.error('saveFedStaffingWorkbookId failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function saveFedStaffingSheetName(role, sheetName) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    setFedStaffingSheet(role, sheetName);
+    return { success: true };
+  } catch (error) {
+    console.error('saveFedStaffingSheetName failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function loadFedStaffingPersonnel(role) {
+  try {
+    PermissionGuard.requirePermission('project:read');
+    return { success: true, role: role || 'personnel', personnel: getFedStaffingPersonnel(role) };
+  } catch (error) {
+    console.error('loadFedStaffingPersonnel failed:', error);
+    return { success: false, personnel: [] };
+  }
+}
+
 function generateProjectCode(projectId) {
   try {
     var projects = getAllProjectsOptimized();
@@ -521,6 +1170,328 @@ function _parseProjectSettings_(project) {
     return typeof project.settings === 'string' ? (project.settings ? JSON.parse(project.settings) : {}) : (project.settings || {});
   } catch (e) {
     return {};
+  }
+}
+
+function _resolveProjectOrigin_(project, preparsedSettings) {
+  if (!project) return 'internal';
+  var settings = preparsedSettings || _parseProjectSettings_(project);
+  if (settings && settings.origin) return settings.origin;
+  var creator = settings.originCreatorEmail || project.lastUpdatedBy || '';
+  if (typeof isInternalEmail === 'function') {
+    return isInternalEmail(creator) ? 'internal' : 'client';
+  }
+  return 'internal';
+}
+
+function _decorateProjectOrigin_(project) {
+  if (!project) return project;
+  var settings = _parseProjectSettings_(project);
+  project.origin = _resolveProjectOrigin_(project, settings);
+  project.originSource = settings.originSource || 'auto';
+  return project;
+}
+
+function setProjectOrigin(projectId, origin, reason) {
+  try {
+    PermissionGuard.requirePermission('project:overrideOrigin');
+    if (!projectId) return { success: false, error: 'Project ID required' };
+    var allowed = ['internal', 'client'];
+    var nextOrigin = String(origin || '').toLowerCase().trim();
+    if (allowed.indexOf(nextOrigin) === -1) return { success: false, error: 'Invalid origin: ' + origin };
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    var prevOrigin = settings.origin || _resolveProjectOrigin_(project, settings);
+    settings.origin = nextOrigin;
+    settings.originSource = 'manual';
+    settings.originReason = reason ? String(reason).slice(0, 500) : '';
+    var updated = updateProject(projectId, { settings: JSON.stringify(settings) });
+    invalidateProjectCache(projectId);
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.origin_changed', 'project', projectId, project.name || '', {
+          before: prevOrigin,
+          after: nextOrigin,
+          reason: reason || ''
+        });
+      }
+    } catch (e) {}
+    _decorateProjectOrigin_(updated);
+    return { success: true, project: updated, origin: nextOrigin };
+  } catch (error) {
+    console.error('setProjectOrigin failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function bulkReclassifyProjectOrigins() {
+  try {
+    PermissionGuard.requirePermission('project:overrideOrigin');
+    var projects = getAllProjects();
+    var changed = 0;
+    for (var i = 0; i < projects.length; i++) {
+      var p = projects[i];
+      if (!p || !p.id) continue;
+      var settings = _parseProjectSettings_(p);
+      if (settings.originSource === 'manual') continue;
+      var creator = settings.originCreatorEmail || p.lastUpdatedBy || '';
+      var derived = (typeof isInternalEmail === 'function' && !isInternalEmail(creator)) ? 'client' : 'internal';
+      if (settings.origin === derived && settings.originCreatorEmail) continue;
+      settings.origin = derived;
+      settings.originSource = 'auto';
+      if (!settings.originCreatorEmail) settings.originCreatorEmail = creator;
+      try {
+        updateProject(p.id, { settings: JSON.stringify(settings) });
+        changed++;
+      } catch (e) {
+        console.error('bulkReclassifyProjectOrigins update failed for ' + p.id + ':', e);
+      }
+    }
+    invalidateProjectCache();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.origin_bulk_reclassified', 'project', '*', '', { count: changed });
+      }
+    } catch (e) {}
+    return { success: true, changed: changed };
+  } catch (error) {
+    console.error('bulkReclassifyProjectOrigins failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+var COMPLIANCE_EXEMPTABLE_KEYS = ['githubLinks', 'relatedDataAssets', 'userGuides'];
+
+function _hasValue_(v) {
+  if (v === null || v === undefined) return false;
+  if (typeof v === 'boolean') return v === true;
+  if (Array.isArray(v)) return v.length > 0;
+  var s = String(v).trim();
+  if (!s || s === '[]' || s === '{}' || s === 'null' || s === 'undefined') return false;
+  if (s === CONFIG.TBD_DATE_SENTINEL) return false;
+  return true;
+}
+
+function _hasMultiValue_(v) {
+  if (!v) return false;
+  if (Array.isArray(v)) return v.filter(function(x) { return String(x || '').trim(); }).length > 0;
+  if (typeof v === 'string') {
+    try { var parsed = JSON.parse(v); if (Array.isArray(parsed)) return parsed.filter(function(x) { return String(x || '').trim(); }).length > 0; } catch (e) {}
+    return v.split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean).length > 0;
+  }
+  return false;
+}
+
+function _boolDefined_(v) {
+  return v === true || v === false || v === 'true' || v === 'false' || v === 'TRUE' || v === 'FALSE';
+}
+
+function _boolTrue_(v) {
+  return v === true || v === 'true' || v === 'TRUE';
+}
+
+function buildComplianceRequirements(project, settings, relatedAssetCount) {
+  var type = String(settings.projectType || project.projectType || '').trim();
+  var isDeploymentType = type === 'Web Application' || type === 'Data Visualization';
+  var deployedPublicly = _boolTrue_(settings.deployedPublicly);
+  var activeGas = _boolTrue_(settings.activeGas);
+  var activeDmp = _boolTrue_(settings.activeDataMgmt);
+  var locationKeys = ['standaloneAppLink', 'd2dLink', 'aasIntranetLink', 'gsaLink', 'tableauLink'];
+  var hasAnyLocation = locationKeys.some(function(k) { return _hasValue_(settings[k]); });
+
+  var reqs = [
+    { key: 'googleDriveFolder', label: 'Google Drive Folder', filled: _hasValue_(settings.googleDriveFolder) },
+    { key: 'githubLinks', label: 'Git Repository', filled: _hasValue_(settings.githubLinks), exemptable: true },
+    { key: 'ownerId', label: 'Primary Tech Owner', filled: _hasValue_(project.ownerId) },
+    { key: 'secondaryUsers', label: 'Backup Owner(s)', filled: _hasMultiValue_(settings.secondaryUsers) },
+    { key: 'projectCode', label: 'Project ID', filled: _hasValue_(settings.projectCode) },
+    { key: 'startDate', label: 'Project Start Date', filled: _hasValue_(project.startDate) },
+    { key: 'contractCurrent', label: 'Current Contract Ownership', filled: _hasValue_(settings.contractCurrent) },
+    { key: 'description', label: 'Project Description', filled: _hasValue_(project.description) },
+    { key: 'devDocs', label: 'Development Documentation', filled: _hasValue_(settings.devDocs) },
+    { key: 'techStack', label: 'Tech Stack', filled: _hasMultiValue_(settings.techStack) },
+    { key: 'activeGas', label: 'Active GAS Project', filled: _boolDefined_(settings.activeGas) },
+    { key: 'relatedDataAssets', label: 'Related Data Assets', filled: (relatedAssetCount || 0) > 0, exemptable: true },
+    { key: 'activeDataMgmt', label: 'Active Data Management Process', filled: _boolDefined_(settings.activeDataMgmt) },
+    { key: 'dataDictionaries', label: 'Data Dictionary', filled: _hasValue_(settings.dataDictionaries) },
+    { key: 'userGuides', label: 'User Guide', filled: _hasValue_(settings.userGuides), exemptable: true },
+    { key: 'supportRunbook', label: 'Support Runbook', filled: _hasValue_(settings.supportRunbook) }
+  ];
+
+  if (isDeploymentType) {
+    reqs.splice(2, 0, { key: 'deployedPublicly', label: 'Deployed Publicly', filled: _boolDefined_(settings.deployedPublicly) });
+    if (deployedPublicly) {
+      reqs.splice(3, 0,
+        { key: 'deploymentLocation', label: 'Deployment Location', filled: _hasMultiValue_(settings.deploymentLocation) },
+        { key: 'deploymentLink', label: 'Deployment Link (any of Standalone/D2D/AAS/GSA/Tableau)', filled: hasAnyLocation }
+      );
+    }
+  }
+
+  if (activeGas) {
+    var gasIdx = reqs.findIndex(function(r) { return r.key === 'activeGas'; }) + 1;
+    reqs.splice(gasIdx, 0,
+      { key: 'gasProjectUid', label: 'GAS Project Link', filled: _hasValue_(settings.gasProjectUid) },
+      { key: 'gasOwner', label: 'GAS Project Owner', filled: _hasValue_(settings.gasOwner) }
+    );
+  }
+
+  if (activeDmp) {
+    var dmpIdx = reqs.findIndex(function(r) { return r.key === 'activeDataMgmt'; }) + 1;
+    reqs.splice(dmpIdx, 0,
+      { key: 'dataSourceFiles', label: 'Data Source File(s)', filled: _hasValue_(settings.dataSourceFiles) },
+      { key: 'dataCadence', label: 'Data Refresh Cadence', filled: _hasValue_(settings.dataCadence) },
+      { key: 'dataSourceExplain', label: 'How is Data Sourced', filled: _hasValue_(settings.dataSourceExplain) }
+    );
+  }
+
+  return reqs;
+}
+
+function computeProjectCompliance(project, relatedAssetCount, preparsedSettings) {
+  if (!project) return { rating: 'Non-Compliant', score: 0, total: 0, filled: 0, missing: [], exempted: [], requirements: [] };
+  var settings = preparsedSettings || _parseProjectSettings_(project);
+  var exemptions = settings.docExemptions || {};
+  var reqs = buildComplianceRequirements(project, settings, relatedAssetCount || 0);
+  var total = 0, filled = 0;
+  var missing = [], exempted = [];
+  var enriched = reqs.map(function(r) {
+    var exemption = r.exemptable && exemptions[r.key] ? exemptions[r.key] : null;
+    if (exemption) {
+      exempted.push({ key: r.key, label: r.label, reason: exemption.reason || '' });
+      return Object.assign({}, r, { status: 'exempted', exemption: exemption });
+    }
+    total++;
+    if (r.filled) { filled++; return Object.assign({}, r, { status: 'filled' }); }
+    missing.push({ key: r.key, label: r.label, exemptable: !!r.exemptable });
+    return Object.assign({}, r, { status: 'missing' });
+  });
+  var score = total === 0 ? 100 : Math.round((filled / total) * 100);
+  var rating = score >= 100 ? 'Compliant' : 'Non-Compliant';
+  return {
+    rating: rating,
+    score: score,
+    total: total,
+    filled: filled,
+    missing: missing,
+    exempted: exempted,
+    requirements: enriched
+  };
+}
+
+function _countRelatedDataAssets_(projectId) {
+  try {
+    if (typeof getAllDataAssetsOptimized !== 'function') return 0;
+    var assets = getAllDataAssetsOptimized();
+    var count = 0;
+    for (var i = 0; i < assets.length; i++) {
+      var ids = String(assets[i].relatedProjects || '').split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+      if (ids.indexOf(projectId) !== -1) count++;
+    }
+    return count;
+  } catch (e) { return 0; }
+}
+
+function getProjectCompliance(projectId) {
+  try {
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var count = _countRelatedDataAssets_(projectId);
+    var result = computeProjectCompliance(project, count);
+    return { success: true, compliance: result };
+  } catch (error) {
+    console.error('getProjectCompliance failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function setProjectDocExemption(projectId, fieldKey, reason) {
+  try {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+    if (COMPLIANCE_EXEMPTABLE_KEYS.indexOf(fieldKey) === -1) {
+      return { success: false, error: 'Field is not exemptable: ' + fieldKey };
+    }
+    var trimmedReason = String(reason || '').trim();
+    if (!trimmedReason) return { success: false, error: 'Exemption reason is required' };
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    if (!settings.docExemptions) settings.docExemptions = {};
+    settings.docExemptions[fieldKey] = {
+      reason: trimmedReason,
+      exemptedAt: new Date().toISOString(),
+      exemptedBy: getCurrentUserEmail()
+    };
+    updateProject(projectId, { settings: JSON.stringify(settings) });
+    invalidateProjectCache(projectId);
+    return { success: true, exemption: settings.docExemptions[fieldKey] };
+  } catch (error) {
+    console.error('setProjectDocExemption failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function clearProjectDocExemption(projectId, fieldKey) {
+  try {
+    PermissionGuard.requirePermission('project:update', { projectId: projectId });
+    var project = getProjectById(projectId);
+    if (!project) return { success: false, error: 'Project not found' };
+    var settings = _parseProjectSettings_(project);
+    if (settings.docExemptions && settings.docExemptions[fieldKey]) {
+      delete settings.docExemptions[fieldKey];
+      updateProject(projectId, { settings: JSON.stringify(settings) });
+      invalidateProjectCache(projectId);
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('clearProjectDocExemption failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+var DOC_TEMPLATE_KEYS = ['designDoc', 'devDoc', 'dataDictionary', 'userGuide', 'supportRunbook'];
+
+function getDocTemplates() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var raw = props.getProperty('DOC_TEMPLATES_JSON');
+    var stored = {};
+    if (raw) { try { stored = JSON.parse(raw); } catch (e) { stored = {}; } }
+    var result = {};
+    DOC_TEMPLATE_KEYS.forEach(function(k) {
+      result[k] = stored[k] && stored[k].url ? stored[k] : null;
+    });
+    return { success: true, templates: result };
+  } catch (error) {
+    console.error('getDocTemplates failed:', error);
+    return { success: false, error: error.message, templates: {} };
+  }
+}
+
+function setDocTemplate(key, url, name) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    if (DOC_TEMPLATE_KEYS.indexOf(key) === -1) return { success: false, error: 'Invalid template key: ' + key };
+    var props = PropertiesService.getScriptProperties();
+    var raw = props.getProperty('DOC_TEMPLATES_JSON');
+    var stored = {};
+    if (raw) { try { stored = JSON.parse(raw); } catch (e) { stored = {}; } }
+    if (!url || !String(url).trim()) {
+      delete stored[key];
+    } else {
+      stored[key] = {
+        url: String(url).trim(),
+        name: String(name || '').trim() || key,
+        updatedAt: new Date().toISOString(),
+        updatedBy: getCurrentUserEmail()
+      };
+    }
+    props.setProperty('DOC_TEMPLATES_JSON', JSON.stringify(stored));
+    return { success: true, templates: stored };
+  } catch (error) {
+    console.error('setDocTemplate failed:', error);
+    return { success: false, error: error.message };
   }
 }
 

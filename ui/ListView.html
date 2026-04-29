@@ -133,91 +133,79 @@
 .priority-routine { background: #e5e7eb; color: #6b7280; }
 
 .filters-panel {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: var(--co-surface);
+  border: 1px solid var(--co-border-subtle);
+  border-radius: var(--co-border-radius-md);
+  padding: 16px 20px;
+  margin-bottom: 16px;
 }
 
 .filter-group {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .filter-group label {
   display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--co-gray-700);
-  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--co-gray-400);
+  margin-bottom: 6px;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .filter-group input,
 .filter-group select {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--co-gray-300);
-  border-radius: 6px;
-  font-size: 14px;
-  transition: border-color 0.15s ease;
-}
-
-.filter-group input:focus,
-.filter-group select:focus {
-  outline: none;
-  border-color: var(--co-primary-500);
-  box-shadow: 0 0 0 3px rgba(82, 82, 82, 0.1);
 }
 
 .btn {
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 0.4375rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  border: none;
+  border: 1px solid transparent;
   outline: none;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
+  white-space: nowrap;
 }
 
 .btn-primary {
-  background: var(--co-primary-500);
-  color: white;
+  background: var(--co-ink);
+  color: #fff;
 }
 
 .btn-primary:hover {
-  background: var(--co-primary-600);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 6px rgba(82, 82, 82, 0.2);
+  background: var(--co-primary-800);
 }
 
 .btn-secondary {
-  background: white;
-  color: var(--co-gray-700);
-  border: 1px solid var(--co-gray-300);
+  background: var(--co-surface);
+  color: var(--co-ink-soft);
+  border-color: var(--co-border-soft);
 }
 
 .btn-secondary:hover {
-  background: var(--co-gray-50);
-  border-color: var(--co-gray-400);
+  background: var(--co-surface-sunken);
+  border-color: var(--co-primary-400);
 }
 
 .btn-danger {
-  background: #ef4444;
-  color: white;
+  background: var(--co-error);
+  color: #fff;
 }
 
 .btn-danger:hover {
-  background: #dc2626;
+  background: var(--co-error-dark);
 }
 
 .btn-sm {
-  padding: 4px 12px;
-  font-size: 12px;
+  padding: 0.3125rem 0.625rem;
+  font-size: 0.75rem;
 }
 
 input[type="checkbox"] {
@@ -453,38 +441,35 @@ input[type="checkbox"] {
 }
 </style>
 <div class="p-6">
-  <div class="flex justify-between items-center mb-6">
-    <div>
-      <h1 class="text-3xl font-bold text-gray-900">Task List</h1>
-      <p class="text-gray-600 mt-1">Manage and filter all tasks</p>
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div class="flex items-center gap-2.5">
+      <h2 class="text-[18px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);letter-spacing:-0.015em;">
+        <i class="fas fa-list" style="color:var(--co-accent-500);font-size:14px;"></i>Task List
+      </h2>
     </div>
-    <div class="flex gap-3">
-      <button onclick="ListViewPage.exportToCSV()" class="btn btn-secondary">
-        <i class="fas fa-download"></i>
-        Export CSV
+    <div class="flex items-center gap-2 flex-wrap">
+      <button onclick="ListViewPage.exportToCSV()" class="co-btn-outline">
+        <i class="fas fa-download text-[11px]"></i> Export CSV
       </button>
       <div class="relative">
-        <button onclick="ListViewPage.togglePresetPanel()" class="btn btn-secondary">
-          <i class="fas fa-bookmark"></i>
-          Presets
+        <button onclick="ListViewPage.togglePresetPanel()" class="co-btn-outline">
+          <i class="fas fa-bookmark text-[11px]"></i> Presets
         </button>
         <div id="presetPanel" class="preset-panel hidden">
           <div class="mb-3">
-            <input type="text" id="presetName" placeholder="Preset name..." class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
-            <button onclick="ListViewPage.savePreset()" class="btn btn-primary btn-sm w-full mt-2">
-              <i class="fas fa-save"></i>
-              Save Current Filters
+            <input type="text" id="presetName" placeholder="Preset name..." class="co-search-input w-full">
+            <button onclick="ListViewPage.savePreset()" class="co-btn-solid w-full mt-2 justify-center">
+              <i class="fas fa-save text-[11px]"></i> Save Current Filters
             </button>
           </div>
-          <div class="border-t border-gray-200 pt-3">
+          <div class="pt-3" style="border-top:1px solid var(--co-border-subtle);">
             <div id="presetList"></div>
           </div>
         </div>
       </div>
       <div class="relative">
-        <button onclick="ListViewPage.toggleColumnVisibility()" class="btn btn-secondary">
-          <i class="fas fa-columns"></i>
-          Columns
+        <button onclick="ListViewPage.toggleColumnVisibility()" class="co-btn-outline">
+          <i class="fas fa-columns text-[11px]"></i> Columns
         </button>
         <div id="columnVisibilityPanel" class="column-visibility-panel hidden"></div>
       </div>
@@ -492,47 +477,41 @@ input[type="checkbox"] {
   </div>
 
   <div class="filters-panel">
-    <div class="flex justify-between items-center mb-4">
-      <h3 class="text-lg font-semibold text-gray-800">Filters</h3>
-      <div class="flex items-center gap-2">
+    <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+      <h3 class="text-[13px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Filters</h3>
+      <div class="flex items-center gap-2 flex-wrap">
         <div class="relative">
           <button
             onclick="SavedViews.toggleDropdown()"
-            class="btn btn-secondary btn-sm flex items-center gap-1"
+            class="co-btn-outline"
             title="Saved Views"
           >
-            <i class="fas fa-bookmark"></i>
+            <i class="fas fa-bookmark text-[11px]"></i>
             Saved Views
-            <i class="fas fa-chevron-down text-xs ml-1"></i>
+            <i class="fas fa-chevron-down text-[10px] ml-0.5"></i>
           </button>
-          <div id="savedViewsDropdown" class="hidden absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+          <div id="savedViewsDropdown" class="hidden absolute right-0 top-full mt-1 w-56 rounded-lg shadow-lg z-50" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
             <div id="savedViewsList" class="py-1 max-h-60 overflow-y-auto">
-              <div class="px-3 py-2 text-sm text-gray-400 italic">No saved views</div>
+              <div class="px-3 py-2 text-[12px] italic" style="color:var(--co-gray-400);">No saved views</div>
             </div>
           </div>
         </div>
-        <button
-          onclick="SavedViews.promptSave()"
-          class="btn btn-secondary btn-sm flex items-center gap-1"
-          title="Save current filters as a view"
-        >
-          <i class="fas fa-save"></i>
-          Save View
+        <button onclick="SavedViews.promptSave()" class="co-btn-outline" title="Save current filters as a view">
+          <i class="fas fa-save text-[11px]"></i> Save View
         </button>
-        <button onclick="ListViewPage.clearFilters()" class="btn btn-secondary btn-sm">
-          <i class="fas fa-times"></i>
-          Clear All
+        <button onclick="ListViewPage.clearFilters()" class="co-btn-outline">
+          <i class="fas fa-times text-[11px]"></i> Clear All
         </button>
       </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
       <div class="filter-group">
         <label>Search</label>
-        <input type="text" id="filterSearch" placeholder="Search by ID or title..." oninput="ListViewPage.applyFilters()">
+        <input type="text" id="filterSearch" placeholder="Search by ID or title..." oninput="ListViewPage.applyFilters()" class="co-search-input">
       </div>
       <div class="filter-group">
         <label>Status</label>
-        <select id="filterStatus" multiple size="3" onchange="ListViewPage.applyFilters()">
+        <select id="filterStatus" onchange="ListViewPage.applyFilters()" class="co-filter-select">
           <option value="">All Statuses</option>
           <option value="new">New</option>
           <option value="assigned">Assigned</option>
@@ -549,7 +528,7 @@ input[type="checkbox"] {
       </div>
       <div class="filter-group">
         <label>Priority</label>
-        <select id="filterPriority" multiple size="3" onchange="ListViewPage.applyFilters()">
+        <select id="filterPriority" onchange="ListViewPage.applyFilters()" class="co-filter-select">
           <option value="">All Priorities</option>
           <option value="urgent">Urgent</option>
           <option value="high">High</option>
@@ -560,7 +539,7 @@ input[type="checkbox"] {
       </div>
       <div class="filter-group">
         <label>Type</label>
-        <select id="filterType" multiple size="3" onchange="ListViewPage.applyFilters()">
+        <select id="filterType" onchange="ListViewPage.applyFilters()" class="co-filter-select">
           <option value="">All Types</option>
           <option value="Data Pull">Data Pull</option>
           <option value="Report Generation">Report Generation</option>
@@ -576,23 +555,23 @@ input[type="checkbox"] {
       </div>
       <div class="filter-group">
         <label>Assignee</label>
-        <select id="filterAssignee" onchange="ListViewPage.applyFilters()">
+        <select id="filterAssignee" onchange="ListViewPage.applyFilters()" class="co-filter-select">
           <option value="">All Assignees</option>
         </select>
       </div>
       <div class="filter-group">
         <label>Project</label>
-        <select id="filterProject" onchange="ListViewPage.applyFilters()">
+        <select id="filterProject" onchange="ListViewPage.applyFilters()" class="co-filter-select">
           <option value="">All Projects</option>
         </select>
       </div>
       <div class="filter-group">
         <label>Due Date From</label>
-        <input type="date" id="filterDateFrom" onchange="ListViewPage.applyFilters()">
+        <input type="date" id="filterDateFrom" onchange="ListViewPage.applyFilters()" class="co-search-input">
       </div>
       <div class="filter-group">
         <label>Due Date To</label>
-        <input type="date" id="filterDateTo" onchange="ListViewPage.applyFilters()">
+        <input type="date" id="filterDateTo" onchange="ListViewPage.applyFilters()" class="co-search-input">
       </div>
     </div>
   </div>

@@ -543,7 +543,7 @@ function importFunnelRowAsProject(funnelId, projectOverrides, options) {
       assignedTeam: meta.assignedTeam || raw['Assigned Team'] || ''
     };
 
-    var docKeys = ['googleDriveFolder', 'githubLinks', 'devDocs', 'designDocs', 'sops', 'userGuides', 'dataDictionaries'];
+    var docKeys = ['googleDriveFolder', 'githubLinks', 'devDocs', 'designDocs', 'userGuides', 'dataDictionaries'];
     docKeys.forEach(function(k) {
       if (!settings[k] && projectOverrides[k]) settings[k] = projectOverrides[k];
     });
@@ -573,7 +573,8 @@ function importFunnelRowAsProject(funnelId, projectOverrides, options) {
       startDate: projectOverrides.startDate || mapped.startDate || '',
       tags: projectOverrides.tags || '',
       settings: JSON.stringify(settings),
-      skipNotification: true
+      skipNotification: true,
+      skipTypeGuard: true
     };
     taxonomyKeys.forEach(function(f) {
       if (projectOverrides[f]) projectData[f] = projectOverrides[f];

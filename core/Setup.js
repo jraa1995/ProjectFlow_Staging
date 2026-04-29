@@ -24,7 +24,10 @@ const WORKBOOK_SHEET_SPEC = [
   { name: 'Data_Assets',           columnsKey: 'DATA_ASSET_COLUMNS' },
   { name: 'Access_Requests',       columnsKey: 'ACCESS_REQUEST_COLUMNS' },
   { name: 'User_Badges',           columnsKey: 'USER_BADGE_COLUMNS' },
-  { name: 'User_Metrics',          columnsKey: 'USER_METRIC_COLUMNS',       seed: 'userMetrics' }
+  { name: 'User_Metrics',          columnsKey: 'USER_METRIC_COLUMNS',       seed: 'userMetrics' },
+  { name: 'Email_Groups',          columnsKey: 'EMAIL_GROUP_COLUMNS' },
+  { name: 'Email_Group_Members',   columnsKey: 'EMAIL_GROUP_MEMBER_COLUMNS' },
+  { name: 'Data_Asset_Buckets',    columnsKey: 'DATA_ASSET_BUCKET_COLUMNS' }
 ];
 
 const WORKBOOK_DEPRECATED_SHEETS = ['Webhook_Subscriptions'];
@@ -747,4 +750,45 @@ function exportTasksToCSV() {
 
   const csv = [headers, ...rows].join('\n');
   return csv;
+}
+
+function _checkFedStaffing() {
+  try {
+    var cfg = getStoredFedStaffingConfig();
+    Logger.log('Fed Staffing configured: ' + cfg.configured + '  (' + (cfg.workbookIdMasked || '-') + ')');
+    if (Array.isArray(cfg.roles)) {
+      cfg.roles.forEach(function(r) {
+        Logger.log('Role ' + r.role + ' -> sheet "' + (r.sheetName || '<unset>') + '"');
+      });
+    }
+    ['personnel', 'govOwners', 'stakeholders'].forEach(function(role) {
+      var people = getFedStaffingPersonnel(role);
+      Logger.log('[' + role + '] employees loaded: ' + people.length);
+      if (people.length) {
+        Logger.log('  sample: ' + people[0].label);
+        var allEmployees = people.every(function(p) { return !p.type || p.type.toLowerCase().indexOf('employee') === 0; });
+        Logger.log('  all rows filtered to Employee-only: ' + allEmployees);
+      }
+    });
+    return { success: true, config: cfg };
+  } catch (err) {
+    Logger.log('_checkFedStaffing failed: ' + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+function _checkCpmd() {
+  try {
+    var wbId = getCpmdWorkbookId();
+    Logger.log('CPMD workbook ID set: ' + !!wbId);
+    var people = getCpmdPersonnel();
+    Logger.log('CPMD personnel loaded: ' + people.length);
+    if (people.length) {
+      Logger.log('  sample: ' + people[0].name + (people[0].email ? ' (' + people[0].email + ')' : ''));
+    }
+    return { success: true, count: people.length };
+  } catch (err) {
+    Logger.log('_checkCpmd failed: ' + err.message);
+    return { success: false, error: err.message };
+  }
 }

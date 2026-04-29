@@ -1,52 +1,106 @@
 <div id="projectView" class="h-full flex flex-col">
-  <div class="px-6 py-3 flex items-center justify-between gap-4 flex-shrink-0 flex-wrap" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
-    <div class="flex items-center gap-2 flex-wrap min-w-0 flex-1">
-      <h1 class="text-[18px] font-semibold tracking-tight flex-shrink-0 mr-3" style="color:var(--co-ink);letter-spacing:-0.015em;">Projects</h1>
-      <select id="projectStatusFilter" onchange="ProjectPage.filterStatus=this.value;ProjectPage.renderProjectList()"
-        class="co-filter-select min-w-[130px]">
-        <option value="">All Statuses</option>
-        <option value="active">Active</option>
-        <option value="completed">Completed</option>
-        <option value="paused">Paused</option>
-        <option value="archived">Archived</option>
-      </select>
-      <select id="projWorkstreamFilter" onchange="ProjectPage.filterWorkstream=this.value;ProjectPage.renderProjectList()"
-        class="co-filter-select min-w-[140px] max-w-[180px] truncate">
-        <option value="">All Workstreams</option>
-      </select>
-      <select id="projTypeFilter" onchange="ProjectPage.filterProjectType=this.value;ProjectPage.renderProjectList()"
-        class="co-filter-select min-w-[140px] max-w-[180px] truncate">
-        <option value="">All Project Types</option>
-      </select>
-      <select id="projTechStackFilter" onchange="ProjectPage.filterTechStack=this.value;ProjectPage.renderProjectList()"
-        class="co-filter-select min-w-[140px] max-w-[180px] truncate">
-        <option value="">All Tech Stacks</option>
-      </select>
-      <select id="projPrimaryOwnerFilter" onchange="ProjectPage.filterPrimaryOwner=this.value;ProjectPage.renderProjectList()"
-        class="co-filter-select min-w-[140px] max-w-[180px] truncate">
-        <option value="">All Primary Owners</option>
-      </select>
-      <button onclick="ProjectPage.clearExtraFilters()" class="px-2 py-1.5 text-xs flex-shrink-0 transition-colors" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)'" onmouseout="this.style.color='var(--co-gray-400)'" title="Clear filters">
-        <i class="fas fa-times"></i>
+  <div class="px-6 py-3 flex items-center justify-between gap-4 flex-shrink-0" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
+    <h1 class="text-[18px] font-semibold tracking-tight flex-shrink-0" style="color:var(--co-ink);letter-spacing:-0.015em;">Projects</h1>
+    <div class="flex items-center gap-1 flex-shrink-0">
+      <button id="projFilterToggle" onclick="_pc('ProjectPage','_toggleFiltersPanel')" class="co-icon-btn relative" title="Filter projects" aria-label="Filter projects">
+        <i class="fas fa-filter text-[13px]"></i>
+        <span id="projFilterBadge" class="hidden absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full text-[10px] font-semibold flex items-center justify-center" style="background:var(--co-accent-500);color:#fff;line-height:1;">0</span>
       </button>
-    </div>
-    <div class="flex items-center gap-2 flex-shrink-0">
-      <button id="projExportCsvBtn" onclick="_pc('ProjectPage','exportProjectsCsv')" class="hidden co-btn-outline">
-        <i class="fas fa-file-csv text-[11px]"></i> Export CSV
-      </button>
-      <button id="projImportWorklogBtn" onclick="_pc('ProjectPage','importFromWorklog')" class="hidden co-btn-outline">
-        <i class="fas fa-file-import text-[11px]"></i> Import from Worklog
-      </button>
+      <div class="relative">
+        <button id="projOverflowBtn" onclick="_pc('ProjectPage','_toggleOverflowMenu')" class="co-icon-btn hidden" title="More actions" aria-label="More actions" aria-haspopup="true" aria-expanded="false">
+          <i class="fas fa-ellipsis-v text-[13px]"></i>
+        </button>
+        <div id="projOverflowMenu" class="hidden absolute right-0 top-full mt-1 z-30 min-w-[180px] rounded-lg shadow-lg overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);" role="menu">
+          <button id="projExportCsvBtn" onclick="_pc('ProjectPage','_runOverflowAction','exportProjectsCsv')" class="hidden w-full text-left px-3 py-2 text-[13px] flex items-center gap-2 transition-colors" style="color:var(--co-ink);" onmouseover="this.style.background='var(--co-surface-sunken)'" onmouseout="this.style.background='transparent'" role="menuitem">
+            <i class="fas fa-file-csv text-[12px]" style="color:var(--co-gray-400);"></i>
+            <span>Export CSV</span>
+          </button>
+          <button id="projImportWorklogBtn" onclick="_pc('ProjectPage','_runOverflowAction','importFromWorklog')" class="hidden w-full text-left px-3 py-2 text-[13px] flex items-center gap-2 transition-colors" style="color:var(--co-ink);" onmouseover="this.style.background='var(--co-surface-sunken)'" onmouseout="this.style.background='transparent'" role="menuitem">
+            <i class="fas fa-file-import text-[12px]" style="color:var(--co-gray-400);"></i>
+            <span>Import from Worklog</span>
+          </button>
+        </div>
+      </div>
       <button onclick="_pc('ProjectPage','openNewProjectForm')" class="co-btn-solid">
         <i class="fas fa-plus text-[11px]"></i> New Project
       </button>
     </div>
   </div>
 
+  <div id="projFilterPanel" class="hidden fixed top-[60px] right-4 z-40 w-[360px] max-h-[calc(100vh-80px)] flex flex-col rounded-lg" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);box-shadow:0 12px 32px rgba(24,24,20,0.12);">
+    <div class="flex flex-col flex-1 min-h-0">
+      <div class="flex items-center justify-between px-5 py-4" style="border-bottom:1px solid var(--co-border-subtle);">
+        <h2 class="text-[14px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.01em;">Filter Projects</h2>
+        <button onclick="_pc('ProjectPage','_closeFiltersPanel')" class="co-icon-btn" aria-label="Close filters">
+          <i class="fas fa-times text-[13px]"></i>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Status</label>
+          <select id="projectStatusFilter" onchange="ProjectPage.filterStatus=this.value;ProjectPage.renderProjectList();ProjectPage._updateFilterBadge()" class="co-filter-select w-full">
+            <option value="">All Statuses</option>
+            <option value="__active__">Active (any in-progress)</option>
+            <option value="__archived__">Archived (any inactive)</option>
+            <option value="00-Ideation">00-Ideation</option>
+            <option value="01-Requirements Gathering">01-Requirements Gathering</option>
+            <option value="02-In Development">02-In Development</option>
+            <option value="03-Deployed (Actively Maintained)">03-Deployed (Actively Maintained)</option>
+            <option value="04-Deployed (Inactive-Not Maintained)">04-Deployed (Inactive-Not Maintained)</option>
+            <option value="05-Dev Complete/Pending Deployment">05-Dev Complete/Pending Deployment</option>
+            <option value="06-Retired/Sunset (Permanent)">06-Retired/Sunset (Permanent)</option>
+            <option value="07-Backlog">07-Backlog</option>
+            <option value="08-Stopped">08-Stopped</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Workstream</label>
+          <select id="projWorkstreamFilter" onchange="ProjectPage.filterWorkstream=this.value;ProjectPage.renderProjectList();ProjectPage._updateFilterBadge()" class="co-filter-select w-full">
+            <option value="">All Workstreams</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Project Type</label>
+          <select id="projTypeFilter" onchange="ProjectPage.filterProjectType=this.value;ProjectPage.renderProjectList();ProjectPage._updateFilterBadge()" class="co-filter-select w-full">
+            <option value="">All Project Types</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Tech Stack</label>
+          <select id="projTechStackFilter" onchange="ProjectPage.filterTechStack=this.value;ProjectPage.renderProjectList();ProjectPage._updateFilterBadge()" class="co-filter-select w-full">
+            <option value="">All Tech Stacks</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Primary Owner</label>
+          <select id="projPrimaryOwnerFilter" onchange="ProjectPage.filterPrimaryOwner=this.value;ProjectPage.renderProjectList();ProjectPage._updateFilterBadge()" class="co-filter-select w-full">
+            <option value="">All Primary Owners</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Origin</label>
+          <select id="projOriginFilter" onchange="ProjectPage.filterOrigin=this.value;ProjectPage.renderProjectList();ProjectPage._updateFilterBadge()" class="co-filter-select w-full">
+            <option value="">All Origins</option>
+            <option value="internal">Internal</option>
+            <option value="client">Client</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex items-center justify-between gap-3 px-5 py-4" style="border-top:1px solid var(--co-border-subtle);">
+        <button onclick="_pc('ProjectPage','clearExtraFilters')" class="text-[12px] font-medium transition-colors" style="color:var(--co-gray-500);" onmouseover="this.style.color='var(--co-ink)'" onmouseout="this.style.color='var(--co-gray-500)'">
+          Clear all
+        </button>
+        <button onclick="_pc('ProjectPage','_closeFiltersPanel')" class="co-btn-solid">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="projectSplitPane" class="split-pane flex-1 min-h-0">
     <div class="split-pane-left flex flex-col" style="background:var(--co-surface);border-right:1px solid var(--co-border-subtle);">
       <div class="flex-1 overflow-y-auto" id="projectListContainer">
-        <div class="flex items-center justify-center h-32 text-sm" style="color:var(--co-gray-400);">Loading...</div>
+        <div id="projectListSkeleton" class="px-1 pt-1"></div>
       </div>
     </div>
     <div class="split-pane-divider"></div>
@@ -86,4 +140,74 @@
   box-shadow:0 0 0 3px rgba(192,107,74,0.12);
   background:var(--co-surface);
 }
+.co-icon-btn {
+  width:32px;
+  height:32px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:8px;
+  border:1px solid transparent;
+  background:transparent;
+  color:var(--co-gray-500);
+  cursor:pointer;
+  transition:all 0.15s ease;
+}
+.co-icon-btn:hover {
+  background:var(--co-surface-sunken);
+  color:var(--co-ink);
+  border-color:var(--co-border-subtle);
+}
+.co-icon-btn[aria-expanded="true"] {
+  background:var(--co-surface-sunken);
+  color:var(--co-ink);
+  border-color:var(--co-border-subtle);
+}
+#projFilterPanel.hidden {
+  display:none;
+}
+#projOverflowMenu.hidden {
+  display:none;
+}
+.co-detail-action {
+  width:30px;
+  height:30px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:6px;
+  border:1px solid var(--co-border-subtle);
+  background:var(--co-surface);
+  color:var(--co-gray-500);
+  cursor:pointer;
+  transition:all 0.15s ease;
+}
+.co-detail-action:hover {
+  background:var(--co-surface-sunken);
+  color:var(--co-ink);
+}
+.co-docs-grid {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:1rem;
+  width:100%;
+  align-items:start;
+}
+@media (min-width:900px) {
+  .co-docs-grid {
+    grid-template-columns:minmax(280px,1fr) minmax(360px,1.4fr);
+  }
+}
+@media (min-width:1280px) {
+  .co-docs-grid {
+    grid-template-columns:minmax(320px,1fr) minmax(420px,1.5fr);
+  }
+}
+@media (min-width:1600px) {
+  .co-docs-grid {
+    grid-template-columns:minmax(360px,1fr) minmax(480px,1.6fr);
+  }
+}
+.co-docs-pane-left { min-width:0; }
+.co-docs-pane-right { min-width:0; }
 </style>

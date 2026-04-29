@@ -214,6 +214,13 @@
             </div>
           </div>
 
+          <div class="task-field" id="taskDetailAttachmentsField">
+            <label class="task-field-label">Attachments</label>
+            <div id="taskDetailAttachmentsView" class="task-field-value">
+              <span class="text-gray-400 italic">No attachments</span>
+            </div>
+          </div>
+
           <div class="task-field pt-6 mt-6" style="border-top:1px solid var(--co-border-subtle);">
             <label class="task-field-label flex items-center gap-2">
               <i class="fas fa-link" style="color:var(--co-accent-500);"></i>
@@ -1430,9 +1437,32 @@ var TaskDetailPanel = {
     const descView = document.getElementById('taskDetailDescriptionView');
     if (descView) {
       if (task.description) {
-        descView.innerHTML = `<div class="whitespace-pre-wrap">${escapeHtml(task.description)}</div>`;
+        descView.innerHTML = `<div class="whitespace-pre-wrap break-words" style="overflow-wrap:anywhere;">${escapeHtmlWithLinks(task.description)}</div>`;
       } else {
         descView.innerHTML = '<span class="text-gray-400 italic">No description provided</span>';
+      }
+    }
+
+    const attView = document.getElementById('taskDetailAttachmentsView');
+    if (attView) {
+      let attachments = [];
+      if (task.customFields) {
+        try {
+          const cf = typeof task.customFields === 'string' ? JSON.parse(task.customFields) : task.customFields;
+          if (cf && Array.isArray(cf.attachments)) attachments = cf.attachments;
+        } catch (e) {}
+      }
+      if (attachments.length) {
+        attView.innerHTML = '<div class="flex flex-wrap gap-1.5">' + attachments.map(function(f) {
+          const fname = f && (f.name || f.url) ? (f.name || f.url) : 'File';
+          const furl = f && f.url ? f.url : '';
+          const isImg = !!(f && f.kind === 'image');
+          const icon = isImg ? 'fa-image' : (f && f.kind === 'link' ? 'fa-link' : 'fa-file');
+          if (!furl) return '<span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full max-w-full" style="background:var(--co-surface-sunken);color:var(--co-ink-soft);border:1px solid var(--co-border-subtle);"><i class="fas ' + icon + ' text-[10px]" style="color:var(--co-gray-400);"></i><span class="truncate">' + escapeHtml(fname) + '</span></span>';
+          return '<a href="' + escapeHtml(furl) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full max-w-full hover:underline" style="background:var(--co-surface-sunken);color:var(--co-ink-soft);border:1px solid var(--co-border-subtle);"><i class="fas ' + icon + ' text-[10px]" style="color:var(--co-gray-400);"></i><span class="truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</span><i class="fas fa-external-link-alt text-[9px] ml-0.5" style="color:var(--co-gray-300);"></i></a>';
+        }).join('') + '</div>';
+      } else {
+        attView.innerHTML = '<span class="text-gray-400 italic">No attachments</span>';
       }
     }
 

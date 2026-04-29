@@ -26,12 +26,45 @@ const CONFIG = {
     DATA_ASSETS: 'Data_Assets',
     ACCESS_REQUESTS: 'Access_Requests',
     USER_BADGES: 'User_Badges',
-    USER_METRICS: 'User_Metrics'
+    USER_METRICS: 'User_Metrics',
+    EMAIL_GROUPS: 'Email_Groups',
+    EMAIL_GROUP_MEMBERS: 'Email_Group_Members',
+    DATA_ASSET_BUCKETS: 'Data_Asset_Buckets',
+    AUDIT_LOG: 'Audit_Log'
   },
+
+  AUDIT_LOG_COLUMNS: [
+    'id',
+    'timestamp',
+    'actorEmail',
+    'action',
+    'targetType',
+    'targetId',
+    'targetLabel',
+    'details'
+  ],
 
   JSON_CACHE_COLUMNS: ['key', 'data', 'updatedAt', 'version'],
 
   STATUSES: ['Backlog', 'To Do', 'In Progress', 'Review', 'Testing', 'Done'],
+
+  WORKLOG_PROJECT_STATUSES: [
+    '00-Ideation',
+    '01-Requirements Gathering',
+    '02-In Development',
+    '03-Deployed (Actively Maintained)',
+    '04-Deployed (Inactive-Not Maintained)',
+    '05-Dev Complete/Pending Deployment',
+    '06-Retired/Sunset (Permanent)',
+    '07-Backlog',
+    '08-Stopped'
+  ],
+
+  ARCHIVED_PROJECT_STATUSES: [
+    '04-Deployed (Inactive-Not Maintained)',
+    '06-Retired/Sunset (Permanent)',
+    '08-Stopped'
+  ],
 
   PRIORITIES: ['Lowest', 'Low', 'Medium', 'High', 'Highest', 'Critical'],
 
@@ -402,10 +435,10 @@ const CONFIG = {
       id: 'stakeholder-req-v1', type: 'stakeholder', name: 'Stakeholder Requirements',
       description: 'Identify stakeholders, expectations, and decision-makers.',
       fields: [
-        { key: 'primaryStakeholder', label: 'Primary Stakeholder', type: 'text', target: 'settings.clientOwner' },
-        { key: 'secondaryStakeholders', label: 'Other Gov Stakeholders', type: 'textarea', target: 'settings.clientStakeholders' },
+        { key: 'primaryStakeholder', label: 'Primary Gov Stakeholder', type: 'text', target: 'settings.clientOwner', hint: 'Specify the primary government stakeholder — typically an Individual (name/title), IPT, Contract Task, or Division owner.' },
+        { key: 'secondaryStakeholders', label: 'Other Gov Stakeholders', type: 'textarea', target: 'settings.clientStakeholders', hint: 'List additional stakeholders (Individuals, IPTs, Contracts, Divisions). One per line.' },
         { key: 'stakeholderExpectations', label: 'Stakeholder Expectations', type: 'textarea' },
-        { key: 'communicationCadence', label: 'Communication Cadence', type: 'text' },
+        { key: 'communicationCadence', label: 'Communication Cadence', type: 'text', hint: 'How often the stakeholder expects updates (e.g., Weekly 1:1, Biweekly status, Monthly review, Ad Hoc).' },
         { key: 'decisionMakers', label: 'Decision Makers', type: 'textarea' }
       ]
     },
@@ -413,8 +446,8 @@ const CONFIG = {
       id: 'technical-req-v1', type: 'technical', name: 'Technical Requirements',
       description: 'Document tech stack, deployment, integrations, and non-functional needs.',
       fields: [
-        { key: 'techStack', label: 'Tech Stack', type: 'taxonomy_multiselect', target: 'project.techStack' },
-        { key: 'deploymentLocation', label: 'Deployment Location', type: 'taxonomy_select', target: 'project.deploymentLocation' },
+        { key: 'techStack', label: 'Tech Stack', type: 'taxonomy_multiselect', target: 'project.techStack', preserveProjectValue: true },
+        { key: 'deploymentLocation', label: 'Deployment Location', type: 'taxonomy_select', target: 'project.deploymentLocation', preserveProjectValue: true },
         { key: 'dataCadence', label: 'Data Refresh Cadence', type: 'static_select', optionsKey: 'dataCadence', target: 'settings.dataCadence' },
         { key: 'dataSourceExplain', label: 'Data Sourcing', type: 'textarea', target: 'settings.dataSourceExplain' },
         { key: 'integrations', label: 'Integrations Required', type: 'textarea' },
@@ -427,7 +460,7 @@ const CONFIG = {
       description: 'Define data sources, quality expectations, and update cadence.',
       fields: [
         { key: 'dataSourceFiles', label: 'Data Source Files', type: 'drive_picker_multi', target: 'settings.dataSourceFiles' },
-        { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'drive_picker', target: 'settings.dataDictionaries' },
+        { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'drive_picker_multi', target: 'settings.dataDictionaries' },
         { key: 'updateFrequency', label: 'Data Update Frequency', type: 'text' },
         { key: 'dataQualityExpectations', label: 'Data Quality Expectations', type: 'textarea' }
       ]
@@ -439,10 +472,26 @@ const CONFIG = {
     'dataSource', 'targetFiles', 'relatedProjects', 'primaryStakeholder',
     'updateSchedule', 'automatedSchedule', 'currentEnvironment',
     'githubLink', 'dataSharingDocLink',
-    'createdAt', 'updatedAt', 'lastUpdatedBy', 'jsonData', 'updateFrequency'
+    'createdAt', 'updatedAt', 'lastUpdatedBy', 'jsonData', 'updateFrequency',
+    'assetType', 'bucketId'
   ],
 
   DATA_ASSET_STATUSES: ['Active', 'Inactive', 'Deprecated', 'In Development'],
+
+  DATA_ASSET_TYPES: ['Query', 'Database', 'Data Pipeline', 'Data Process ETL', 'Data Process ELT'],
+
+  DATA_ASSET_BUCKET_COLUMNS: [
+    'id', 'name', 'description', 'ownerEmail', 'primaryStakeholder',
+    'createdBy', 'createdAt', 'updatedAt', 'jsonData'
+  ],
+
+  EMAIL_GROUP_COLUMNS: [
+    'id', 'projectId', 'name', 'description', 'createdBy', 'createdAt', 'updatedAt'
+  ],
+
+  EMAIL_GROUP_MEMBER_COLUMNS: [
+    'id', 'groupId', 'email', 'displayName', 'memberType', 'addedAt'
+  ],
 
   ACCESS_REQUEST_COLUMNS: [
     'id', 'email', 'name', 'requestedAt', 'status', 'reviewedBy', 'reviewedAt', 'reason'
@@ -490,18 +539,21 @@ const CONFIG = {
     'updatedAt'
   ],
 
-  TAXONOMY_FIELDS: ['workstream', 'projectCategory', 'projectType', 'developmentPriority', 'developmentPhase', 'techStack', 'sdmSupported', 'deploymentLocation'],
+  TAXONOMY_FIELDS: ['workstream', 'projectCategory', 'projectType', 'developmentPriority', 'developmentPhase', 'techStack', 'sdmSupported', 'deploymentLocation', 'contractTask'],
 
   TAXONOMY_OPTIONS: {
     workstream: ['Business Intelligence', 'Business Development', 'Financial Management', 'Workforce Management', 'Customer Experience', 'Quality Management', 'Contractor Use'],
     sdmSupported: ['FEDSIM', 'FLEX', 'INNOVATE', 'ALL', 'N/A'],
-    deploymentLocation: ['D2D', 'AAS Intranet (Google Sites)', 'External GSA Site', 'Standalone Web-App', 'Tableau Server', 'AWS', 'Google App Script Library'],
+    deploymentLocation: ['D2D', 'AAS Intranet (Google Sites)', 'External GSA Site', 'Standalone Web-App', 'Tableau Server', 'AWS', 'Google App Script Library', 'Google Cloud Project', 'Google SDK Marketplace'],
     developmentPriority: ['High (P1)', 'Medium (P2)', 'Low (P3)', 'Backlog', 'N/A'],
     developmentPhase: ['Coding', 'Complete', 'Deployment', 'Design', 'Enhancements', 'Maintenance', 'Not Started', 'Planning', 'Testing', 'Stopped'],
     aiInvolved: ['Yes - AI used in Development', 'Yes - AI incorporated in solution', 'No - AI Not Involved in Solution'],
     intendedUsers: ['All-AAS', 'OSO', 'BU Leadership', 'BU1', 'BU2', 'BU3', 'BU5', 'Multiple IPTs', 'Single IPT', 'All-Contractors', 'Contractor Leadership', 'BI Team'],
     contractOptions: ['AMPS', 'Forward', 'SQuAT'],
-    dataCadence: ['Daily', 'Weekly (Mon-Fri)', 'Biweekly', 'Monthly', 'Quarterly', 'Annually', 'Ad Hoc', 'Real-Time', 'N/A']
+    contractTask: ['AMPS - Task 2', 'AMPS - Other', 'Forward - Other', 'SQuAT - Other', 'N/A'],
+    techStack: ['Google Apps Script', 'Google Sheets', 'Google Docs', 'Google Slides', 'Google Forms', 'Google Drive', 'Google Sites', 'Google Calendar', 'Gmail', 'Google Cloud Platform', 'BigQuery', 'Google Analytics', 'Looker Studio', 'Tableau', 'Smartsheet', 'Power BI', 'AWS', 'Azure', 'Python', 'R', 'JavaScript', 'HTML/CSS', 'SQL', 'Google Picker Service API', 'Google Drive API', 'Google Sheets API', 'Google Calendar API', 'Google Tasks API', 'Google Admin SDK API', 'Google Workspace Marketplace SDK'],
+    dataCadence: ['Daily', 'Weekly (Mon-Fri)', 'Biweekly', 'Monthly', 'Quarterly', 'Annually', 'Ad Hoc', 'Real-Time', 'N/A'],
+    projectType: ['Web Application', 'Data Visualization']
   },
 
   BI_SMES: ['Andra Velea', 'Dan Kain', 'Dan Russell', 'Joe Boozer', 'Justin Aguila', 'Michael Gallahan', 'Michael Thoennes', 'Michelle McAllister'],
@@ -529,15 +581,41 @@ const CONFIG = {
     'AMPS': 'A'
   },
 
-  PROJECT_TYPE_OPTIONS: ['Web Application', 'Data Pipeline', 'Database', 'Data Visualization'],
+  PROJECT_TYPE_OPTIONS: ['Web Application', 'Data Visualization'],
+
+  DATA_ASSET_PROJECT_TYPES: ['Data Pipeline', 'Database'],
 
   DEPRECATED_SETTINGS_KEYS: ['futureOwner', 'futureContractHome', 'transitionPriority', 'transitionMeetingDate', 'transitionComplete'],
 
   TBD_DATE_SENTINEL: 'TBD',
 
-  AUTO_ARCHIVE_DONE_DAYS: 3
+  AUTO_ARCHIVE_DONE_DAYS: 3,
+
+  INTERNAL_DOMAINS_PROP_KEY: 'INTERNAL_DOMAINS'
 
 };
+
+function getInternalDomains() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(CONFIG.INTERNAL_DOMAINS_PROP_KEY);
+    if (!raw) return [];
+    return String(raw).split(/[,;\s]+/).map(function(d) { return d.trim().toLowerCase(); }).filter(Boolean);
+  } catch (e) {
+    console.error('getInternalDomains failed:', e);
+    return [];
+  }
+}
+
+function isInternalEmail(email) {
+  if (!email) return true;
+  var domains = getInternalDomains();
+  if (!domains.length) return true;
+  var em = String(email).toLowerCase().trim();
+  var at = em.lastIndexOf('@');
+  if (at === -1) return true;
+  var dom = em.substring(at + 1);
+  return domains.indexOf(dom) !== -1;
+}
 
 function getColumnIndex(sheetType, columnName) {
   const columns = CONFIG[sheetType + '_COLUMNS'];

@@ -195,6 +195,38 @@ function getAccessRequestsSheet() {
   return getSheet(CONFIG.SHEETS.ACCESS_REQUESTS, CONFIG.ACCESS_REQUEST_COLUMNS);
 }
 
+function getAuditLogSheet() {
+  if (!CONFIG || !CONFIG.AUDIT_LOG_COLUMNS) {
+    throw new Error('CONFIG.AUDIT_LOG_COLUMNS is undefined. Check Config.gs for syntax errors.');
+  }
+  return getSheet(CONFIG.SHEETS.AUDIT_LOG, CONFIG.AUDIT_LOG_COLUMNS);
+}
+
+function logAuditEvent(action, targetType, targetId, targetLabel, details) {
+  try {
+    var sheet = getAuditLogSheet();
+    var actor = '';
+    try { actor = getCurrentUserEmailOptimized() || ''; } catch (e) {}
+    var detailsStr = '';
+    if (details != null) {
+      detailsStr = (typeof details === 'string') ? details : JSON.stringify(details);
+    }
+    var row = {
+      id: 'AUDIT-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      timestamp: now(),
+      actorEmail: actor,
+      action: String(action || ''),
+      targetType: String(targetType || ''),
+      targetId: String(targetId || ''),
+      targetLabel: String(targetLabel || ''),
+      details: detailsStr
+    };
+    sheet.appendRow(objectToRow(row, CONFIG.AUDIT_LOG_COLUMNS));
+  } catch (error) {
+    console.error('logAuditEvent failed:', error);
+  }
+}
+
 function getUserBadgesSheet() {
   if (!CONFIG || !CONFIG.USER_BADGE_COLUMNS) {
     throw new Error('CONFIG.USER_BADGE_COLUMNS is undefined. Check Config.gs for syntax errors.');
@@ -1362,6 +1394,7 @@ function updateUser(email, updates) {
     }
   });
   safeUpdates.updatedAt = now();
+  var nameChangedTo = null;
   const lock = LockService.getScriptLock();
   lock.waitLock(5000);
   try {
@@ -1372,10 +1405,17 @@ function updateUser(email, updates) {
     for (let i = 1; i < data.length; i++) {
       if (data[i][emailIndex]?.toLowerCase() === email?.toLowerCase()) {
         const user = rowToObject(data[i], columns);
+        if (safeUpdates.hasOwnProperty('name') && safeUpdates.name && safeUpdates.name !== user.name) {
+          nameChangedTo = safeUpdates.name;
+        }
         Object.assign(user, safeUpdates);
         const newRow = objectToRow(user, columns);
         sheet.getRange(i + 1, 1, 1, columns.length).setValues([newRow]);
         UserCache.invalidate();
+        if (nameChangedTo && typeof backfillProjectOwnersForUser === 'function') {
+          try { backfillProjectOwnersForUser(user.email, nameChangedTo); }
+          catch (e) { console.error('post-rename owner backfill failed:', e); }
+        }
         return user;
       }
     }
@@ -1421,6 +1461,23 @@ function createProject(projectData) {
   const currentUser = getCurrentUserEmail();
   const projectId = projectData.id || generateProjectAcronym(projectData.name, existingProjects);
   const skipNotification = projectData.skipNotification === true;
+  if (projectData.skipTypeGuard !== true) {
+    var incomingType = String(projectData.projectType || '').trim();
+    if (!incomingType) {
+      try {
+        var incomingSettings = typeof projectData.settings === 'string'
+          ? (projectData.settings ? JSON.parse(projectData.settings) : {})
+          : (projectData.settings || {});
+        incomingType = String(incomingSettings.projectType || '').trim();
+      } catch (e) {}
+    }
+    if (incomingType && (CONFIG.DATA_ASSET_PROJECT_TYPES || []).indexOf(incomingType) !== -1) {
+      var guardErr = new Error('Project type "' + incomingType + '" belongs in Data Assets. Create it from the Data Assets view.');
+      guardErr.code = 'ROUTE_TO_DATA_ASSET';
+      guardErr.suggestedType = incomingType;
+      throw guardErr;
+    }
+  }
   const project = {
     id: projectId,
     name: sanitize(projectData.name || 'New Project'),
@@ -1448,6 +1505,12 @@ function createProject(projectData) {
     CONFIG.TAXONOMY_FIELDS.concat(['linkedProjectId']).forEach(function(f) {
       if (pSettings[f] && !project[f]) project[f] = String(pSettings[f]);
     });
+    if (!pSettings.origin) {
+      pSettings.origin = (typeof isInternalEmail === 'function' && !isInternalEmail(currentUser)) ? 'client' : 'internal';
+      pSettings.originSource = 'auto';
+    }
+    if (!pSettings.originCreatorEmail) pSettings.originCreatorEmail = currentUser || '';
+    project.settings = JSON.stringify(pSettings);
   } catch (e) {}
   var sheetHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function(h) { return String(h).trim(); });
   sheet.appendRow(objectToRow(project, sheetHeaders));
@@ -2385,6 +2448,15 @@ function createDataAsset(assetData) {
   PermissionGuard.requirePermission('dataasset:create');
   const sheet = getDataAssetsSheet();
   const currentUser = getCurrentUserEmail();
+  var requestedType = sanitize(assetData.assetType || '');
+  var allowedTypes = CONFIG.DATA_ASSET_TYPES || [];
+  if (requestedType && allowedTypes.length && allowedTypes.indexOf(requestedType) === -1) {
+    requestedType = '';
+  }
+  var requestedBucketId = sanitize(assetData.bucketId || '');
+  if (requestedBucketId && !getDataAssetBucketById(requestedBucketId)) {
+    requestedBucketId = '';
+  }
   const asset = {
     id: generateId('DA'),
     status: assetData.status || 'Active',
@@ -2404,7 +2476,9 @@ function createDataAsset(assetData) {
     createdAt: now(),
     updatedAt: now(),
     lastUpdatedBy: currentUser,
-    jsonData: assetData.jsonData || ''
+    jsonData: assetData.jsonData || '',
+    assetType: requestedType,
+    bucketId: requestedBucketId
   };
   sheet.appendRow(objectToRow(asset, CONFIG.DATA_ASSET_COLUMNS));
   SpreadsheetApp.flush();
@@ -2423,6 +2497,21 @@ function updateDataAsset(assetId, updates) {
     const sheet = getDataAssetsSheet();
     const data = sheet.getDataRange().getValues();
     const columns = CONFIG.DATA_ASSET_COLUMNS;
+    if (Object.prototype.hasOwnProperty.call(updates, 'assetType')) {
+      var nextType = sanitize(updates.assetType || '');
+      var allowed = CONFIG.DATA_ASSET_TYPES || [];
+      if (nextType && allowed.length && allowed.indexOf(nextType) === -1) {
+        throw new Error('Invalid asset type: ' + nextType);
+      }
+      updates.assetType = nextType;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'bucketId')) {
+      var nextBucketId = sanitize(updates.bucketId || '');
+      if (nextBucketId && !getDataAssetBucketById(nextBucketId)) {
+        throw new Error('Invalid bucket: ' + nextBucketId);
+      }
+      updates.bucketId = nextBucketId;
+    }
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === assetId) {
         const asset = rowToObject(data[i], columns);
@@ -2459,4 +2548,35 @@ function deleteDataAsset(assetId) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function getEmailGroupsSheet() {
+  return getSheet(CONFIG.SHEETS.EMAIL_GROUPS, CONFIG.EMAIL_GROUP_COLUMNS);
+}
+
+function getEmailGroupMembersSheet() {
+  return getSheet(CONFIG.SHEETS.EMAIL_GROUP_MEMBERS, CONFIG.EMAIL_GROUP_MEMBER_COLUMNS);
+}
+
+function getDataAssetBucketsSheet() {
+  return getSheet(CONFIG.SHEETS.DATA_ASSET_BUCKETS, CONFIG.DATA_ASSET_BUCKET_COLUMNS);
+}
+
+function getAllDataAssetBuckets() {
+  const sheet = getDataAssetBucketsSheet();
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  const columns = CONFIG.DATA_ASSET_BUCKET_COLUMNS;
+  const buckets = [];
+  for (let i = 1; i < data.length; i++) {
+    if (!data[i][0]) continue;
+    buckets.push(rowToObject(data[i], columns));
+  }
+  return buckets;
+}
+
+function getDataAssetBucketById(bucketId) {
+  if (!bucketId) return null;
+  const buckets = getAllDataAssetBuckets();
+  return buckets.find(b => b.id === bucketId) || null;
 }

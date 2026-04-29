@@ -1,7 +1,11 @@
 <div id="dataAssetView" class="h-full flex flex-col">
-  <div class="px-6 py-3 flex items-center justify-between flex-shrink-0" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
-    <h1 class="text-[18px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.015em;">Data Assets</h1>
-    <div class="flex items-center gap-2">
+  <div class="px-6 py-3 flex items-center justify-between gap-4 flex-shrink-0" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
+    <h1 class="text-[18px] font-semibold tracking-tight flex-shrink-0" style="color:var(--co-ink);letter-spacing:-0.015em;">Data Assets</h1>
+    <div class="flex items-center gap-1 flex-shrink-0">
+      <button id="daFilterToggle" type="button" onclick="_pc('DataAssetPage','_toggleFiltersPanel')" class="co-icon-btn relative" title="Filter assets" aria-label="Filter assets">
+        <i class="fas fa-filter text-[13px]"></i>
+        <span id="daFilterBadge" class="hidden absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full text-[10px] font-semibold flex items-center justify-center" style="background:var(--co-accent-500);color:#fff;line-height:1;">0</span>
+      </button>
       <button onclick="_pc('DataAssetPage','importFromWorklog')" class="co-btn-outline">
         <i class="fas fa-file-import text-[11px]"></i> Import from Worklog
       </button>
@@ -11,10 +15,53 @@
     </div>
   </div>
 
+  <div id="daFilterPanel" class="hidden fixed top-[60px] right-4 z-40 w-[360px] max-h-[calc(100vh-80px)] flex flex-col rounded-lg" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);box-shadow:0 12px 32px rgba(24,24,20,0.12);">
+    <div class="flex flex-col flex-1 min-h-0">
+      <div class="flex items-center justify-between px-5 py-4" style="border-bottom:1px solid var(--co-border-subtle);">
+        <h2 class="text-[14px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.01em;">Filter Data Assets</h2>
+        <button onclick="_pc('DataAssetPage','_closeFiltersPanel')" class="co-icon-btn" aria-label="Close filters">
+          <i class="fas fa-times text-[13px]"></i>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Status</label>
+          <select id="daStatusFilter" onchange="_pc('DataAssetPage','_setFilter','filterStatus',this.value)" class="co-filter-select w-full">
+            <option value="">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+            <option value="Deprecated">Deprecated</option>
+            <option value="In Development">In Development</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Asset Type</label>
+          <select id="daTypeFilter" onchange="_pc('DataAssetPage','_setFilter','filterAssetType',this.value)" class="co-filter-select w-full">
+            <option value="">All Types</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Bucket</label>
+          <select id="daBucketFilter" onchange="_pc('DataAssetPage','_setBucketFilter',this.value)" class="co-filter-select w-full">
+            <option value="">All Buckets</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex items-center justify-between gap-3 px-5 py-4" style="border-top:1px solid var(--co-border-subtle);">
+        <button onclick="_pc('DataAssetPage','clearAllFilters')" class="text-[12px] font-medium transition-colors" style="color:var(--co-gray-500);" onmouseover="this.style.color='var(--co-ink)'" onmouseout="this.style.color='var(--co-gray-500)'">
+          Clear all
+        </button>
+        <button onclick="_pc('DataAssetPage','_closeFiltersPanel')" class="co-btn-solid">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="dataAssetSplitPane" class="split-pane flex-1 min-h-0">
     <div class="split-pane-left flex flex-col" style="background:var(--co-surface);border-right:1px solid var(--co-border-subtle);">
       <div class="flex-1 overflow-y-auto" id="dataAssetListContainer">
-        <div class="flex items-center justify-center h-32 text-sm" style="color:var(--co-gray-400);">Loading...</div>
+        <div id="dataAssetListSkeleton" class="px-1 pt-1"></div>
       </div>
     </div>
     <div class="split-pane-divider"></div>
@@ -29,3 +76,9 @@
     </div>
   </div>
 </div>
+
+<style>
+.co-asset-item:hover { background:var(--co-surface-sunken); }
+#daSearchBar { padding:0.625rem 0.875rem; border-bottom:1px solid var(--co-border-subtle); background:var(--co-surface); }
+#daFilterPanel.hidden { display:none; }
+</style>

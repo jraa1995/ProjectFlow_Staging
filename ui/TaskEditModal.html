@@ -77,6 +77,7 @@ autocomplete="off"
 <div style="margin-bottom:6px;"><strong>Task:</strong> Smallest technical unit of work.</div>
 <div style="margin-bottom:6px;"><strong>Bug:</strong> A defect in functionality.</div>
 <div style="margin-bottom:10px;"><strong>Spike:</strong> Investigation/research to break down a story.</div>
+<div style="margin-bottom:10px;padding:6px 8px;background:var(--co-surface-sunken);border-radius:4px;color:var(--co-ink-soft);"><strong>Note on Epic linkage:</strong> Epics are tagged via Type. To link child Stories to an Epic, use the Dependencies field (Story blocks/blocked-by Epic). Native parent-child hierarchy is on the roadmap.</div>
 <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
 <thead><tr style="background:var(--co-surface-sunken);">
 <th style="text-align:left;padding:4px 6px;border:1px solid var(--co-border-subtle);">Term</th>
@@ -201,12 +202,18 @@ autocomplete="off"
 <div class="form-field">
 <label for="taskEditStoryPoints" class="form-label">
 <i class="fas fa-chart-line text-gray-400 mr-1"></i> Story Points
+<span class="co-type-info-wrap" style="position:relative;display:inline-flex;margin-left:6px;">
+<i class="fas fa-info-circle" tabindex="0" style="color:var(--co-gray-400);cursor:help;font-size:11px;" title="Relative effort estimate. Prefer Fibonacci (1, 2, 3, 5, 8, 13, 21). Default auto-fills from working days between Start and Due Dates; override freely."></i>
+</span>
 </label>
 <input type="number" id="taskEditStoryPoints" class="form-input" min="0" placeholder="0" />
 </div>
 <div class="form-field">
 <label for="taskEditEstimatedHrs" class="form-label">
 <i class="far fa-clock text-gray-400 mr-1"></i> Est. Hours
+<span class="co-type-info-wrap" style="position:relative;display:inline-flex;margin-left:6px;">
+<i class="fas fa-info-circle" tabindex="0" style="color:var(--co-gray-400);cursor:help;font-size:11px;" title="Absolute time estimate. Use either Story Points OR Hours — they measure the same effort differently. Hours default to working days × 8."></i>
+</span>
 </label>
 <input type="number" id="taskEditEstimatedHrs" class="form-input" min="0" step="0.5" placeholder="0" />
 </div>
@@ -250,7 +257,7 @@ Same as Task End Date?
 <i class="fas fa-tags mr-1" style="color:var(--co-ink-muted);"></i> Milestone Type
 </label>
 <select id="taskEditMilestoneType" class="form-select">
-<option value="">Select type...</option>
+<option value="" disabled selected hidden>Select type...</option>
 <option value="phase-end">Phase End</option>
 <option value="deliverable">Key Deliverable</option>
 <option value="review">Review/Approval</option>
@@ -327,11 +334,30 @@ placeholder="Add a detailed description of the task..."
 <div class="flex items-center justify-between mt-1">
 <span class="text-xs" style="color:var(--co-gray-400);">
 <i class="fas fa-lightbulb mr-1"></i>
-Tip: Use clear and specific language
+Tip: Use clear and specific language. Paste links and they will be auto-detected.
 </span>
 <span id="taskEditDescCharCount" class="text-xs hidden" style="color:var(--co-gray-400);">0/5000</span>
 </div>
 <span class="field-error hidden text-xs mt-1" style="color:var(--co-error);">Description is required</span>
+</div>
+<div class="form-field">
+<label class="form-label">
+<i class="fas fa-paperclip text-gray-400 mr-1"></i> Attachments
+</label>
+<div id="taskEditAttachmentsTags" class="flex flex-wrap mb-2"></div>
+<input type="hidden" id="taskEditAttachments" value="[]">
+<div class="flex items-center gap-2 flex-wrap">
+<button type="button" onclick="TaskEditModal.uploadAttachments()" class="px-3 py-1.5 text-xs rounded-lg transition-colors" style="border:1px solid var(--co-border-soft);color:var(--co-ink-soft);background:var(--co-surface);" onmouseover="this.style.background='var(--co-surface-sunken)';" onmouseout="this.style.background='var(--co-surface)';">
+<i class="fas fa-upload text-[10px] mr-1"></i> Upload File(s)
+</button>
+<button type="button" onclick="TaskEditModal.addAttachmentUrl()" class="px-3 py-1.5 text-xs rounded-lg transition-colors" style="border:1px solid var(--co-border-soft);color:var(--co-ink-soft);background:var(--co-surface);" onmouseover="this.style.background='var(--co-surface-sunken)';" onmouseout="this.style.background='var(--co-surface)';">
+<i class="fas fa-link text-[10px] mr-1"></i> Add URL
+</button>
+<button type="button" onclick="TaskEditModal.pasteScreenshot()" class="px-3 py-1.5 text-xs rounded-lg transition-colors" style="border:1px solid var(--co-border-soft);color:var(--co-ink-soft);background:var(--co-surface);" onmouseover="this.style.background='var(--co-surface-sunken)';" onmouseout="this.style.background='var(--co-surface)';" title="Click then paste a screenshot from your clipboard (Cmd/Ctrl+V)">
+<i class="fas fa-image text-[10px] mr-1"></i> Paste Screenshot
+</button>
+</div>
+<p class="text-xs mt-1" style="color:var(--co-gray-400);">Drag files into this area or click Upload. Max 10 MB per file.</p>
 </div>
 <div class="form-field pt-5 mt-5" style="border-top:1px solid var(--co-border-subtle);">
 <label class="form-label flex items-center">
@@ -987,6 +1013,7 @@ var TaskEditModal = {
     }
     this.toggleMilestoneFields(false);
     this.toggleRecurrenceFields(false);
+    this._setAttachments([]);
     this.attachChangeListeners();
     document.addEventListener('keydown', this.handleKeydown);
   },
@@ -1258,6 +1285,7 @@ var TaskEditModal = {
     this.setInputValue('taskEditMilestoneType', task.milestoneType || '');
     this.toggleMilestoneFields(isMilestone);
     this.populateRecurrenceForm(task.recurringConfig);
+    this._loadAttachmentsFromTask(task);
     this.populateSelectOptions();
     this.updateSaveButtonState();
   },
@@ -1299,11 +1327,12 @@ var TaskEditModal = {
     var currentProjectId = this.task && this.task.projectId ? String(this.task.projectId) : '';
     var upperCurrent = currentProjectId.toUpperCase();
     var isDataAsset = currentProjectId.indexOf('DA_') === 0;
-    var isAdHoc = upperCurrent === 'ADHOC' || upperCurrent === 'TASK' || currentProjectId === '';
+    var isAdHoc = upperCurrent === 'ADHOC' || upperCurrent === 'TASK';
     var isProject = currentProjectId && !isDataAsset && !isAdHoc;
+    var isEmpty = !currentProjectId;
 
     if (projectSelect) {
-      var projHtml = '<option value=""' + (!isProject ? ' selected' : '') + '>— None —</option>';
+      var projHtml = '<option value=""' + (isEmpty ? ' selected' : '') + '>— None —</option>';
       projHtml += '<option value="ADHOC"' + (isAdHoc ? ' selected' : '') + '>Ad Hoc (No Project)</option>';
       if (projects.length) {
         projHtml += projects.map(function(p) {
@@ -1335,17 +1364,11 @@ var TaskEditModal = {
     const requestedByInput = document.getElementById('taskEditRequestedBy');
     const requestedByList = document.getElementById('taskEditRequestedByOptions');
     if (requestedByList) {
-      var options = [];
-      var cpmd = (typeof ProjectPage !== 'undefined' && ProjectPage._cpmdPersonnel) ? ProjectPage._cpmdPersonnel : [];
-      cpmd.forEach(function(p) { if (p && p.name) options.push(p.name); });
-      var stakeholders = (State.config && State.config.tempStakeholders) || [];
-      stakeholders.forEach(function(s) { if (s && options.indexOf(s) === -1) options.push(s); });
-      requestedByList.innerHTML = options.map(function(n) {
-        return '<option value="' + escapeHtml(n) + '"></option>';
-      }).join('');
-      if (options.length === 0 || !cpmd.length) {
-        TaskEditModal._lazyLoadCpmdPersonnel();
-      }
+      TaskEditModal._refreshRequestedByDatalist();
+      var fed = _getPersonnelList('fed');
+      var cpmd = _getPersonnelList('cpmd');
+      if (!fed.length) TaskEditModal._lazyLoadFedPersonnel();
+      if (!cpmd.length) TaskEditModal._lazyLoadCpmdPersonnel();
     }
     if (requestedByInput) {
       var currentRequestedBy = (this.task && this.task.requestedBy) || '';
@@ -1575,6 +1598,18 @@ var TaskEditModal = {
       if (!opts.silent) self._markFieldError('taskEditDueDate', true);
     } else if (!opts.silent) {
       self._markFieldError('taskEditDueDate', false);
+    }
+    if (!startTbd && !dueTbd && startVal && dueVal) {
+      var sd = new Date(startVal);
+      var ed = new Date(dueVal);
+      if (!isNaN(sd.getTime()) && !isNaN(ed.getTime()) && ed < sd) {
+        errors.push('Due Date must be on or after Start Date');
+        if (!firstBadField) firstBadField = 'taskEditDueDate';
+        if (!opts.silent) {
+          self._markFieldError('taskEditDueDate', true);
+          self._markFieldError('taskEditStartDate', true);
+        }
+      }
     }
     var milestoneCheckbox = document.getElementById('taskEditIsMilestone');
     if (milestoneCheckbox && milestoneCheckbox.checked) {
@@ -1837,27 +1872,59 @@ var TaskEditModal = {
   },
 
   _cpmdLoadPromise: null,
+  _fedLoadPromise: null,
+
+  _refreshRequestedByDatalist() {
+    var dl = document.getElementById('taskEditRequestedByOptions');
+    if (!dl) return;
+    var opts = [];
+    var fed = _getPersonnelList('fed');
+    fed.forEach(function(p) {
+      if (!p) return;
+      var label = p.label || (p.email ? (p.name + ' (' + p.email + ')') : p.name);
+      if (label && opts.indexOf(label) === -1) opts.push(label);
+    });
+    var cpmd = _getPersonnelList('cpmd');
+    cpmd.forEach(function(p) {
+      if (!p) return;
+      var label = p.label || (p.email ? (p.name + ' (' + p.email + ')') : p.name);
+      if (label && opts.indexOf(label) === -1) opts.push(label);
+    });
+    dl.innerHTML = opts.map(function(n) { return '<option value="' + escapeHtml(n) + '"></option>'; }).join('');
+  },
+
   _lazyLoadCpmdPersonnel() {
     if (TaskEditModal._cpmdLoadPromise) return;
     TaskEditModal._cpmdLoadPromise = true;
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.success && Array.isArray(result.personnel)) {
-          if (typeof ProjectPage !== 'undefined') {
-            ProjectPage._cpmdPersonnel = result.personnel;
-          }
-          var dl = document.getElementById('taskEditRequestedByOptions');
-          if (dl) {
-            var opts = [];
-            result.personnel.forEach(function(p) { if (p && p.name) opts.push(p.name); });
-            var stakeholders = (State.config && State.config.tempStakeholders) || [];
-            stakeholders.forEach(function(s) { if (s && opts.indexOf(s) === -1) opts.push(s); });
-            dl.innerHTML = opts.map(function(n) { return '<option value="' + escapeHtml(n) + '"></option>'; }).join('');
-          }
+          _setPersonnelList('cpmd', result.personnel);
+          TaskEditModal._refreshRequestedByDatalist();
         }
       })
-      .withFailureHandler(function() {})
+      .withFailureHandler(function(err) {
+        TaskEditModal._cpmdLoadPromise = null;
+        console.error('TaskEditModal lazy-load CPMD personnel failed:', err);
+      })
       .loadCpmdPersonnel();
+  },
+
+  _lazyLoadFedPersonnel() {
+    if (TaskEditModal._fedLoadPromise) return;
+    TaskEditModal._fedLoadPromise = true;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success && Array.isArray(result.personnel)) {
+          _setPersonnelList('fed', result.personnel);
+          TaskEditModal._refreshRequestedByDatalist();
+        }
+      })
+      .withFailureHandler(function(err) {
+        TaskEditModal._fedLoadPromise = null;
+        console.error('TaskEditModal lazy-load Fed Staffing personnel failed:', err);
+      })
+      .loadFedStaffingPersonnel('personnel');
   },
 
   _lazyFetchProjectOptions() {
@@ -2053,6 +2120,16 @@ var TaskEditModal = {
     }
     var pushEventEl = document.getElementById('taskEditPushCalEvent');
     var pushTaskEl = document.getElementById('taskEditPushCalTask');
+    var existingCustomFields = {};
+    if (this.task && this.task.customFields) {
+      try {
+        existingCustomFields = typeof this.task.customFields === 'string'
+          ? JSON.parse(this.task.customFields)
+          : (this.task.customFields || {});
+        if (!existingCustomFields || typeof existingCustomFields !== 'object') existingCustomFields = {};
+      } catch (e) { existingCustomFields = {}; }
+    }
+    var nextCustomFields = Object.assign({}, existingCustomFields, { attachments: this._getAttachments() });
     return {
       title: this.getInputValue('taskEditTitle').trim(),
       status: this.getInputValue('taskEditStatus'),
@@ -2073,6 +2150,7 @@ var TaskEditModal = {
       milestoneDate: this.getInputValue('taskEditMilestoneDate'),
       milestoneType: this.getInputValue('taskEditMilestoneType'),
       recurringConfig: this.getRecurringConfig(),
+      customFields: JSON.stringify(nextCustomFields),
       pushToCalendarEvent: pushEventEl ? pushEventEl.checked : false,
       pushToCalendarTask: pushTaskEl ? pushTaskEl.checked : false
     };
@@ -2112,6 +2190,174 @@ var TaskEditModal = {
     const dateInput = document.getElementById('taskEditRecurEndDate');
     if (countInput) countInput.disabled = type !== 'count';
     if (dateInput) dateInput.disabled = type !== 'date';
+  },
+
+  _getAttachments() {
+    const el = document.getElementById('taskEditAttachments');
+    if (!el) return [];
+    try {
+      const parsed = JSON.parse(el.value || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  },
+
+  _setAttachments(arr) {
+    const el = document.getElementById('taskEditAttachments');
+    if (!el) return;
+    el.value = JSON.stringify(Array.isArray(arr) ? arr : []);
+    this._renderAttachmentTags();
+  },
+
+  _renderAttachmentTags() {
+    const container = document.getElementById('taskEditAttachmentsTags');
+    if (!container) return;
+    const files = this._getAttachments();
+    if (!files.length) {
+      container.innerHTML = '<span class="text-xs" style="color:var(--co-gray-400);">No attachments yet.</span>';
+      return;
+    }
+    container.innerHTML = files.map(function(f, idx) {
+      const fname = f && (f.name || f.url) ? (f.name || f.url) : 'File';
+      const furl = f && f.url ? f.url : '';
+      const isImg = !!(f && f.kind === 'image');
+      const icon = isImg ? 'fa-image' : 'fa-file';
+      const nameNode = furl
+        ? '<a href="' + escapeHtml(furl) + '" target="_blank" rel="noopener" class="hover:underline truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</a>'
+        : '<span class="truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + '</span>';
+      return '<span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full mr-1 mb-1 max-w-full" style="background:var(--co-surface-sunken);color:var(--co-ink-soft);border:1px solid var(--co-border-subtle);">' +
+        '<i class="fas ' + icon + ' text-[10px]" style="color:var(--co-gray-400);"></i>' +
+        nameNode +
+        '<button type="button" onclick="TaskEditModal._removeAttachment(' + idx + ')" class="ml-0.5 leading-none" style="color:var(--co-gray-400);" onmouseover="this.style.color=\'var(--co-ink)\';" onmouseout="this.style.color=\'var(--co-gray-400)\';" title="Remove"><i class="fas fa-times text-[10px]"></i></button>' +
+        '</span>';
+    }).join('');
+  },
+
+  _removeAttachment(idx) {
+    const arr = this._getAttachments();
+    arr.splice(idx, 1);
+    this._setAttachments(arr);
+  },
+
+  _addAttachment(entry) {
+    if (!entry) return;
+    const arr = this._getAttachments();
+    arr.push(entry);
+    this._setAttachments(arr);
+  },
+
+  uploadAttachments() {
+    const self = this;
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+    fileInput.style.position = 'fixed';
+    fileInput.style.left = '-9999px';
+    document.body.appendChild(fileInput);
+    fileInput.onchange = function() {
+      const files = Array.prototype.slice.call(fileInput.files || []);
+      document.body.removeChild(fileInput);
+      if (!files.length) return;
+      self._uploadAttachmentFiles(files);
+    };
+    fileInput.click();
+  },
+
+  _uploadAttachmentFiles(files) {
+    const self = this;
+    const MAX = 10 * 1024 * 1024;
+    const projectIdRaw = (this.task && this.task.projectId) || (document.getElementById('taskEditProject') || {}).value || 'ADHOC';
+    const projectId = String(projectIdRaw || 'ADHOC').trim() || 'ADHOC';
+    let processed = 0;
+    let added = 0;
+    const errors = [];
+    if (!files.length) return;
+    toast('Uploading ' + files.length + ' file(s)...', 'info');
+    files.forEach(function(file) {
+      if (file.size > MAX) {
+        errors.push(file.name + ': exceeds 10 MB');
+        if (++processed === files.length) self._afterAttachmentUpload(added, errors);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const dataUrl = e.target.result || '';
+        const commaIdx = dataUrl.indexOf(',');
+        const base64 = commaIdx >= 0 ? dataUrl.substring(commaIdx + 1) : dataUrl;
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success && result.file) {
+              const isImg = (file.type || '').indexOf('image/') === 0;
+              self._addAttachment(Object.assign({}, result.file, { kind: isImg ? 'image' : 'file' }));
+              added++;
+            } else {
+              errors.push(file.name + ': ' + ((result && result.error) || 'upload failed'));
+            }
+            if (++processed === files.length) self._afterAttachmentUpload(added, errors);
+          })
+          .withFailureHandler(function(err) {
+            console.error('uploadFileToProject failed:', err);
+            errors.push(file.name + ': ' + (err.message || 'server error'));
+            if (++processed === files.length) self._afterAttachmentUpload(added, errors);
+          })
+          .uploadTaskAttachment(projectId, file.name, file.type || '', base64);
+      };
+      reader.onerror = function() {
+        errors.push(file.name + ': could not read file');
+        if (++processed === files.length) self._afterAttachmentUpload(added, errors);
+      };
+      reader.readAsDataURL(file);
+    });
+  },
+
+  _afterAttachmentUpload(added, errors) {
+    if (added > 0) toast('Attached ' + added + ' file(s)', 'success');
+    if (errors && errors.length) toast(errors.join(' · '), 'error');
+  },
+
+  addAttachmentUrl() {
+    const self = this;
+    PromptModal('Paste link or URL:', 'https://...').then(function(url) {
+      if (!url || !String(url).trim()) return;
+      const trimmed = String(url).trim();
+      PromptModal('Label for this link (optional):', 'Link title').then(function(label) {
+        const entry = {
+          name: (label && String(label).trim()) || trimmed,
+          url: trimmed,
+          kind: 'link'
+        };
+        self._addAttachment(entry);
+      });
+    });
+  },
+
+  pasteScreenshot() {
+    toast('Press Cmd/Ctrl+V to paste a screenshot...', 'info');
+    const handler = async function(e) {
+      const items = (e.clipboardData && e.clipboardData.items) ? Array.prototype.slice.call(e.clipboardData.items) : [];
+      const imageItem = items.find(function(it) { return it.type && it.type.indexOf('image/') === 0; });
+      if (!imageItem) return;
+      e.preventDefault();
+      window.removeEventListener('paste', handler);
+      const blob = imageItem.getAsFile();
+      if (!blob) { toast('No image found in clipboard', 'error'); return; }
+      const ext = (blob.type.split('/')[1] || 'png').toLowerCase();
+      const fname = 'screenshot-' + Date.now() + '.' + ext;
+      const renamed = new File([blob], fname, { type: blob.type });
+      TaskEditModal._uploadAttachmentFiles([renamed]);
+    };
+    window.addEventListener('paste', handler);
+    setTimeout(function() { window.removeEventListener('paste', handler); }, 30000);
+  },
+
+  _loadAttachmentsFromTask(task) {
+    let attachments = [];
+    if (task && task.customFields) {
+      try {
+        const cf = typeof task.customFields === 'string' ? JSON.parse(task.customFields) : task.customFields;
+        if (cf && Array.isArray(cf.attachments)) attachments = cf.attachments;
+      } catch (e) {}
+    }
+    this._setAttachments(attachments);
   },
 
   save() {
@@ -2237,6 +2483,7 @@ var TaskEditModal = {
 
   _pushToCalendarIfRequested(taskId, options) {
     if (!options || (!options.event && !options.task)) return;
+    var self = this;
     google.script.run
       .withSuccessHandler(function(result) {
         if (!result) return;
@@ -2244,17 +2491,51 @@ var TaskEditModal = {
           var msgs = [];
           if (options.event && result.eventId) msgs.push('calendar event');
           if (options.task && result.taskId) msgs.push('Google Task');
-          toast('Pushed to ' + msgs.join(' + '), 'success');
+          if (msgs.length) toast('Pushed to ' + msgs.join(' + '), 'success');
         }
         if (result.errors && result.errors.length) {
-          toast('Calendar push partial: ' + result.errors.join('; '), 'warning');
+          var joined = result.errors.join('; ');
+          var looksLikeAuth = /authoriz|permission|scope|not enabled|ACCESS_TOKEN/i.test(joined);
+          if (looksLikeAuth) {
+            self._promptCalendarReauth(joined);
+          } else {
+            var severity = result.success ? 'warning' : 'error';
+            var prefix = result.success ? 'Calendar push partial: ' : 'Calendar push failed: ';
+            toast(prefix + joined, severity);
+          }
         }
       })
       .withFailureHandler(function(err) {
         console.error('Calendar push failed:', err);
-        toast('Calendar push failed: ' + (err && err.message || 'Unknown error'), 'error');
+        var msg = (err && err.message) || 'Unknown error';
+        if (/authoriz|permission|scope/i.test(msg)) {
+          self._promptCalendarReauth(msg);
+        } else {
+          toast('Calendar push failed: ' + msg, 'error');
+        }
       })
       .pushExistingTaskToCalendar(taskId, options);
+  },
+
+  _promptCalendarReauth(reason) {
+    google.script.run
+      .withSuccessHandler(function(status) {
+        if (status && status.authorized) {
+          toast('Calendar is authorized — try the push again.', 'info');
+          return;
+        }
+        var url = (status && status.authUrl) || '';
+        if (url) {
+          showCalendarReauthDialog(url, reason);
+        } else {
+          toast('Calendar permission needed. Reload COLONY, sign in, and approve the Calendar scope when prompted.', 'error');
+        }
+      })
+      .withFailureHandler(function(err) {
+        console.error('getCalendarAuthStatus failed:', err);
+        toast('Calendar permission needed. Reload COLONY and approve Calendar access.', 'error');
+      })
+      .getCalendarAuthStatus();
   },
 
   async cancel() {

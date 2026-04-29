@@ -28,7 +28,13 @@ const PermissionGuard = {
     'dataasset:create': 'Create data assets',
     'dataasset:read': 'View data assets',
     'dataasset:update': 'Update data assets',
-    'dataasset:delete': 'Delete data assets'
+    'dataasset:delete': 'Delete data assets',
+    'view:masterBoard': 'View master board',
+    'view:analytics': 'View analytics',
+    'view:funnel': 'View funnel',
+    'view:pickups': 'View pick ups (surge)',
+    'view:adminTools': 'View admin tools',
+    'project:overrideOrigin': 'Override project origin classification'
   },
 
   DEFAULT_ROLES: {
@@ -39,10 +45,12 @@ const PermissionGuard = {
         'task:create', 'task:read:own', 'task:read:all', 'task:update:own', 'task:update:all',
         'task:delete:own', 'task:delete:all', 'task:assign',
         'project:create', 'project:read', 'project:update', 'project:delete', 'project:manage_members',
+        'project:overrideOrigin',
         'user:create', 'user:read', 'user:update', 'user:delete', 'user:manage_roles',
         'analytics:view:own', 'analytics:view:team', 'analytics:view:all',
         'admin:settings', 'admin:audit_log', 'admin:automation', 'admin:webhooks',
-        'dataasset:create', 'dataasset:read', 'dataasset:update', 'dataasset:delete'
+        'dataasset:create', 'dataasset:read', 'dataasset:update', 'dataasset:delete',
+        'view:masterBoard', 'view:analytics', 'view:funnel', 'view:pickups', 'view:adminTools'
       ],
       isSystemRole: true
     },
@@ -52,9 +60,11 @@ const PermissionGuard = {
       permissions: [
         'task:create', 'task:read:all', 'task:update:all', 'task:delete:own', 'task:assign',
         'project:create', 'project:read', 'project:update', 'project:manage_members',
+        'project:overrideOrigin',
         'user:read',
         'analytics:view:own', 'analytics:view:team',
-        'dataasset:create', 'dataasset:read', 'dataasset:update'
+        'dataasset:create', 'dataasset:read', 'dataasset:update',
+        'view:masterBoard', 'view:analytics', 'view:funnel', 'view:pickups'
       ],
       isSystemRole: true
     },
@@ -66,7 +76,8 @@ const PermissionGuard = {
         'project:create', 'project:read', 'project:update',
         'user:read',
         'analytics:view:own',
-        'dataasset:read', 'dataasset:create', 'dataasset:update'
+        'dataasset:read', 'dataasset:create', 'dataasset:update',
+        'view:pickups'
       ],
       isSystemRole: true
     },
@@ -78,6 +89,17 @@ const PermissionGuard = {
         'project:read',
         'user:read',
         'analytics:view:own',
+        'dataasset:read'
+      ],
+      isSystemRole: true
+    },
+    client: {
+      name: 'client',
+      description: 'External client — restricted to their own projects',
+      permissions: [
+        'task:create', 'task:read:own', 'task:update:own', 'task:delete:own',
+        'project:create', 'project:read', 'project:update',
+        'user:read',
         'dataasset:read'
       ],
       isSystemRole: true
@@ -230,6 +252,13 @@ const PermissionGuard = {
           'project:read',
           'user:read',
           'analytics:view:own',
+          'dataasset:read'
+        ];
+      case 'client':
+        return [
+          'task:create', 'task:read:own', 'task:update:own', 'task:delete:own',
+          'project:create', 'project:read', 'project:update',
+          'user:read',
           'dataasset:read'
         ];
       default:

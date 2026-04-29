@@ -250,3 +250,60 @@ function resolveProjectFolder_(project) {
   }
   return folder;
 }
+
+function resolveTaskAttachmentsFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var folderId = props.getProperty('TASK_ATTACHMENTS_FOLDER_ID');
+  if (folderId) {
+    try { return DriveApp.getFolderById(folderId); }
+    catch (e) { console.error('Task attachments folder missing, recreating:', e); }
+  }
+  var folder = DriveApp.createFolder('COLONY - Task Attachments');
+  props.setProperty('TASK_ATTACHMENTS_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+function uploadTaskAttachment(taskRef, fileName, mimeType, base64Data) {
+  try {
+    if (!fileName) throw new Error('fileName is required');
+    if (!base64Data) throw new Error('No file data received');
+
+    var bytes;
+    try { bytes = Utilities.base64Decode(base64Data); }
+    catch (e) { throw new Error('Failed to decode file payload'); }
+
+    if (bytes.length > UPLOAD_MAX_BYTES) {
+      throw new Error('File exceeds the ' + Math.round(UPLOAD_MAX_BYTES / 1048576) + ' MB upload limit.');
+    }
+
+    var folder = null;
+    var ref = String(taskRef || '').trim();
+    var upper = ref.toUpperCase();
+    if (ref && upper !== 'ADHOC' && upper !== 'TASK' && ref.indexOf('DA_') !== 0) {
+      try {
+        var project = getProjectById(ref);
+        if (project) {
+          PermissionGuard.requirePermission('project:update', { projectId: ref });
+          folder = resolveProjectFolder_(project);
+        }
+      } catch (e) { console.error('uploadTaskAttachment: project lookup failed, falling back to shared folder:', e); }
+    }
+    if (!folder) folder = resolveTaskAttachmentsFolder_();
+
+    var blob = Utilities.newBlob(bytes, mimeType || 'application/octet-stream', fileName);
+    var file = folder.createFile(blob);
+
+    return {
+      success: true,
+      file: {
+        id: file.getId(),
+        name: file.getName(),
+        url: file.getUrl(),
+        mimeType: file.getMimeType()
+      }
+    };
+  } catch (error) {
+    console.error('uploadTaskAttachment failed:', error);
+    return { success: false, error: error.message };
+  }
+}

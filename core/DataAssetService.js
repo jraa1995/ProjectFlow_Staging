@@ -81,10 +81,19 @@ function getDataAssetFormOptions() {
       .map(function(u) { return { email: u.email, name: u.name || u.email.split('@')[0], role: u.role || '' }; });
     var projects = getAllProjectsOptimized()
       .map(function(p) { return { id: p.id, name: p.name || '' }; });
-    return { success: true, users: users, projects: projects };
+    var assetTypes = (CONFIG && CONFIG.DATA_ASSET_TYPES) ? CONFIG.DATA_ASSET_TYPES.slice() : [];
+    var buckets = [];
+    try {
+      buckets = (typeof getAllDataAssetBuckets === 'function')
+        ? getAllDataAssetBuckets().map(function(b) { return { id: b.id, name: b.name }; })
+        : [];
+    } catch (e) {
+      console.error('getDataAssetFormOptions: bucket lookup failed:', e);
+    }
+    return { success: true, users: users, projects: projects, assetTypes: assetTypes, buckets: buckets };
   } catch (error) {
     console.error('getDataAssetFormOptions failed:', error);
-    return { success: false, error: error.message, users: [], projects: [] };
+    return { success: false, error: error.message, users: [], projects: [], assetTypes: [], buckets: [] };
   }
 }
 

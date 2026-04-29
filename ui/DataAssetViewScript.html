@@ -6,27 +6,91 @@ var DataAssetPage = {
   selectedAsset: null,
   isEditing: false,
   filterStatus: '',
+  filterAssetType: '',
+  filterBucketId: '',
   searchTerm: '',
-  formOptions: { users: [], projects: [] },
+  formOptions: { users: [], projects: [], assetTypes: [], buckets: [] },
   _formOptionsLoaded: false,
   _activeTab: 'details',
+  buckets: [],
+  _bucketsLoaded: false,
+  showBucketsModal: false,
+  _editingBucketId: null,
+  _bucketsCtx: null,
+  _justCreatedBucketId: '',
+  _bulkSelected: {},
+  _bulkMode: false,
 
   init() {
     if (typeof SplitPane !== 'undefined') SplitPane.init('dataAssetSplitPane', 'dataassets', 288);
+    var skel = document.getElementById('dataAssetListSkeleton');
+    if (skel && (!this.assets || !this.assets.length) && typeof renderListSkeleton === 'function') skel.innerHTML = renderListSkeleton(8);
     this.loadAssets();
     this._loadFormOptions();
+    this.loadBuckets();
   },
 
   _loadFormOptions() {
     google.script.run
       .withSuccessHandler((result) => {
         if (result && result.success) {
-          this.formOptions = { users: result.users || [], projects: result.projects || [] };
+          this.formOptions = {
+            users: result.users || [],
+            projects: result.projects || [],
+            assetTypes: result.assetTypes || [],
+            buckets: result.buckets || []
+          };
           this._formOptionsLoaded = true;
+          if (this.isEditing) {
+            this._refreshEditFormBucketSelect();
+          } else if (this.selectedAsset) {
+            this.renderAssetDetail();
+          }
+          this.renderAssetList();
         }
       })
       .withFailureHandler(() => {})
       .getDataAssetFormOptions();
+  },
+
+  loadBuckets(force) {
+    if (!force && this._bucketsLoaded) return;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          self.buckets = result.buckets || [];
+          self._bucketsLoaded = true;
+          self.formOptions.buckets = self.buckets.map(function(b) { return { id: b.id, name: b.name }; });
+          self.renderAssetList();
+          if (self.isEditing) {
+            self._refreshEditFormBucketSelect();
+          } else if (self.selectedAsset) {
+            self.renderAssetDetail();
+          }
+          if (self.showBucketsModal) self._renderBucketsModal();
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error('loadBuckets failed:', error);
+      })
+      .getDataAssetBuckets();
+  },
+
+  _refreshEditFormBucketSelect() {
+    var sel = document.getElementById('assetForm_bucketId');
+    if (!sel) return;
+    var assetBucketId = (this.selectedAsset && this.selectedAsset.bucketId) || '';
+    var dropdownValue = sel.value || '';
+    var preferred = assetBucketId || dropdownValue;
+    var html = '<option value="">— No bucket —</option>';
+    (this.buckets || []).forEach(function(b) {
+      html += '<option value="' + escapeHtml(b.id) + '"' + (b.id === preferred ? ' selected' : '') + '>' + escapeHtml(b.name) + '</option>';
+    });
+    sel.innerHTML = html;
+    if (preferred && [].some.call(sel.options, function(o) { return o.value === preferred; })) {
+      sel.value = preferred;
+    }
   },
 
   loadAssets() {
@@ -60,56 +124,238 @@ var DataAssetPage = {
   },
 
   _getFilteredAssets() {
+    var bucketFilter = this.filterBucketId;
     return this.assets.filter(a => {
       var matchStatus = !this.filterStatus || a.status === this.filterStatus;
+      var matchType = !this.filterAssetType || (a.assetType || '') === this.filterAssetType;
+      var matchBucket = !bucketFilter
+        || (bucketFilter === '__none__' ? !a.bucketId : a.bucketId === bucketFilter);
       var term = (this.searchTerm || '').toLowerCase();
       var matchSearch = !term ||
         (a.assetName || '').toLowerCase().includes(term) ||
         (a.assetOwner || '').toLowerCase().includes(term) ||
-        (a.dataSource || '').toLowerCase().includes(term);
-      return matchStatus && matchSearch;
+        (a.dataSource || '').toLowerCase().includes(term) ||
+        (a.assetType || '').toLowerCase().includes(term);
+      return matchStatus && matchType && matchBucket && matchSearch;
     });
   },
 
   _ensureSearchBar() {
     var container = document.getElementById('dataAssetListContainer');
     if (!container) return;
+
     if (!document.getElementById('daSearchBar')) {
       var bar = document.createElement('div');
       bar.id = 'daSearchBar';
-      bar.className = 'px-3.5 py-2.5 space-y-2';
-      bar.style.cssText = 'border-bottom:1px solid var(--co-border-subtle);background:var(--co-surface);';
-      bar.innerHTML = '<input type="text" id="daSearchInput" placeholder="Search assets..." ' +
-        'class="co-search-input w-full" />' +
-        '<select id="daFilterSelect" class="co-filter-select w-full">' +
-        '<option value="">All Statuses</option>' +
-        '<option value="Active">Active</option>' +
-        '<option value="Inactive">Inactive</option>' +
-        '<option value="Deprecated">Deprecated</option>' +
-        '<option value="In Development">In Development</option>' +
-        '</select>';
+      bar.innerHTML = '<input type="text" id="daSearchInput" placeholder="Search assets..." class="co-search-input w-full" />' +
+        '<div class="flex items-center justify-between gap-2 mt-2">' +
+          '<button id="daBulkToggle" type="button" class="text-[12px] font-medium transition-colors" style="color:var(--co-gray-500);" onmouseover="this.style.color=\'var(--co-ink)\'" onmouseout="this.style.color=\'var(--co-gray-500)\'"><i class="fas fa-check-square text-[10px] mr-1"></i><span id="daBulkToggleLabel">Bulk Select</span></button>' +
+          '<div id="daBulkActions" class="flex items-center gap-1" style="display:none;">' +
+            '<span id="daBulkCount" class="text-[11px]" style="color:var(--co-gray-500);"></span>' +
+            '<button type="button" onclick="_pc(\'DataAssetPage\',\'openAssignBucketDialog\')" class="co-btn-solid" style="padding:0.25rem 0.625rem;font-size:0.75rem;">Add to Bucket</button>' +
+          '</div>' +
+        '</div>';
+      var chips = document.createElement('div');
+      chips.id = 'daFilterChips';
+      chips.className = 'co-filter-chips';
       if (!document.getElementById('daListItems')) {
         var list = document.createElement('div');
         list.id = 'daListItems';
         container.innerHTML = '';
         container.appendChild(bar);
+        container.appendChild(chips);
         container.appendChild(list);
       }
       var searchInput = document.getElementById('daSearchInput');
-      var filterSelect = document.getElementById('daFilterSelect');
+      var bulkToggle = document.getElementById('daBulkToggle');
       searchInput.addEventListener('input', function() {
         DataAssetPage.searchTerm = this.value;
         DataAssetPage._renderListItems();
       });
-      filterSelect.addEventListener('change', function() {
-        DataAssetPage.filterStatus = this.value;
+      bulkToggle.addEventListener('click', function() {
+        DataAssetPage._bulkMode = !DataAssetPage._bulkMode;
+        if (!DataAssetPage._bulkMode) DataAssetPage._bulkSelected = {};
         DataAssetPage._renderListItems();
+        DataAssetPage._ensureSearchBar();
       });
     }
+
+    this._syncFilterPanelSelects();
+    this._renderFilterChips();
+
     var inp = document.getElementById('daSearchInput');
-    var sel = document.getElementById('daFilterSelect');
     if (inp && inp.value !== (this.searchTerm || '')) inp.value = this.searchTerm || '';
-    if (sel && sel.value !== (this.filterStatus || '')) sel.value = this.filterStatus || '';
+
+    var label = document.getElementById('daBulkToggleLabel');
+    if (label) label.textContent = this._bulkMode ? 'Cancel Bulk' : 'Bulk Select';
+    var actions = document.getElementById('daBulkActions');
+    if (actions) {
+      var selected = Object.keys(this._bulkSelected || {}).filter(function(k) { return DataAssetPage._bulkSelected[k]; });
+      var count = selected.length;
+      actions.style.display = (this._bulkMode && count > 0) ? '' : 'none';
+      var counter = document.getElementById('daBulkCount');
+      if (counter) counter.textContent = count + ' selected';
+    }
+    this._updateFilterBadge();
+  },
+
+  _syncFilterPanelSelects() {
+    var assetTypes = (this.formOptions && this.formOptions.assetTypes && this.formOptions.assetTypes.length)
+      ? this.formOptions.assetTypes
+      : ['Query', 'Database', 'Data Pipeline', 'Data Process ETL', 'Data Process ELT'];
+    var typeKey = assetTypes.join('|');
+    var buckets = this.buckets || [];
+    var bucketsKey = buckets.map(function(b) { return b.id + ':' + b.name; }).join('|');
+
+    var typeSel = document.getElementById('daTypeFilter');
+    if (typeSel && typeSel.dataset.optsKey !== typeKey) {
+      typeSel.innerHTML = '<option value="">All Types</option>' + assetTypes.map(function(t) {
+        return '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>';
+      }).join('');
+      typeSel.dataset.optsKey = typeKey;
+    }
+    var bucketSel = document.getElementById('daBucketFilter');
+    if (bucketSel && bucketSel.dataset.optsKey !== bucketsKey) {
+      bucketSel.innerHTML = this._buildBucketFilterOptions(buckets);
+      bucketSel.dataset.optsKey = bucketsKey;
+    }
+
+    var statusSel = document.getElementById('daStatusFilter');
+    if (statusSel && statusSel.value !== (this.filterStatus || '')) statusSel.value = this.filterStatus || '';
+    if (typeSel && typeSel.value !== (this.filterAssetType || '')) typeSel.value = this.filterAssetType || '';
+    if (bucketSel && bucketSel.value !== (this.filterBucketId || '')) bucketSel.value = this.filterBucketId || '';
+  },
+
+  _setFilter(key, value) {
+    if (key !== 'filterStatus' && key !== 'filterAssetType') return;
+    this[key] = value || '';
+    this._renderListItems();
+    this._updateFilterBadge();
+    this._renderFilterChips();
+  },
+
+  _setBucketFilter(value) {
+    if (value === '__manage__') {
+      var sel = document.getElementById('daBucketFilter');
+      if (sel) sel.value = this.filterBucketId || '';
+      this.openBucketsModal();
+      return;
+    }
+    this.filterBucketId = value || '';
+    this._renderListItems();
+    this._updateFilterBadge();
+    this._renderFilterChips();
+  },
+
+  clearAllFilters() {
+    this.filterStatus = '';
+    this.filterAssetType = '';
+    this.filterBucketId = '';
+    this._syncFilterPanelSelects();
+    this._renderListItems();
+    this._updateFilterBadge();
+    this._renderFilterChips();
+  },
+
+  _renderFilterChips() {
+    var el = document.getElementById('daFilterChips');
+    if (!el) return;
+    var bucketName = '';
+    if (this.filterBucketId === '__none__') bucketName = '(no bucket)';
+    else if (this.filterBucketId) {
+      var b = (this.buckets || []).find(function(x) { return x.id === DataAssetPage.filterBucketId; });
+      bucketName = b ? b.name : this.filterBucketId;
+    }
+    var entries = [
+      { key: 'filterStatus', label: 'Status', value: this.filterStatus, display: this.filterStatus },
+      { key: 'filterAssetType', label: 'Type', value: this.filterAssetType, display: this.filterAssetType },
+      { key: 'filterBucketId', label: 'Bucket', value: this.filterBucketId, display: bucketName }
+    ];
+    var active = entries.filter(function(e) { return e.value; });
+    if (!active.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.innerHTML = active.map(function(e) {
+      return '<span class="co-chip" role="button" tabindex="0" onclick="DataAssetPage._removeFilter(\'' + e.key + '\')">' +
+        '<span class="co-chip-label">' + escapeHtml(e.label) + ':</span>' +
+        '<span class="co-chip-value">' + escapeHtml(String(e.display)) + '</span>' +
+        '<i class="fas fa-times co-chip-x"></i></span>';
+    }).join('') + ' <button type="button" class="co-chip-clear" onclick="_pc(\'DataAssetPage\',\'clearAllFilters\')">Clear all</button>';
+  },
+
+  _removeFilter(key) {
+    if (!this.hasOwnProperty(key)) return;
+    this[key] = '';
+    this._syncFilterPanelSelects();
+    this._renderListItems();
+    this._updateFilterBadge();
+    this._renderFilterChips();
+  },
+
+  _activeFilterCount() {
+    var n = 0;
+    if (this.filterStatus) n++;
+    if (this.filterAssetType) n++;
+    if (this.filterBucketId) n++;
+    return n;
+  },
+
+  _updateFilterBadge() {
+    var badge = document.getElementById('daFilterBadge');
+    if (!badge) return;
+    var n = this._activeFilterCount();
+    if (n > 0) { badge.textContent = n; badge.classList.remove('hidden'); }
+    else { badge.classList.add('hidden'); }
+  },
+
+  _toggleFiltersPanel() {
+    var panel = document.getElementById('daFilterPanel');
+    if (!panel) return;
+    if (panel.classList.contains('hidden')) this._openFiltersPanel();
+    else this._closeFiltersPanel();
+  },
+
+  _openFiltersPanel() {
+    this._syncFilterPanelSelects();
+    var panel = document.getElementById('daFilterPanel');
+    var btn = document.getElementById('daFilterToggle');
+    if (panel) panel.classList.remove('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    document.addEventListener('keydown', DataAssetPage._filterPanelEscHandler);
+    setTimeout(function() {
+      document.addEventListener('mousedown', DataAssetPage._filterPanelClickAway, true);
+    }, 0);
+  },
+
+  _closeFiltersPanel() {
+    var panel = document.getElementById('daFilterPanel');
+    var btn = document.getElementById('daFilterToggle');
+    if (panel) panel.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('keydown', DataAssetPage._filterPanelEscHandler);
+    document.removeEventListener('mousedown', DataAssetPage._filterPanelClickAway, true);
+  },
+
+  _filterPanelClickAway(e) {
+    var panel = document.getElementById('daFilterPanel');
+    var btn = document.getElementById('daFilterToggle');
+    if (!panel) return;
+    if (panel.contains(e.target)) return;
+    if (btn && btn.contains(e.target)) return;
+    DataAssetPage._closeFiltersPanel();
+  },
+
+  _filterPanelEscHandler(e) {
+    if (e.key === 'Escape') DataAssetPage._closeFiltersPanel();
+  },
+
+  _buildBucketFilterOptions(buckets) {
+    var html = '<option value="">All Buckets</option><option value="__none__">(no bucket)</option>';
+    buckets.forEach(function(b) {
+      var label = b.name + (typeof b.memberCount === 'number' ? ' (' + b.memberCount + ')' : '');
+      html += '<option value="' + escapeHtml(b.id) + '">' + escapeHtml(label) + '</option>';
+    });
+    html += '<option value="__manage__">— Manage Buckets…</option>';
+    return html;
   },
 
   _renderListItems() {
@@ -117,21 +363,44 @@ var DataAssetPage = {
     if (!listEl) return;
     var filtered = this._getFilteredAssets();
     if (!filtered.length) {
-      listEl.innerHTML = '<div class="flex flex-col items-center justify-center h-32 text-gray-400">' +
-        '<i class="fas fa-database text-2xl mb-2 text-gray-300"></i>' +
-        '<p class="text-sm">No data assets found</p></div>';
+      listEl.innerHTML = (typeof renderEmptyState === 'function')
+        ? renderEmptyState({ variant:'compact', icon:'fa-database', title:'No data assets', subtitle:'Try clearing filters, or click "+ New Data Asset" to add one.' })
+        : '<div class="flex flex-col items-center justify-center h-32 text-gray-400"><i class="fas fa-database text-2xl mb-2 text-gray-300"></i><p class="text-sm">No data assets found</p></div>';
       return;
     }
     var self = this;
+    var bucketNameMap = {};
+    (this.buckets || []).forEach(function(b) { bucketNameMap[b.id] = b.name; });
     listEl.innerHTML = filtered.map(function(asset) {
       var isActive = self.selectedAsset && self.selectedAsset.id === asset.id;
       var dotColor = self._statusColor(asset.status);
       var activeStyle = isActive ? 'background:var(--co-surface-sunken);box-shadow:inset 3px 0 0 var(--co-accent-500);' : '';
-      return '<div onclick="DataAssetPage.selectAsset(\'' + escapeHtml(asset.id) + '\')" ' +
+      var typeChip = asset.assetType
+        ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0" style="background:var(--co-surface-sunken);color:var(--co-ink-muted);border:1px solid var(--co-border-subtle);">' + escapeHtml(asset.assetType) + '</span>'
+        : '';
+      var bucketName = asset.bucketId ? bucketNameMap[asset.bucketId] : '';
+      var bucketChip = bucketName
+        ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;"><i class="fas fa-folder text-[9px] mr-1"></i>' + escapeHtml(bucketName) + '</span>'
+        : '';
+      var bulkCheckbox = '';
+      var rowOnclick = 'DataAssetPage.selectAsset(\'' + escapeHtml(asset.id) + '\')';
+      if (self._bulkMode) {
+        var checked = !!(self._bulkSelected && self._bulkSelected[asset.id]);
+        bulkCheckbox = '<input type="checkbox" data-bulk="' + escapeHtml(asset.id) + '"' + (checked ? ' checked' : '') +
+          ' onclick="event.stopPropagation();DataAssetPage._toggleBulk(\'' + escapeHtml(asset.id) + '\',this.checked)" ' +
+          'class="rounded border-gray-300 text-gray-900 focus:ring-gray-400 mr-1 flex-shrink-0" />';
+        rowOnclick = 'DataAssetPage._toggleBulk(\'' + escapeHtml(asset.id) + '\',!DataAssetPage._bulkSelected[\'' + escapeHtml(asset.id) + '\'])';
+      }
+      var recency = (typeof recencyBadge === 'function') ? recencyBadge(asset) : '';
+      return '<div onclick="' + rowOnclick + '" ' +
         'class="px-4 py-3 cursor-pointer transition-colors co-project-item" style="border-bottom:1px solid var(--co-border-subtle);' + activeStyle + '">' +
         '<div class="flex items-center gap-2 min-w-0">' +
+        bulkCheckbox +
         '<span class="w-2 h-2 rounded-full flex-shrink-0" style="background-color:' + dotColor + '"></span>' +
         '<span class="text-[13px] font-medium truncate" style="color:var(--co-ink);">' + escapeHtml(asset.assetName || '-') + '</span>' +
+        recency +
+        typeChip +
+        bucketChip +
         '</div>' +
         '<div class="mt-1 pl-4">' +
         '<p class="text-[11px] truncate" style="color:var(--co-ink-muted);">' + escapeHtml(asset.assetOwner || '') + '</p>' +
@@ -143,6 +412,82 @@ var DataAssetPage = {
   renderAssetList() {
     this._ensureSearchBar();
     this._renderListItems();
+  },
+
+  _toggleBulk(assetId, checked) {
+    if (!this._bulkSelected) this._bulkSelected = {};
+    if (checked) this._bulkSelected[assetId] = true;
+    else delete this._bulkSelected[assetId];
+    this._renderListItems();
+    this._ensureSearchBar();
+  },
+
+  openAssignBucketDialog() {
+    var ids = Object.keys(this._bulkSelected || {}).filter(function(k) { return DataAssetPage._bulkSelected[k]; });
+    if (!ids.length) { toast('Select at least one asset', 'error'); return; }
+    var buckets = this.buckets || [];
+    var optionsHtml = '<option value="" disabled selected hidden>— Choose bucket —</option>' +
+      buckets.map(function(b) {
+        return '<option value="' + escapeHtml(b.id) + '">' + escapeHtml(b.name) + ' (' + (b.memberCount || 0) + ')</option>';
+      }).join('') +
+      '<option value="__clear__">Remove from bucket</option>';
+    var modal = document.createElement('div');
+    modal.id = 'daAssignBucketModal';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4';
+    modal.innerHTML = '<div class="bg-white border border-gray-200 rounded-lg shadow-xl w-full max-w-md">' +
+      '<div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">' +
+      '<h3 class="text-sm font-semibold text-gray-900"><i class="fas fa-folder text-gray-400 mr-1.5"></i>Assign ' + ids.length + ' asset' + (ids.length !== 1 ? 's' : '') + ' to bucket</h3>' +
+      '<button onclick="document.getElementById(\'daAssignBucketModal\').remove();" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>' +
+      '</div>' +
+      '<div class="p-4 space-y-3">' +
+      '<select id="daAssignBucketSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">' + optionsHtml + '</select>' +
+      '<div class="flex items-center gap-2 pt-1">' +
+      '<button onclick="DataAssetPage.confirmAssignBucket()" class="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors">Apply</button>' +
+      '<button onclick="document.getElementById(\'daAssignBucketModal\').remove();" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>' +
+      '<button onclick="DataAssetPage.openBucketsModal();document.getElementById(\'daAssignBucketModal\').remove();" class="ml-auto text-xs text-gray-600 hover:text-gray-900 underline-offset-2 hover:underline">Manage Buckets</button>' +
+      '</div></div></div>';
+    document.body.appendChild(modal);
+  },
+
+  confirmAssignBucket() {
+    var sel = document.getElementById('daAssignBucketSelect');
+    if (!sel) return;
+    var rawValue = sel.value;
+    if (!rawValue) { toast('Pick a bucket', 'error'); return; }
+    var ids = Object.keys(this._bulkSelected || {}).filter(function(k) { return DataAssetPage._bulkSelected[k]; });
+    if (!ids.length) { toast('No assets selected', 'error'); return; }
+    var bucketId = rawValue === '__clear__' ? '' : rawValue;
+    var modal = document.getElementById('daAssignBucketModal');
+    if (modal) modal.remove();
+    var self = this;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (!result || !result.success) {
+          toast((result && result.error) || 'Failed to update assets', 'error');
+          return;
+        }
+        result.updatedIds.forEach(function(id) {
+          var asset = self.assets.find(function(a) { return a.id === id; });
+          if (asset) asset.bucketId = result.bucketId;
+        });
+        self._bulkSelected = {};
+        self._bulkMode = false;
+        self.loadBuckets(true);
+        if (self.selectedAsset && result.updatedIds.indexOf(self.selectedAsset.id) !== -1) {
+          self.selectedAsset.bucketId = result.bucketId;
+          self.renderAssetDetail();
+        }
+        self.renderAssetList();
+        toast(result.updated + ' asset' + (result.updated !== 1 ? 's' : '') + (bucketId ? ' added to bucket' : ' removed from bucket'), 'success');
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        console.error('setAssetsBucket failed:', error);
+        toast('Failed to update assets', 'error');
+      })
+      .setDataAssetsBucket({ assetIds: ids, bucketId: bucketId });
   },
 
   renderAssetDetail() {
@@ -199,10 +544,23 @@ var DataAssetPage = {
 
     var schedDays = (a.updateSchedule || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean).join(', ');
 
+    var bucketName = '';
+    if (a.bucketId) {
+      var b = (this.buckets || []).find(function(x) { return x.id === a.bucketId; });
+      bucketName = b ? b.name : a.bucketId;
+    }
+    var bucketDisplay = bucketName
+      ? '<a onclick="_pc(\'DataAssetPage\',\'filterByBucket\',\'' + escapeHtml(a.bucketId) + '\')" class="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full cursor-pointer hover:underline" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;"><i class="fas fa-folder text-[10px] mr-1"></i>' + escapeHtml(bucketName) + '</a>'
+      : '';
+
     var fields = row('Status',
         '<span class="flex items-center gap-1.5">' +
         '<span class="w-2 h-2 rounded-full" style="background-color:' + dotColor + '"></span>' +
         escapeHtml(a.status || '') + '</span>') +
+      row('Asset Type', a.assetType
+        ? '<span class="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full" style="background:var(--co-surface-sunken);color:var(--co-ink);border:1px solid var(--co-border-subtle);">' + escapeHtml(a.assetType) + '</span>'
+        : '') +
+      row('Bucket', bucketDisplay) +
       row('Asset Owner', escapeHtml(a.assetOwner || '')) +
       row('Backup Owner', escapeHtml(a.backupOwner || '')) +
       row('Asset Name', escapeHtml(a.assetName || '')) +
@@ -382,10 +740,28 @@ var DataAssetPage = {
       stakeholderOpts.push({ value: 'BI - ' + u.name, label: 'BI - ' + u.name });
     });
 
+    var assetTypeOpts = (this.formOptions.assetTypes && this.formOptions.assetTypes.length)
+      ? this.formOptions.assetTypes
+      : ['Query', 'Database', 'Data Pipeline', 'Data Process ETL', 'Data Process ELT'];
+
+    var bucketSourceList = this.buckets && this.buckets.length ? this.buckets : (this.formOptions.buckets || []);
+    var bucketOptions = '<option value="">— No bucket —</option>' +
+      bucketSourceList.map(function(b) {
+        var sel = a.bucketId === b.id ? ' selected' : '';
+        return '<option value="' + escapeHtml(b.id) + '"' + sel + '>' + escapeHtml(b.name) + '</option>';
+      }).join('');
+    var bucketField = '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Bucket</label>' +
+      '<div class="flex items-center gap-2">' +
+      '<select id="assetForm_bucketId" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' + bucketOptions + '</select>' +
+      '<button type="button" onclick="DataAssetPage.openBucketsModalForEdit()" class="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50" title="Manage buckets"><i class="fas fa-cog text-xs"></i></button>' +
+      '</div></div>';
+
     return '<div class="space-y-4">' +
       '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Status</label>' +
       '<select id="assetForm_status" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
       statusOptions + '</select></div>' +
+      this._buildDropdown('assetType', 'Asset Type', assetTypeOpts, a.assetType) +
+      bucketField +
       this._buildUserSelect('assetOwner', 'Asset Owner', a.assetOwner) +
       this._buildUserSelect('backupOwner', 'Backup Owner', a.backupOwner) +
       field('assetName', 'Asset Name', a.assetName) +
@@ -404,7 +780,7 @@ var DataAssetPage = {
 
   _collectFormData() {
     var data = {};
-    var simpleIds = ['status','assetOwner','backupOwner','assetName','dataSource','targetFiles',
+    var simpleIds = ['status','assetType','bucketId','assetOwner','backupOwner','assetName','dataSource','targetFiles',
       'updateFrequency','automatedSchedule','currentEnvironment','githubLink','dataSharingDocLink'];
     simpleIds.forEach(function(id) {
       var el = document.getElementById('assetForm_' + id);
@@ -620,18 +996,19 @@ var DataAssetPage = {
 
   _renderLineageTab(asset) {
     var projectIds = (asset.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    if (projectIds.length === 0) {
+    if (projectIds.length === 0 && !asset.bucketId) {
       return '<div class="flex-1 flex flex-col items-center justify-center text-gray-400 p-12">' +
         '<i class="fas fa-project-diagram text-4xl mb-3 text-gray-300"></i>' +
         '<p class="text-sm font-medium text-gray-500">No lineage relationships</p>' +
-        '<p class="text-xs text-gray-400 mt-1">Add Related Projects to this Data Asset to see lineage</p></div>';
+        '<p class="text-xs text-gray-400 mt-1">Add a Bucket or Related Projects to see lineage</p></div>';
     }
     var graph = this._buildLineageGraph(asset);
     return '<div class="flex-1 overflow-auto p-6">' +
       '<div class="bg-white border border-gray-200 rounded-lg p-4">' +
       this._renderLineageSVG(graph) +
       '</div>' +
-      '<div class="flex items-center gap-6 mt-4 px-2">' +
+      '<div class="flex items-center gap-6 mt-4 px-2 flex-wrap">' +
+      '<div class="flex items-center gap-2"><span class="w-3 h-3 rounded border-2 border-slate-700" style="background:#f1f5f9;"></span><span class="text-xs text-gray-500">Bucket</span></div>' +
       '<div class="flex items-center gap-2"><span class="w-3 h-3 rounded border-2 border-gray-900 bg-gray-100"></span><span class="text-xs text-gray-500">Data Asset</span></div>' +
       '<div class="flex items-center gap-2"><span class="w-3 h-3 rounded border-2 border-gray-500 bg-gray-50"></span><span class="text-xs text-gray-500">Project</span></div>' +
       '<div class="flex items-center gap-2"><svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#9ca3af" stroke-width="2"/></svg><span class="text-xs text-gray-500">Feeds into</span></div>' +
@@ -643,54 +1020,112 @@ var DataAssetPage = {
     var edges = [];
     var nodeMap = {};
     var self = this;
-    nodes.push({ id: asset.id, label: asset.assetName, type: 'dataAsset', isCurrent: true, status: asset.status });
+
+    var bucket = null;
+    if (asset.bucketId) {
+      bucket = (self.buckets || []).find(function(b) { return b.id === asset.bucketId; });
+      var bucketLabel = bucket ? bucket.name : asset.bucketId;
+      nodes.push({ id: 'bucket:' + asset.bucketId, bucketId: asset.bucketId, label: bucketLabel, type: 'bucket' });
+      nodeMap['bucket:' + asset.bucketId] = true;
+    }
+
+    nodes.push({ id: asset.id, label: asset.assetName, type: 'dataAsset', isCurrent: true, status: asset.status, assetType: asset.assetType });
     nodeMap[asset.id] = true;
+    if (bucket) {
+      edges.push({ from: 'bucket:' + asset.bucketId, to: asset.id });
+    }
+
+    if (asset.bucketId) {
+      self.assets.forEach(function(da) {
+        if (da.id === asset.id) return;
+        if (da.bucketId !== asset.bucketId) return;
+        if (!nodeMap[da.id]) {
+          nodes.push({ id: da.id, label: da.assetName, type: 'dataAsset', isCurrent: false, status: da.status, assetType: da.assetType });
+          nodeMap[da.id] = true;
+        }
+        edges.push({ from: 'bucket:' + asset.bucketId, to: da.id });
+      });
+    }
+
     var projectIds = (asset.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
     projectIds.forEach(function(pid) {
       var proj = (self.formOptions.projects || []).find(function(p) { return p.id === pid; });
       if (!proj && typeof State !== 'undefined') {
         proj = (State.projects || []).find(function(p) { return p.id === pid; });
       }
-      nodes.push({ id: pid, label: proj ? proj.name : pid, type: 'project' });
-      nodeMap[pid] = true;
+      if (!nodeMap[pid]) {
+        nodes.push({ id: pid, label: proj ? proj.name : pid, type: 'project' });
+        nodeMap[pid] = true;
+      }
       edges.push({ from: asset.id, to: pid });
     });
+
+    var assetIds = nodes.filter(function(n) { return n.type === 'dataAsset'; }).map(function(n) { return n.id; });
     self.assets.forEach(function(da) {
+      if (assetIds.indexOf(da.id) === -1) return;
       if (da.id === asset.id) return;
+      var daProjects = (da.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      daProjects.forEach(function(pid) {
+        if (!nodeMap[pid]) {
+          var proj = (self.formOptions.projects || []).find(function(p) { return p.id === pid; });
+          if (!proj && typeof State !== 'undefined') {
+            proj = (State.projects || []).find(function(p) { return p.id === pid; });
+          }
+          nodes.push({ id: pid, label: proj ? proj.name : pid, type: 'project' });
+          nodeMap[pid] = true;
+        }
+        edges.push({ from: da.id, to: pid });
+      });
+    });
+
+    self.assets.forEach(function(da) {
+      if (assetIds.indexOf(da.id) !== -1) return;
       var daProjects = (da.relatedProjects || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
       var shared = daProjects.filter(function(p) { return projectIds.indexOf(p) !== -1; });
       if (shared.length === 0) return;
       if (!nodeMap[da.id]) {
-        nodes.push({ id: da.id, label: da.assetName, type: 'dataAsset', isCurrent: false, status: da.status });
+        nodes.push({ id: da.id, label: da.assetName, type: 'dataAsset', isCurrent: false, status: da.status, assetType: da.assetType });
         nodeMap[da.id] = true;
       }
       shared.forEach(function(pid) {
         edges.push({ from: da.id, to: pid });
       });
     });
+
     return { nodes: nodes, edges: edges };
   },
 
   _renderLineageSVG(graph) {
+    var bucketNodes = graph.nodes.filter(function(n) { return n.type === 'bucket'; });
     var daNodes = graph.nodes.filter(function(n) { return n.type === 'dataAsset'; });
     var projNodes = graph.nodes.filter(function(n) { return n.type === 'project'; });
-    var nodeW = 140;
-    var nodeH = 30;
+    var nodeW = 150;
+    var nodeH = 32;
     var padX = 24;
     var padY = 14;
-    var colGap = 120;
-    var daX = padX;
-    var projX = padX + nodeW + colGap;
+    var colGap = 100;
+    var hasBucket = bucketNodes.length > 0;
+    var bucketX = padX;
+    var daX = padX + (hasBucket ? (nodeW + colGap) : 0);
+    var projX = daX + nodeW + colGap;
     var svgW = projX + nodeW + padX;
+    var bucketSpacing = nodeH + padY;
     var daSpacing = nodeH + padY;
     var projSpacing = nodeH + padY;
+    var bucketHeight = bucketNodes.length * bucketSpacing;
     var daHeight = daNodes.length * daSpacing;
     var projHeight = projNodes.length * projSpacing;
-    var contentH = Math.max(daHeight, projHeight);
+    var contentH = Math.max(bucketHeight, daHeight, projHeight);
     var svgH = contentH + padY * 2;
+    var bucketStartY = padY + (contentH - bucketHeight) / 2;
     var daStartY = padY + (contentH - daHeight) / 2;
     var projStartY = padY + (contentH - projHeight) / 2;
     var posMap = {};
+    bucketNodes.forEach(function(n, i) {
+      n.x = bucketX;
+      n.y = bucketStartY + i * bucketSpacing;
+      posMap[n.id] = n;
+    });
     daNodes.forEach(function(n, i) {
       n.x = daX;
       n.y = daStartY + i * daSpacing;
@@ -719,17 +1154,23 @@ var DataAssetPage = {
     });
     var self = this;
     graph.nodes.forEach(function(n) {
+      var isBucket = n.type === 'bucket';
       var isDA = n.type === 'dataAsset';
-      var fill = isDA ? '#f9fafb' : '#f8fafc';
-      var stroke = n.isCurrent ? '#171717' : (isDA ? '#6b7280' : '#94a3b8');
-      var strokeW = n.isCurrent ? 2 : 1;
-      var icon = isDA ? '\uf1c0' : '\uf07b';
-      var iconColor = isDA ? '#6b7280' : '#94a3b8';
-      var clickAction = isDA
-        ? 'DataAssetPage.selectAsset(\'' + n.id + '\')'
-        : 'if(typeof switchView===\'function\'){switchView(\'projects\');setTimeout(function(){if(typeof ProjectPage!==\'undefined\')ProjectPage.selectProject(\'' + n.id + '\');},200);}';
+      var fill = isBucket ? '#f1f5f9' : (isDA ? '#f9fafb' : '#f8fafc');
+      var stroke = n.isCurrent ? '#171717' : (isBucket ? '#475569' : (isDA ? '#6b7280' : '#94a3b8'));
+      var strokeW = n.isCurrent ? 2 : (isBucket ? 1.5 : 1);
+      var icon = isBucket ? '\uf187' : (isDA ? '\uf1c0' : '\uf07b');
+      var iconColor = isBucket ? '#475569' : (isDA ? '#6b7280' : '#94a3b8');
+      var clickAction;
+      if (isBucket) {
+        clickAction = 'DataAssetPage.filterByBucket(\'' + n.bucketId + '\')';
+      } else if (isDA) {
+        clickAction = 'DataAssetPage.selectAsset(\'' + n.id + '\')';
+      } else {
+        clickAction = 'if(typeof switchView===\'function\'){switchView(\'projects\');setTimeout(function(){if(typeof ProjectPage!==\'undefined\')ProjectPage.selectProject(\'' + n.id + '\');},200);}';
+      }
       var label = n.label || '';
-      if (label.length > 16) label = label.substring(0, 14) + '...';
+      if (label.length > 18) label = label.substring(0, 16) + '...';
       svg += '<g onclick="' + clickAction + '" style="cursor:pointer">';
       svg += '<rect x="' + n.x + '" y="' + n.y + '" width="' + nodeW + '" height="' + nodeH + '" rx="6" ry="6" ' +
         'fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + strokeW + '"/>';
@@ -737,11 +1178,15 @@ var DataAssetPage = {
         svg += '<rect x="' + (n.x - 2) + '" y="' + (n.y - 2) + '" width="' + (nodeW + 4) + '" height="' + (nodeH + 4) + '" rx="8" ry="8" ' +
           'fill="none" stroke="' + stroke + '" stroke-width="1" stroke-dasharray="3,2" opacity="0.4"/>';
       }
-      svg += '<text x="' + (n.x + 10) + '" y="' + (n.y + nodeH / 2 + 1) + '" font-family="\'Font Awesome 5 Free\'" font-weight="900" font-size="9" fill="' + iconColor + '" dominant-baseline="middle">' + icon + '</text>';
-      svg += '<text x="' + (n.x + 24) + '" y="' + (n.y + nodeH / 2 + 1) + '" font-family="system-ui,sans-serif" font-size="10" font-weight="' + (n.isCurrent ? '600' : '400') + '" fill="#1e293b" dominant-baseline="middle">' + self._escSvg(label) + '</text>';
+      svg += '<text x="' + (n.x + 10) + '" y="' + (n.y + nodeH / 2 + 1) + '" font-family="\'Font Awesome 5 Free\'" font-weight="900" font-size="10" fill="' + iconColor + '" dominant-baseline="middle">' + icon + '</text>';
+      svg += '<text x="' + (n.x + 26) + '" y="' + (n.y + nodeH / 2 + 1) + '" font-family="system-ui,sans-serif" font-size="10" font-weight="' + (n.isCurrent ? '600' : '400') + '" fill="#1e293b" dominant-baseline="middle">' + self._escSvg(label) + '</text>';
       if (isDA && n.status) {
         var sc = self._statusColor(n.status);
         svg += '<circle cx="' + (n.x + nodeW - 10) + '" cy="' + (n.y + nodeH / 2) + '" r="3" fill="' + sc + '"/>';
+      }
+      if (isDA && n.assetType) {
+        var tlabel = n.assetType.length > 10 ? n.assetType.substring(0, 9) + '…' : n.assetType;
+        svg += '<text x="' + (n.x + nodeW - 16) + '" y="' + (n.y + nodeH - 4) + '" font-family="system-ui,sans-serif" font-size="8" fill="#6b7280" text-anchor="end">' + self._escSvg(tlabel) + '</text>';
       }
       svg += '</g>';
     });
@@ -751,6 +1196,315 @@ var DataAssetPage = {
 
   _escSvg(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+
+  filterByBucket(bucketId) {
+    this.filterBucketId = bucketId || '';
+    this.renderAssetList();
+  },
+
+  openBucketsModal() {
+    this.showBucketsModal = true;
+    this._editingBucketId = null;
+    this._bucketsCtx = null;
+    this._justCreatedBucketId = '';
+    this.loadBuckets(true);
+    this._renderBucketsModal();
+  },
+
+  openBucketsModalForEdit() {
+    var assetId = (this.selectedAsset && this.selectedAsset.id) || '';
+    this._bucketsCtx = { fromEditAsset: true, assetId: assetId };
+    this.showBucketsModal = true;
+    this._editingBucketId = '__new__';
+    this._justCreatedBucketId = '';
+    this.loadBuckets(true);
+    this._renderBucketsModal();
+  },
+
+  closeBucketsModal() {
+    this.showBucketsModal = false;
+    this._editingBucketId = null;
+    this._bucketsCtx = null;
+    this._justCreatedBucketId = '';
+    var modal = document.getElementById('daBucketsModal');
+    if (modal) modal.remove();
+  },
+
+  startNewBucket() {
+    this._editingBucketId = '__new__';
+    this._justCreatedBucketId = '';
+    this._renderBucketsModal();
+  },
+
+  startEditBucket(bucketId) {
+    this._editingBucketId = bucketId;
+    this._renderBucketsModal();
+  },
+
+  _renderBucketsModal() {
+    if (!this.showBucketsModal) return;
+    var modal = document.getElementById('daBucketsModal');
+    var buckets = this.buckets || [];
+    var users = (this.formOptions && this.formOptions.users) || [];
+    var ctx = this._bucketsCtx;
+    var justCreatedId = this._justCreatedBucketId || '';
+    var justCreated = justCreatedId ? buckets.find(function(b) { return b.id === justCreatedId; }) : null;
+    var addMoreHtml = '';
+    if (justCreated) {
+      var excludeId = ctx && ctx.assetId ? ctx.assetId : '';
+      var candidates = (this.assets || []).filter(function(a) {
+        if (a.id === excludeId) return false;
+        return a.bucketId !== justCreatedId;
+      });
+      var candidateRows = candidates.length ? candidates.map(function(a) {
+        var typeChip = a.assetType ? '<span class="ml-2 text-[10px] text-gray-500">(' + escapeHtml(a.assetType) + ')</span>' : '';
+        var inBucket = a.bucketId ? '<span class="ml-2 text-[10px] text-amber-600">In another bucket</span>' : '';
+        return '<label class="flex items-center gap-2 py-1 px-2 hover:bg-gray-50 rounded cursor-pointer">' +
+          '<input type="checkbox" data-newbucket-pick value="' + escapeHtml(a.id) + '" class="rounded border-gray-300 text-gray-900 focus:ring-gray-400">' +
+          '<span class="text-sm text-gray-900 truncate">' + escapeHtml(a.assetName || a.id) + '</span>' +
+          typeChip + inBucket +
+          '</label>';
+      }).join('') : '<div class="text-xs text-gray-400 p-2">No other assets to add.</div>';
+      addMoreHtml = '<div class="border border-emerald-200 bg-emerald-50 rounded-lg p-3 mb-3">' +
+        '<div class="flex items-start gap-2">' +
+        '<i class="fas fa-check-circle text-emerald-600 mt-0.5"></i>' +
+        '<div class="flex-1 min-w-0">' +
+        '<div class="text-sm font-semibold text-gray-900">Bucket "' + escapeHtml(justCreated.name) + '" created' + (ctx && ctx.fromEditAsset ? ' and assigned to current asset' : '') + '</div>' +
+        '<div class="text-xs text-gray-600 mt-0.5">Add more assets to this bucket?</div>' +
+        '</div></div>' +
+        (candidates.length ? '<div class="mt-3 max-h-48 overflow-y-auto border border-gray-200 rounded bg-white">' + candidateRows + '</div>' : '<div class="mt-2">' + candidateRows + '</div>') +
+        '<div class="flex items-center gap-2 mt-3">' +
+        (candidates.length
+          ? '<button onclick="_pc(\'DataAssetPage\',\'_addAssetsToJustCreatedBucket\')" class="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-700"><i class="fas fa-plus text-[10px] mr-1"></i>Add Selected</button>'
+          : '') +
+        '<button onclick="_pc(\'DataAssetPage\',\'_skipAddMoreToBucket\')" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50">Skip</button>' +
+        '</div></div>';
+    }
+    var rowsHtml = buckets.length ? buckets.map(function(b) {
+      var typeBreakdown = '';
+      if (b.memberTypeCounts) {
+        var parts = [];
+        Object.keys(b.memberTypeCounts).forEach(function(k) {
+          parts.push(k + ': ' + b.memberTypeCounts[k]);
+        });
+        if (parts.length) typeBreakdown = parts.join(' • ');
+      }
+      return '<div class="flex items-start justify-between border border-gray-200 rounded-lg p-3 mb-2 bg-white">' +
+        '<div class="flex-1 min-w-0 pr-3">' +
+        '<div class="text-sm font-semibold text-gray-900"><i class="fas fa-archive text-gray-400 mr-1.5"></i>' + escapeHtml(b.name) + '</div>' +
+        (b.description ? '<div class="text-xs text-gray-500 mt-0.5">' + escapeHtml(b.description) + '</div>' : '') +
+        '<div class="text-xs text-gray-500 mt-1">' + b.memberCount + ' ' + (b.memberCount === 1 ? 'asset' : 'assets') + (typeBreakdown ? ' • ' + escapeHtml(typeBreakdown) : '') + '</div>' +
+        '<div class="text-xs text-gray-400 mt-0.5">Owner: ' + escapeHtml(b.ownerEmail || '—') + '</div>' +
+        '</div>' +
+        '<div class="flex items-center gap-1 flex-shrink-0">' +
+        '<button onclick="_pc(\'DataAssetPage\',\'filterAndCloseBuckets\',\'' + escapeHtml(b.id) + '\')" class="px-2 py-1 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50" title="View members"><i class="fas fa-eye text-[10px]"></i></button>' +
+        '<button onclick="_pc(\'DataAssetPage\',\'startEditBucket\',\'' + escapeHtml(b.id) + '\')" class="px-2 py-1 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50" title="Edit"><i class="fas fa-pencil-alt text-[10px]"></i></button>' +
+        '<button onclick="_pc(\'DataAssetPage\',\'confirmDeleteBucket\',\'' + escapeHtml(b.id) + '\')" class="px-2 py-1 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50" title="Delete"><i class="fas fa-trash text-[10px]"></i></button>' +
+        '</div></div>';
+    }).join('') : '<p class="text-xs text-gray-400 px-1 py-2">No buckets yet. Click "New Bucket" to create one.</p>';
+
+    var editorHtml = '';
+    if (this._editingBucketId) {
+      var editing = this._editingBucketId === '__new__'
+        ? { id: '', name: '', description: '', ownerEmail: '', primaryStakeholder: '' }
+        : (buckets.find(function(b) { return b.id === DataAssetPage._editingBucketId; }) || { id: '', name: '', description: '', ownerEmail: '', primaryStakeholder: '' });
+      var ownerOpts = '<option value="" disabled' + (editing.ownerEmail ? '' : ' selected') + ' hidden>— Pick owner —</option>' + users.map(function(u) {
+        var sel = (u.email === editing.ownerEmail) ? ' selected' : '';
+        return '<option value="' + escapeHtml(u.email) + '"' + sel + '>' + escapeHtml(u.name || u.email) + '</option>';
+      }).join('');
+      editorHtml = '<div class="border-t border-gray-200 mt-3 pt-3">' +
+        '<h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">' + (this._editingBucketId === '__new__' ? 'New Bucket' : 'Edit Bucket') + '</h4>' +
+        '<div class="space-y-3">' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Bucket Name</label>' +
+        '<input id="daBucketName" type="text" value="' + escapeHtml(editing.name || '') + '" placeholder="e.g. LOA HISTORY" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Description <span class="normal-case text-gray-400 font-normal">(optional)</span></label>' +
+        '<input id="daBucketDescription" type="text" value="' + escapeHtml(editing.description || '') + '" placeholder="Short note about this bucket" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>' +
+        '<div class="grid grid-cols-2 gap-3">' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Owner</label>' +
+        '<select id="daBucketOwner" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">' + ownerOpts + '</select></div>' +
+        '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Primary Stakeholder</label>' +
+        '<input id="daBucketStakeholder" type="text" value="' + escapeHtml(editing.primaryStakeholder || '') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>' +
+        '</div>' +
+        '<div class="flex items-center gap-2 pt-1">' +
+        '<button onclick="_pc(\'DataAssetPage\',\'saveBucket\')" class="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700"><i class="fas fa-save text-xs mr-1"></i>Save Bucket</button>' +
+        '<button onclick="DataAssetPage._editingBucketId=null;DataAssetPage._renderBucketsModal();" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50">Cancel</button>' +
+        '</div></div></div>';
+    }
+
+    var html = '<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)_pc(\'DataAssetPage\',\'closeBucketsModal\')">' +
+      '<div class="bg-white border border-gray-200 rounded-lg shadow-xl w-full max-w-xl max-h-[80vh] flex flex-col">' +
+      '<div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">' +
+      '<h3 class="text-sm font-semibold text-gray-900"><i class="fas fa-archive text-gray-400 mr-1.5"></i>Data Asset Buckets</h3>' +
+      '<button onclick="_pc(\'DataAssetPage\',\'closeBucketsModal\')" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>' +
+      '</div>' +
+      '<div class="flex-1 overflow-y-auto p-4">' + addMoreHtml + rowsHtml + editorHtml + '</div>' +
+      '<div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between flex-shrink-0">' +
+      '<button onclick="_pc(\'DataAssetPage\',\'startNewBucket\')" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-700"><i class="fas fa-plus text-[10px]"></i>New Bucket</button>' +
+      '<button onclick="_pc(\'DataAssetPage\',\'closeBucketsModal\')" class="px-3 py-1.5 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50">Done</button>' +
+      '</div></div></div>';
+    if (modal) {
+      modal.outerHTML = '<div id="daBucketsModal">' + html + '</div>';
+    } else {
+      var wrapper = document.createElement('div');
+      wrapper.id = 'daBucketsModal';
+      wrapper.innerHTML = html;
+      document.body.appendChild(wrapper);
+    }
+  },
+
+  saveBucket() {
+    var nameEl = document.getElementById('daBucketName');
+    var descEl = document.getElementById('daBucketDescription');
+    var ownerEl = document.getElementById('daBucketOwner');
+    var stakeEl = document.getElementById('daBucketStakeholder');
+    var name = nameEl ? nameEl.value.trim() : '';
+    if (!name) { toast('Bucket name is required', 'error'); return; }
+    var payload = {
+      name: name,
+      description: descEl ? descEl.value.trim() : '',
+      ownerEmail: ownerEl ? ownerEl.value : '',
+      primaryStakeholder: stakeEl ? stakeEl.value.trim() : ''
+    };
+    var self = this;
+    var isUpdate = this._editingBucketId && this._editingBucketId !== '__new__';
+    if (isUpdate) payload.id = this._editingBucketId;
+    showLoading(true);
+    var handleSuccess = function(result) {
+      showLoading(false);
+      if (!result || !result.success) {
+        toast((result && result.error) || 'Failed to save bucket', 'error');
+        return;
+      }
+      self._editingBucketId = null;
+      var newBucketId = result.bucket && result.bucket.id ? result.bucket.id : '';
+      var ctx = self._bucketsCtx;
+      if (!isUpdate && newBucketId && ctx && ctx.fromEditAsset && ctx.assetId) {
+        self._justCreatedBucketId = newBucketId;
+        self._assignAssetToBucketImmediate(ctx.assetId, newBucketId);
+      } else {
+        self.loadBuckets(true);
+        toast(isUpdate ? 'Bucket updated' : 'Bucket created', 'success');
+      }
+    };
+    var handleFailure = function(error) {
+      showLoading(false);
+      console.error('saveBucket failed:', error);
+      toast('Failed to save bucket', 'error');
+    };
+    if (isUpdate) {
+      google.script.run.withSuccessHandler(handleSuccess).withFailureHandler(handleFailure).updateDataAssetBucket(payload);
+    } else {
+      google.script.run.withSuccessHandler(handleSuccess).withFailureHandler(handleFailure).saveDataAssetBucket(payload);
+    }
+  },
+
+  _assignAssetToBucketImmediate(assetId, bucketId) {
+    var self = this;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (!result || !result.success) {
+          toast((result && result.error) || 'Failed to assign asset to bucket', 'error');
+          self.loadBuckets(true);
+          return;
+        }
+        var asset = self.assets.find(function(a) { return a.id === assetId; });
+        if (asset) asset.bucketId = bucketId;
+        if (self.selectedAsset && self.selectedAsset.id === assetId) self.selectedAsset.bucketId = bucketId;
+        self.loadBuckets(true);
+        toast('Bucket created. Asset added.', 'success');
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        console.error('immediate bucket assign failed:', error);
+        toast('Failed to assign asset to bucket', 'error');
+        self.loadBuckets(true);
+      })
+      .setDataAssetsBucket({ assetIds: [assetId], bucketId: bucketId });
+  },
+
+  _addAssetsToJustCreatedBucket() {
+    var bucketId = this._justCreatedBucketId;
+    if (!bucketId) return;
+    var checks = document.querySelectorAll('input[data-newbucket-pick]:checked');
+    var ids = [];
+    checks.forEach(function(cb) { ids.push(cb.value); });
+    if (!ids.length) { toast('Select at least one asset', 'error'); return; }
+    var self = this;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (!result || !result.success) {
+          toast((result && result.error) || 'Failed to add assets', 'error');
+          return;
+        }
+        (result.updatedIds || []).forEach(function(id) {
+          var asset = self.assets.find(function(a) { return a.id === id; });
+          if (asset) asset.bucketId = bucketId;
+        });
+        self._justCreatedBucketId = '';
+        self.loadBuckets(true);
+        toast(result.updated + ' asset' + (result.updated === 1 ? '' : 's') + ' added', 'success');
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        console.error('addAssetsToBucket failed:', error);
+        toast('Failed to add assets', 'error');
+      })
+      .setDataAssetsBucket({ assetIds: ids, bucketId: bucketId });
+  },
+
+  _skipAddMoreToBucket() {
+    this._justCreatedBucketId = '';
+    this._renderBucketsModal();
+  },
+
+  confirmDeleteBucket(bucketId) {
+    var bucket = (this.buckets || []).find(function(b) { return b.id === bucketId; });
+    var name = bucket ? bucket.name : 'this bucket';
+    var memberCount = bucket ? bucket.memberCount : 0;
+    var msg = 'Delete bucket "' + name + '"?';
+    if (memberCount > 0) {
+      msg += ' ' + memberCount + ' asset' + (memberCount === 1 ? '' : 's') + ' will be unassigned (assets are not deleted).';
+    }
+    var self = this;
+    ConfirmModal(msg, { title: 'Delete Bucket?', confirmText: 'Delete', cancelText: 'Cancel' }).then(function(confirmed) {
+      if (!confirmed) return;
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (!result || !result.success) {
+            toast((result && result.error) || 'Failed to delete bucket', 'error');
+            return;
+          }
+          if (self.filterBucketId === bucketId) self.filterBucketId = '';
+          (result.clearedAssets || []).forEach(function(id) {
+            var asset = self.assets.find(function(a) { return a.id === id; });
+            if (asset) asset.bucketId = '';
+            if (self.selectedAsset && self.selectedAsset.id === id) self.selectedAsset.bucketId = '';
+          });
+          self.loadBuckets(true);
+          self.renderAssetList();
+          if (self.selectedAsset) self.renderAssetDetail();
+          toast('Bucket deleted', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          console.error('deleteBucket failed:', error);
+          toast('Failed to delete bucket', 'error');
+        })
+        .deleteDataAssetBucket(bucketId);
+    });
+  },
+
+  filterAndCloseBuckets(bucketId) {
+    this.filterBucketId = bucketId;
+    this.closeBucketsModal();
+    this.renderAssetList();
   },
 
   _statusColor(status) {

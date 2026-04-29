@@ -424,7 +424,9 @@
     surge: { container: 'surgeView', page: 'SurgePage', title: 'Pick Ups / Surge' },
     master: { container: 'boardView', loader: 'loadBoard', title: 'Master Board', requiredRole: 'manager', scripts: ['BoardView'] },
     my: { container: 'boardView', loader: 'loadBoard', title: 'My Board', scripts: ['BoardView'] },
-    'access-requests': { container: 'access-requestsView', loader: 'loadAccessRequests', title: 'Access Requests', requiredRole: 'admin' }
+    admin: { container: 'adminView', page: 'AdminPage', title: 'Admin', requiredRole: 'admin' },
+    'access-requests': { alias: 'admin', container: 'adminView', page: 'AdminPage', title: 'Admin', requiredRole: 'admin', initialTab: 'access' },
+    'admin-tools': { alias: 'admin', container: 'adminView', page: 'AdminPage', title: 'Admin', requiredRole: 'admin', initialTab: 'tools' }
   };
 
   function switchView(view) {
@@ -462,6 +464,9 @@
     if (entry.page) {
       if (typeof window[entry.page] !== 'undefined') {
         window[entry.page].init();
+        if (entry.initialTab && typeof window[entry.page].switchTab === 'function') {
+          window[entry.page].switchTab(entry.initialTab);
+        }
       } else {
         var pageName = entry.page;
         var pageTitle = entry.title;
@@ -474,6 +479,9 @@
             clearInterval(window._viewRetryTimer);
             window._viewRetryTimer = null;
             window[pageName].init();
+            if (entry.initialTab && typeof window[pageName].switchTab === 'function') {
+              window[pageName].switchTab(entry.initialTab);
+            }
           } else if (retries >= maxRetries) {
             clearInterval(window._viewRetryTimer);
             window._viewRetryTimer = null;
@@ -502,7 +510,7 @@
     var overlay = $("loadingOverlay");
     if (!overlay) return;
     if (show) {
-      overlay.style.zIndex = '10040';
+      overlay.style.zIndex = '10080';
       if (State.initialLoadComplete) {
         overlay.style.background = "rgba(0,0,0,0.5)";
         var loaderUI = $("loaderUI");
@@ -630,7 +638,7 @@
         overlay.style.opacity = '0';
         setTimeout(function() {
           overlay.classList.add('hidden');
-          overlay.style.zIndex = '10040';
+          overlay.style.zIndex = '10080';
           overlay.style.opacity = '';
           overlay.style.transition = '';
         }, 1200);
@@ -794,59 +802,85 @@
   function showAccessRequestScreen(email) {
     var card = $('loginCard');
     if (card) {
+      var inputCls = 'w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-amber-500';
       card.innerHTML = '<div class="text-center py-8">' +
         '<div class="flex items-center justify-center gap-3 mb-6">' +
         '<svg class="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-ar" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-ar)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-ar)" fill="none" opacity="0.4"/></svg>' +
         '<span class="font-bold text-2xl text-white tracking-wide">COLONY</span>' +
         '</div>' +
         '<p class="text-gray-400 text-sm mb-2">Signed in as</p>' +
-        '<p class="text-white font-medium mb-6">' + (email || '') + '</p>' +
-        '<p class="text-gray-400 text-sm mb-6">You don\'t have access to this application yet.</p>' +
+        '<p class="text-white font-medium mb-4">' + (email || '') + '</p>' +
+        '<p class="text-gray-400 text-sm mb-5">You don\'t have access yet. Enter your name so we can link any projects already assigned to you.</p>' +
+        '<div class="grid grid-cols-2 gap-3 mb-3 text-left">' +
+          '<div><label class="block text-xs text-gray-400 mb-1">First name</label>' +
+          '<input id="requestAccessFirstName" type="text" autocomplete="given-name" maxlength="50" class="' + inputCls + '" placeholder="Jane" /></div>' +
+          '<div><label class="block text-xs text-gray-400 mb-1">Last name</label>' +
+          '<input id="requestAccessLastName" type="text" autocomplete="family-name" maxlength="50" class="' + inputCls + '" placeholder="Doe" /></div>' +
+        '</div>' +
+        '<p id="requestAccessHint" class="text-gray-500 text-xs mb-4 text-left">Use the same spelling your team uses (e.g. how it appears in the Worklog).</p>' +
         '<button id="requestAccessBtn" onclick="handleRequestAccess()" class="w-full py-3 bg-gray-500 hover:bg-gray-400 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors">' +
         '<i class="fas fa-paper-plane"></i>' +
         '<span id="requestAccessBtnText">Request Access</span>' +
         '</button>' +
         '<div id="requestAccessResult" class="mt-4 hidden"></div>' +
         '</div>';
+      var first = $('requestAccessFirstName');
+      if (first) setTimeout(function() { first.focus(); }, 50);
+      var submitOnEnter = function(e) { if (e.key === 'Enter') handleRequestAccess(); };
+      if (first) first.addEventListener('keydown', submitOnEnter);
+      var last = $('requestAccessLastName');
+      if (last) last.addEventListener('keydown', submitOnEnter);
     }
   }
 
   function handleRequestAccess() {
     var btn = $('requestAccessBtn');
     var btnText = $('requestAccessBtnText');
+    var firstEl = $('requestAccessFirstName');
+    var lastEl = $('requestAccessLastName');
+    var first = firstEl ? firstEl.value.trim() : '';
+    var last = lastEl ? lastEl.value.trim() : '';
+    var resultEl = $('requestAccessResult');
+    var showError = function(msg) {
+      if (!resultEl) return;
+      resultEl.classList.remove('hidden');
+      resultEl.innerHTML = '<div class="p-3 rounded-lg text-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">' +
+        '<i class="fas fa-exclamation-circle mr-1"></i> ' + msg + '</div>';
+    };
+    if (!first || !last) {
+      showError('Please enter both your first and last name.');
+      return;
+    }
+    if (!/^[A-Za-z][A-Za-z\-' ]{0,49}$/.test(first) || !/^[A-Za-z][A-Za-z\-' ]{0,49}$/.test(last)) {
+      showError('Names may only contain letters, spaces, hyphens, and apostrophes.');
+      return;
+    }
     if (btn) btn.disabled = true;
     if (btnText) btnText.textContent = 'Submitting...';
     google.script.run
       .withSuccessHandler(function(result) {
         if (btn) btn.disabled = false;
         if (btnText) btnText.textContent = 'Request Access';
-        var resultEl = $('requestAccessResult');
         if (resultEl) {
           resultEl.classList.remove('hidden');
           if (result.success) {
             if (btn) btn.classList.add('hidden');
+            if (firstEl) firstEl.disabled = true;
+            if (lastEl) lastEl.disabled = true;
             resultEl.innerHTML = '<div class="p-3 rounded-lg text-sm" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);color:#6ee7b7;">' +
               '<i class="fas fa-check-circle mr-1"></i> ' + (result.message || 'Request submitted.') +
               '</div>';
           } else {
-            resultEl.innerHTML = '<div class="p-3 rounded-lg text-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">' +
-              '<i class="fas fa-exclamation-circle mr-1"></i> ' + (result.error || 'Failed to submit request.') +
-              '</div>';
+            showError(result.error || 'Failed to submit request.');
           }
         }
       })
       .withFailureHandler(function(error) {
         if (btn) btn.disabled = false;
         if (btnText) btnText.textContent = 'Request Access';
-        var resultEl = $('requestAccessResult');
-        if (resultEl) {
-          resultEl.classList.remove('hidden');
-          resultEl.innerHTML = '<div class="p-3 rounded-lg text-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;">' +
-            '<i class="fas fa-exclamation-circle mr-1"></i> ' + (error.message || 'Failed to submit request.') +
-            '</div>';
-        }
+        showError(error.message || 'Failed to submit request.');
       })
-      .requestAccess();
+      .requestAccess({ firstName: first, lastName: last });
   }
 
   function updateSidebarDate() {
@@ -936,6 +970,8 @@
     showLoading(false);
     updateProjectNav();
     restoreSidebarGroupStates();
+    if (typeof restoreSidebarCollapseState === 'function') restoreSidebarCollapseState();
+    setTimeout(refreshAdminBadgeIfAdmin, 1500);
     updateStats();
     var deepLinkHandled = false;
     try {
@@ -965,6 +1001,7 @@
       }
     } catch (e) { console.error('Deep-link routing failed:', e); }
     if (!deepLinkHandled) switchView('home');
+    try { if (typeof preloadPersonnelLists === 'function') preloadPersonnelLists(); } catch (e) { console.error('preloadPersonnelLists kickoff failed:', e); }
     updateSidebarDate();
     setInterval(updateSidebarDate, 60000);
     setTimeout(function() {
@@ -1001,126 +1038,1136 @@
   }
   }
 
-  function loadDashboardData() {
-    google.script.run
-      .withSuccessHandler(function(data) {
-        if (!data) return;
-        State.board = data.board;
-        State.projects = data.board ? data.board.projects || [] : [];
-        State.users = data.board ? data.board.users || [] : [];
-        if (data.config) {
-          State.config = data.config;
-          if (State.board) State.board.config = data.config;
+  var ThemeManager = {
+    _systemMql: null,
+    _outsideHandler: null,
+
+    init: function() {
+      this._highlightActive();
+      this._bindSystemListener();
+      var self = this;
+      this._outsideHandler = function(e) {
+        var menu = document.getElementById('appearanceMenu');
+        var btn = document.getElementById('appearanceBtn');
+        if (!menu || menu.classList.contains('hidden')) return;
+        if (menu.contains(e.target) || (btn && btn.contains(e.target))) return;
+        self.closeMenu();
+      };
+      document.addEventListener('click', this._outsideHandler);
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') self.closeMenu();
+      });
+    },
+
+    _read: function(key, fallback) {
+      try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+    },
+
+    _write: function(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) {}
+    },
+
+    _bindSystemListener: function() {
+      if (!window.matchMedia) return;
+      this._systemMql = window.matchMedia('(prefers-color-scheme: dark)');
+      var self = this;
+      var handler = function() {
+        if (self._read('co-theme', 'system') === 'system') {
+          document.documentElement.dataset.theme = self._systemMql.matches ? 'dark' : 'light';
         }
-        var flatTasks = [];
-        if (data.board && data.board.columns) {
-          data.board.columns.forEach(function(col) {
-            if (col.tasks) {
-              col.tasks.forEach(function(task) {
-                flatTasks.push(Object.assign({}, task, { status: col.name || col.id }));
-              });
-            }
-          });
-        }
-        State.setTasks(flatTasks);
-        State.setProjects(State.projects);
-        State.setUsers(State.users);
-        LocalCache.set('board', data.board);
-        LocalCache.set('config', data.config);
-        LocalCache.set('tasks', flatTasks);
-        LocalCache.set('projects', State.projects);
-        if (typeof CacheService !== 'undefined') {
-          CacheService.set('boardData', data.board).catch(function() {});
-          CacheService.set('tasks', flatTasks).catch(function() {});
-          CacheService.set('projects', State.projects).catch(function() {});
-          CacheService.set('users', State.users).catch(function() {});
-        }
-        if (typeof updateStats === 'function') updateStats();
-        if (typeof updateProjectNav === 'function') updateProjectNav();
-        var currentView = State.currentView || 'home';
-        var entry = ViewRegistry[currentView];
-        if (entry && entry.page && typeof window[entry.page] !== 'undefined' && typeof window[entry.page].init === 'function') {
-          window[entry.page].init();
-        }
-      })
-      .withFailureHandler(function(err) {
-        console.error('Background data load failed:', err);
-        toast('Loading data... Please wait.', 'warning');
-        setTimeout(loadDashboardData, 5000);
-      })
-      .getInitialDataFast();
+      };
+      if (this._systemMql.addEventListener) this._systemMql.addEventListener('change', handler);
+      else if (this._systemMql.addListener) this._systemMql.addListener(handler);
+    },
+
+    setTheme: function(value) {
+      this._write('co-theme', value);
+      var resolved = value === 'system'
+        ? (this._systemMql && this._systemMql.matches ? 'dark' : 'light')
+        : value;
+      document.documentElement.dataset.theme = resolved;
+      this._highlightActive();
+    },
+
+    setDensity: function(value) {
+      this._write('co-density', value);
+      if (value === 'comfortable') delete document.documentElement.dataset.density;
+      else document.documentElement.dataset.density = value;
+      this._highlightActive();
+    },
+
+    setAccent: function(value) {
+      this._write('co-accent', value);
+      if (value === 'forge') delete document.documentElement.dataset.accent;
+      else document.documentElement.dataset.accent = value;
+      this._highlightActive();
+    },
+
+    _highlightActive: function() {
+      var theme = this._read('co-theme', 'system');
+      var density = this._read('co-density', 'comfortable');
+      var accent = this._read('co-accent', 'forge');
+      var themeBtns = document.querySelectorAll('[data-theme-group] [data-theme-value]');
+      themeBtns.forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-theme-value') === theme); });
+      var densityBtns = document.querySelectorAll('[data-density-group] [data-density-value]');
+      densityBtns.forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-density-value') === density); });
+      var accentBtns = document.querySelectorAll('[data-accent-group] [data-accent]');
+      accentBtns.forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-accent') === accent); });
+    },
+
+    toggleMenu: function() {
+      var menu = document.getElementById('appearanceMenu');
+      var btn = document.getElementById('appearanceBtn');
+      if (!menu) return;
+      var willOpen = menu.classList.contains('hidden');
+      menu.classList.toggle('hidden', !willOpen);
+      if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      if (willOpen) this._highlightActive();
+    },
+
+    closeMenu: function() {
+      var menu = document.getElementById('appearanceMenu');
+      var btn = document.getElementById('appearanceBtn');
+      if (!menu) return;
+      menu.classList.add('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  };
+  window.ThemeManager = ThemeManager;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { ThemeManager.init(); });
+  } else {
+    ThemeManager.init();
   }
+
+  var AdminPage = {
+    activeTab: 'access',
+    accessRequests: [],
+    users: [],
+    _approveTarget: null,
+    _previewTimer: null,
+    _selectedAccess: {},
+    _selectedUsers: {},
+    _auditLog: { entries: [], actions: [], actors: [] },
+    _auditFilter: { actor: '', action: '' },
+
+    init() {
+      this.switchTab(this.activeTab);
+      this.loadAccessRequests();
+    },
+
+    refresh() {
+      var icon = document.getElementById('adminRefreshIcon');
+      if (icon) icon.classList.add('fa-spin');
+      var done = function() { if (icon) icon.classList.remove('fa-spin'); };
+      if (this.activeTab === 'access') this.loadAccessRequests(done);
+      else if (this.activeTab === 'users') this.loadUsers(done);
+      else if (this.activeTab === 'audit') { this.loadAuditLog(); done(); }
+      else { if (typeof loadAdminTools === 'function') loadAdminTools(); this.loadPendingOwnerNames(); done(); }
+    },
+
+    switchTab(tab) {
+      this.activeTab = tab;
+      var tabs = document.querySelectorAll('[data-admin-tab]');
+      tabs.forEach(function(el) {
+        el.classList.toggle('co-tab-active', el.getAttribute('data-admin-tab') === tab);
+      });
+      ['access', 'users', 'tools'].forEach(function(t) {
+        var pane = document.getElementById('adminTab_' + t);
+        if (pane) pane.classList.toggle('hidden', t !== tab);
+      });
+      if (tab === 'access' && !this._accessLoaded) this.loadAccessRequests();
+      if (tab === 'users') this.loadUsers();
+      if (tab === 'tools') {
+        if (typeof loadAdminTools === 'function') loadAdminTools();
+        this.loadPendingOwnerNames();
+      }
+      if (tab === 'audit') this.loadAuditLog();
+    },
+
+    loadAccessRequests(cb) {
+      var listEl = document.getElementById('accessRequestsList');
+      if (listEl) listEl.innerHTML = '<div class="px-4 py-6 text-center" style="color:var(--co-gray-400);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</div>';
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          self._accessLoaded = true;
+          if (cb) cb();
+          if (!listEl) return;
+          if (!result.success) {
+            listEl.innerHTML = '<div class="px-4 py-6 text-center" style="color:var(--co-error);">' + escapeHtml(result.error || 'Failed to load') + '</div>';
+            return;
+          }
+          self.accessRequests = result.requests || [];
+          self._pruneAccessSelection();
+          var countEl = document.getElementById('adminAccessCount');
+          if (countEl) {
+            if (self.accessRequests.length > 0) { countEl.textContent = self.accessRequests.length; countEl.classList.remove('hidden'); }
+            else countEl.classList.add('hidden');
+          }
+          updateAdminNavBadge(self.accessRequests.length);
+          self.renderAccessRequests();
+        })
+        .withFailureHandler(function(error) {
+          if (cb) cb();
+          if (listEl) listEl.innerHTML = '<div class="px-4 py-6 text-center" style="color:var(--co-error);">' + escapeHtml(error.message || 'Failed to load') + '</div>';
+        })
+        .getPendingAccessRequests();
+    },
+
+    _pruneAccessSelection() {
+      var live = {};
+      this.accessRequests.forEach(function(r) { live[r.email] = true; });
+      Object.keys(this._selectedAccess).forEach(function(k) { if (!live[k]) delete AdminPage._selectedAccess[k]; });
+    },
+
+    renderAccessRequests() {
+      var listEl = document.getElementById('accessRequestsList');
+      if (!listEl) return;
+      if (this.accessRequests.length === 0) {
+        this._selectedAccess = {};
+        this._renderAccessBulkBar();
+        listEl.innerHTML = renderEmptyState({ variant:'card', icon:'fa-check-circle', title:'All caught up', subtitle:'No pending access requests at the moment.' });
+        return;
+      }
+      var allSelected = this.accessRequests.every(function(r) { return AdminPage._selectedAccess[r.email]; });
+      var headerRow = '<div class="rounded-xl px-5 py-2.5 flex items-center gap-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">' +
+        '<input type="checkbox" id="accessSelectAll" ' + (allSelected ? 'checked' : '') + ' onchange="AdminPage.toggleAllAccess(this.checked)" aria-label="Select all access requests" />' +
+        '<span class="text-[11px] uppercase tracking-wider font-semibold" style="color:var(--co-ink-muted);">Select all</span>' +
+        '</div>';
+      listEl.innerHTML = headerRow + this.accessRequests.map(function(req) {
+        var displayName = String(req.name || '').trim();
+        var isPrefixOnly = displayName && req.email && displayName.toLowerCase() === String(req.email).split('@')[0].toLowerCase();
+        var hasName = displayName && !isPrefixOnly;
+        var checked = !!AdminPage._selectedAccess[req.email];
+        var nameMarkup = hasName
+          ? '<div class="text-[14px] font-medium" style="color:var(--co-ink);">' + escapeHtml(displayName) + '</div><div class="text-[12px] font-mono" style="color:var(--co-gray-500);">' + escapeHtml(req.email || '') + '</div>'
+          : '<div class="text-[14px] font-medium" style="color:var(--co-ink);">' + escapeHtml(req.email || '') + '</div><div class="text-[11px] mt-0.5" style="color:var(--co-accent-600);"><i class="fas fa-exclamation-triangle text-[10px] mr-1"></i>No name captured — projects assigned by name won\'t auto-link until you provide one</div>';
+        return '<div class="rounded-xl px-5 py-4 flex items-center gap-3" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">' +
+          '<input type="checkbox" data-email="' + escapeHtml(req.email) + '" ' + (checked ? 'checked' : '') + ' onchange="AdminPage.toggleAccess(\'' + escapeHtml(req.email) + '\', this.checked)" aria-label="Select request from ' + escapeHtml(req.email) + '" />' +
+          '<div class="flex-1 min-w-0">' + nameMarkup +
+          '<div class="text-[11px] mt-1" style="color:var(--co-gray-400);">Requested: ' + escapeHtml(req.requestedAt || '') + '</div>' +
+          '</div>' +
+          '<div class="flex items-center gap-2 flex-shrink-0">' +
+          '<button onclick="AdminPage.openApproveModal(\'' + escapeHtml(req.email) + '\')" class="co-btn-solid"><i class="fas fa-check text-[11px]"></i> Approve</button>' +
+          '<button onclick="AdminPage.rejectRequest(\'' + escapeHtml(req.email) + '\')" class="co-btn-outline"><i class="fas fa-times text-[11px]"></i> Reject</button>' +
+          '</div></div>';
+      }).join('');
+      this._renderAccessBulkBar();
+    },
+
+    toggleAccess(email, checked) {
+      if (checked) this._selectedAccess[email] = true;
+      else delete this._selectedAccess[email];
+      this._renderAccessBulkBar();
+      var allCb = document.getElementById('accessSelectAll');
+      if (allCb) allCb.checked = this.accessRequests.length > 0 && this.accessRequests.every(function(r) { return AdminPage._selectedAccess[r.email]; });
+    },
+
+    toggleAllAccess(checked) {
+      var self = this;
+      this.accessRequests.forEach(function(r) {
+        if (checked) self._selectedAccess[r.email] = true;
+        else delete self._selectedAccess[r.email];
+      });
+      this.renderAccessRequests();
+    },
+
+    _renderAccessBulkBar() {
+      var bar = document.getElementById('accessBulkBar');
+      if (!bar) return;
+      var count = Object.keys(this._selectedAccess).length;
+      if (count === 0) { bar.classList.add('hidden'); return; }
+      bar.classList.remove('hidden');
+      var counter = document.getElementById('accessBulkCount');
+      if (counter) counter.textContent = count + ' selected';
+    },
+
+    bulkApproveSelected() {
+      var emails = Object.keys(this._selectedAccess);
+      if (emails.length === 0) return;
+      var roleEl = document.getElementById('accessBulkRole');
+      var role = roleEl ? roleEl.value : 'member';
+      var btn = document.getElementById('accessBulkApproveBtn');
+      if (btn) btn.disabled = true;
+      var self = this;
+      ConfirmModal('Approve ' + emails.length + ' request' + (emails.length === 1 ? '' : 's') + ' as "' + role + '"? Names from each request will be used as-is for project linkage.', { title: 'Bulk approve?', confirmText: 'Approve all', cancelText: 'Cancel' }).then(function(confirmed) {
+        if (!confirmed) { if (btn) btn.disabled = false; return; }
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (btn) btn.disabled = false;
+            if (!result || !result.success) {
+              toast((result && result.error) || 'Bulk approve failed', 'error');
+              return;
+            }
+            var approved = (result.approved || []).length;
+            var failed = (result.failed || []).length;
+            var msg = 'Approved ' + approved + ' user' + (approved === 1 ? '' : 's') +
+              (result.totalLinked ? ' — linked ' + result.totalLinked + ' project' + (result.totalLinked === 1 ? '' : 's') : '') +
+              (failed ? ' (' + failed + ' failed)' : '');
+            toast(msg, failed ? 'warning' : 'success');
+            self._selectedAccess = {};
+            self.loadAccessRequests();
+          })
+          .withFailureHandler(function(error) {
+            if (btn) btn.disabled = false;
+            toast(error.message || 'Bulk approve failed', 'error');
+          })
+          .bulkApproveAccessRequests(emails, role);
+      });
+    },
+
+    bulkRejectSelected() {
+      var emails = Object.keys(this._selectedAccess);
+      if (emails.length === 0) return;
+      var self = this;
+      ConfirmModal('Reject ' + emails.length + ' request' + (emails.length === 1 ? '' : 's') + '?', { title: 'Bulk reject?', confirmText: 'Reject all', cancelText: 'Cancel' }).then(function(confirmed) {
+        if (!confirmed) return;
+        var failures = [];
+        var pending = emails.length;
+        emails.forEach(function(email) {
+          google.script.run
+            .withSuccessHandler(function(result) {
+              if (!result || !result.success) failures.push(email);
+              if (--pending === 0) finalize();
+            })
+            .withFailureHandler(function() {
+              failures.push(email);
+              if (--pending === 0) finalize();
+            })
+            .rejectAccessRequest(email, 'Bulk-rejected by admin');
+        });
+        function finalize() {
+          var ok = emails.length - failures.length;
+          toast(ok + ' rejected' + (failures.length ? ' (' + failures.length + ' failed)' : ''), failures.length ? 'warning' : 'info');
+          self._selectedAccess = {};
+          self.loadAccessRequests();
+        }
+      });
+    },
+
+    openApproveModal(email) {
+      var req = this.accessRequests.find(function(r) { return String(r.email).toLowerCase() === String(email).toLowerCase(); });
+      if (!req) return;
+      this._approveTarget = email;
+      var modal = document.getElementById('approveRequestModal');
+      var emailEl = document.getElementById('approveModalEmail');
+      var nameEl = document.getElementById('approveModalName');
+      var roleEl = document.getElementById('approveModalRole');
+      if (emailEl) emailEl.textContent = email;
+      var capturedName = String(req.name || '').trim();
+      var isPrefixOnly = capturedName && capturedName.toLowerCase() === String(email).split('@')[0].toLowerCase();
+      if (nameEl) nameEl.value = (capturedName && !isPrefixOnly) ? capturedName : '';
+      if (roleEl) roleEl.value = 'member';
+      var preview = document.getElementById('approveModalLinkagePreview');
+      if (preview) preview.innerHTML = 'Enter a name to preview project linkage.';
+      if (modal) modal.classList.remove('hidden');
+      if (nameEl) setTimeout(function() { nameEl.focus(); }, 50);
+      this._previewLinkage();
+    },
+
+    closeApproveModal(e) {
+      if (e && e.target && e.target.id !== 'approveRequestModal') return;
+      var modal = document.getElementById('approveRequestModal');
+      if (modal) modal.classList.add('hidden');
+      this._approveTarget = null;
+    },
+
+    _previewLinkage() {
+      if (!this._approveTarget) return;
+      var nameEl = document.getElementById('approveModalName');
+      var preview = document.getElementById('approveModalLinkagePreview');
+      if (!preview) return;
+      var name = nameEl ? String(nameEl.value || '').trim() : '';
+      if (!name) {
+        preview.innerHTML = 'Enter a name to preview project linkage.';
+        return;
+      }
+      if (this._previewTimer) clearTimeout(this._previewTimer);
+      var email = this._approveTarget;
+      this._previewTimer = setTimeout(function() {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (!preview) return;
+            if (!result || !result.success) {
+              preview.innerHTML = '<span style="color:var(--co-error);">' + escapeHtml((result && result.error) || 'Preview failed') + '</span>';
+              return;
+            }
+            var matches = result.matches || [];
+            if (!matches.length) {
+              preview.innerHTML = '<span style="color:var(--co-gray-500);">No projects match this name. Approval will create the user without linking projects.</span>';
+              return;
+            }
+            preview.innerHTML = '<div style="color:var(--co-ink);"><i class="fas fa-link text-[10px] mr-1" style="color:var(--co-accent-500);"></i>Will link <strong>' + matches.length + '</strong> project' + (matches.length === 1 ? '' : 's') + '</div>' +
+              '<div class="mt-1 text-[11px]" style="color:var(--co-gray-500);">' +
+              matches.slice(0, 5).map(function(m) { return escapeHtml(m.name) + ' <span style="color:var(--co-gray-400);">(' + escapeHtml(m.field) + ')</span>'; }).join(' • ') +
+              (matches.length > 5 ? ' …+' + (matches.length - 5) + ' more' : '') +
+              '</div>';
+          })
+          .withFailureHandler(function() {
+            if (preview) preview.innerHTML = '<span style="color:var(--co-error);">Could not preview linkage</span>';
+          })
+          .previewAccessRequestLinkage(email, name);
+      }, 250);
+    },
+
+    confirmApprove() {
+      var email = this._approveTarget;
+      if (!email) return;
+      var nameEl = document.getElementById('approveModalName');
+      var roleEl = document.getElementById('approveModalRole');
+      var btn = document.getElementById('approveModalConfirmBtn');
+      if (btn) btn.disabled = true;
+      var name = nameEl ? String(nameEl.value || '').trim() : '';
+      var role = roleEl ? roleEl.value : 'member';
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (btn) btn.disabled = false;
+          if (result && result.success) {
+            var linked = result.linkedProjects || 0;
+            var msg = 'Access granted to ' + email + (linked > 0 ? ' — linked ' + linked + ' project' + (linked === 1 ? '' : 's') : '');
+            toast(msg, 'success');
+            self.closeApproveModal();
+            self.loadAccessRequests();
+          } else {
+            toast((result && result.error) || 'Failed to approve', 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          if (btn) btn.disabled = false;
+          toast(error.message || 'Failed to approve', 'error');
+        })
+        .approveAccessRequestWithOverrides(email, { name: name, role: role });
+    },
+
+    rejectRequest(email) {
+      if (!email) return;
+      var self = this;
+      PromptModal('Reason for rejecting access request from ' + email + ' (optional):', '').then(function(reason) {
+        if (reason === null) return;
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              toast('Request from ' + email + ' rejected', 'info');
+              self.loadAccessRequests();
+            } else {
+              toast((result && result.error) || 'Failed to reject', 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            toast(error.message || 'Failed to reject', 'error');
+          })
+          .rejectAccessRequest(email, reason || '');
+      });
+    },
+
+    loadUsers(cb) {
+      var tbody = document.getElementById('adminUserTableBody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="py-12 text-center" style="color:var(--co-gray-400);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading users...</td></tr>';
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (cb) cb();
+          if (!result || !result.success) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="py-12 text-center" style="color:var(--co-error);">' + escapeHtml((result && result.error) || 'Failed to load users') + '</td></tr>';
+            return;
+          }
+          self.users = result.users || [];
+          self.renderUsers();
+        })
+        .withFailureHandler(function(error) {
+          if (cb) cb();
+          if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="py-12 text-center" style="color:var(--co-error);">' + escapeHtml(error.message || 'Failed to load users') + '</td></tr>';
+        })
+        .adminListUsers();
+    },
+
+    filterUsers() { this.renderUsers(); },
+
+    renderUsers() {
+      var tbody = document.getElementById('adminUserTableBody');
+      var countEl = document.getElementById('adminUserCount');
+      if (!tbody) return;
+      var search = (document.getElementById('adminUserSearch') || {}).value || '';
+      var roleFilter = (document.getElementById('adminUserRoleFilter') || {}).value || '';
+      var statusFilter = (document.getElementById('adminUserStatusFilter') || {}).value || '';
+      var q = search.toLowerCase().trim();
+      var filtered = (this.users || []).filter(function(u) {
+        if (q && (u.email || '').toLowerCase().indexOf(q) === -1 && (u.name || '').toLowerCase().indexOf(q) === -1) return false;
+        if (roleFilter && (u.role || '') !== roleFilter) return false;
+        if (statusFilter === 'active' && !u.active) return false;
+        if (statusFilter === 'inactive' && u.active) return false;
+        return true;
+      });
+      filtered.sort(function(a, b) { return (a.name || a.email || '').localeCompare(b.name || b.email || ''); });
+      this._filteredUsers = filtered;
+      this._pruneUserSelection();
+      if (countEl) countEl.textContent = filtered.length;
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6">' + renderEmptyState({ icon:'fa-users', title:'No users match', subtitle:'Try clearing the search or filters.' }) + '</td></tr>';
+        this._renderUserBulkBar();
+        return;
+      }
+      tbody.innerHTML = filtered.map(function(u) {
+        var roleColor = u.role === 'admin' ? 'background:#fef2f2;color:#991b1b;' : (u.role === 'manager' ? 'background:#f5f3ff;color:#5b21b6;' : (u.role === 'viewer' ? 'background:#f3f4f6;color:#374151;' : 'background:var(--co-surface-sunken);color:var(--co-ink-soft);'));
+        var statusColor = u.active ? 'background:#d1fae5;color:#065f46;' : 'background:#fee2e2;color:#991b1b;';
+        var statusLabel = u.active ? 'Active' : 'Inactive';
+        var checked = !!AdminPage._selectedUsers[u.email];
+        return '<tr style="border-bottom:1px solid var(--co-border-subtle);">' +
+          '<td class="py-2.5 px-3 w-8"><input type="checkbox" data-user-email="' + escapeHtml(u.email) + '" ' + (checked ? 'checked' : '') + ' onchange="AdminPage.toggleUser(\'' + escapeHtml(u.email) + '\', this.checked)" aria-label="Select ' + escapeHtml(u.name || u.email) + '" /></td>' +
+          '<td class="py-2.5 px-3 text-[13px]" style="color:var(--co-ink);">' + escapeHtml(u.name || '—') + '</td>' +
+          '<td class="py-2.5 px-3 text-[12px] font-mono" style="color:var(--co-ink-muted);">' + escapeHtml(u.email) + '</td>' +
+          '<td class="py-2.5 px-3"><span class="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full" style="' + roleColor + '">' + escapeHtml(u.role || 'member') + '</span></td>' +
+          '<td class="py-2.5 px-3"><span class="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full" style="' + statusColor + '">' + statusLabel + '</span></td>' +
+          '<td class="py-2.5 px-3"><button onclick="AdminPage.openEditUser(\'' + escapeHtml(u.email) + '\')" class="co-btn-outline" style="padding:0.25rem 0.625rem;font-size:0.75rem;"><i class="fas fa-pen text-[10px]"></i> Edit</button></td>' +
+          '</tr>';
+      }).join('');
+      this._renderUserBulkBar();
+      var headerCb = document.getElementById('adminUserSelectAll');
+      if (headerCb) headerCb.checked = filtered.length > 0 && filtered.every(function(u) { return AdminPage._selectedUsers[u.email]; });
+    },
+
+    _pruneUserSelection() {
+      var live = {};
+      (this._filteredUsers || []).forEach(function(u) { live[u.email] = true; });
+      Object.keys(this._selectedUsers).forEach(function(k) { if (!live[k]) delete AdminPage._selectedUsers[k]; });
+    },
+
+    toggleUser(email, checked) {
+      if (checked) this._selectedUsers[email] = true;
+      else delete this._selectedUsers[email];
+      this._renderUserBulkBar();
+      var headerCb = document.getElementById('adminUserSelectAll');
+      if (headerCb) headerCb.checked = (this._filteredUsers || []).length > 0 && (this._filteredUsers || []).every(function(u) { return AdminPage._selectedUsers[u.email]; });
+    },
+
+    toggleAllUsers(checked) {
+      var self = this;
+      (this._filteredUsers || []).forEach(function(u) {
+        if (checked) self._selectedUsers[u.email] = true;
+        else delete self._selectedUsers[u.email];
+      });
+      this.renderUsers();
+    },
+
+    _renderUserBulkBar() {
+      var bar = document.getElementById('userBulkBar');
+      if (!bar) return;
+      var count = Object.keys(this._selectedUsers).length;
+      if (count === 0) { bar.classList.add('hidden'); return; }
+      bar.classList.remove('hidden');
+      var counter = document.getElementById('userBulkCount');
+      if (counter) counter.textContent = count + ' selected';
+    },
+
+    bulkChangeRole() {
+      var emails = Object.keys(this._selectedUsers);
+      if (emails.length === 0) return;
+      var roleEl = document.getElementById('userBulkRole');
+      var role = roleEl ? roleEl.value : '';
+      if (!role) { toast('Pick a role first', 'error'); return; }
+      var self = this;
+      ConfirmModal('Change role to "' + role + '" for ' + emails.length + ' user' + (emails.length === 1 ? '' : 's') + '?', { title: 'Bulk role change?', confirmText: 'Apply', cancelText: 'Cancel' }).then(function(confirmed) {
+        if (!confirmed) return;
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (!result || !result.success) { toast((result && result.error) || 'Bulk update failed', 'error'); return; }
+            var ok = (result.updated || []).length;
+            var bad = (result.failed || []).length;
+            toast('Updated ' + ok + ' user' + (ok === 1 ? '' : 's') + (bad ? ' (' + bad + ' failed)' : ''), bad ? 'warning' : 'success');
+            self._selectedUsers = {};
+            self.loadUsers();
+          })
+          .withFailureHandler(function(error) { toast(error.message || 'Bulk update failed', 'error'); })
+          .bulkUpdateUsers(emails, { role: role });
+      });
+    },
+
+    bulkSetActive(active) {
+      var emails = Object.keys(this._selectedUsers);
+      if (emails.length === 0) return;
+      var label = active ? 'Activate' : 'Deactivate';
+      var self = this;
+      ConfirmModal(label + ' ' + emails.length + ' user' + (emails.length === 1 ? '' : 's') + '?', { title: label + '?', confirmText: label, cancelText: 'Cancel' }).then(function(confirmed) {
+        if (!confirmed) return;
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (!result || !result.success) { toast((result && result.error) || 'Bulk update failed', 'error'); return; }
+            var ok = (result.updated || []).length;
+            var bad = (result.failed || []).length;
+            toast(label + 'd ' + ok + ' user' + (ok === 1 ? '' : 's') + (bad ? ' (' + bad + ' failed)' : ''), bad ? 'warning' : 'success');
+            self._selectedUsers = {};
+            self.loadUsers();
+          })
+          .withFailureHandler(function(error) { toast(error.message || 'Bulk update failed', 'error'); })
+          .bulkUpdateUsers(emails, { active: active });
+      });
+    },
+
+    openEditUser(email) {
+      var u = (this.users || []).find(function(x) { return x.email === email; });
+      if (!u) return;
+      this._editTarget = email;
+      var emailEl = document.getElementById('editUserEmail');
+      var nameEl = document.getElementById('editUserName');
+      var roleEl = document.getElementById('editUserRole');
+      var activeEl = document.getElementById('editUserActive');
+      var titleEl = document.getElementById('editUserTitle');
+      var deptEl = document.getElementById('editUserDepartment');
+      if (emailEl) emailEl.textContent = u.email;
+      if (nameEl) nameEl.value = u.name || '';
+      if (roleEl) roleEl.value = u.role || 'member';
+      if (activeEl) activeEl.value = u.active ? 'true' : 'false';
+      if (titleEl) titleEl.value = u.title || '';
+      if (deptEl) deptEl.value = u.department || '';
+      var modal = document.getElementById('editUserModal');
+      if (modal) modal.classList.remove('hidden');
+    },
+
+    closeEditUserModal(e) {
+      if (e && e.target && e.target.id !== 'editUserModal') return;
+      var modal = document.getElementById('editUserModal');
+      if (modal) modal.classList.add('hidden');
+      this._editTarget = null;
+    },
+
+    loadAuditLog() {
+      var tbody = document.getElementById('auditLogBody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="py-12 text-center" style="color:var(--co-gray-400);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading audit log...</td></tr>';
+      var icon = document.getElementById('auditLogRefreshIcon');
+      if (icon) icon.classList.add('fa-spin');
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (icon) icon.classList.remove('fa-spin');
+          if (!result || !result.success) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="py-12 text-center" style="color:var(--co-error);">' + escapeHtml((result && result.error) || 'Failed to load') + '</td></tr>';
+            return;
+          }
+          self._auditLog = result;
+          self.renderAuditLog();
+        })
+        .withFailureHandler(function(error) {
+          if (icon) icon.classList.remove('fa-spin');
+          if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="py-12 text-center" style="color:var(--co-error);">' + escapeHtml(error.message || 'Failed to load') + '</td></tr>';
+        })
+        .getAuditLogPage({ limit: 200 });
+    },
+
+    applyAuditFilters() {
+      var actor = (document.getElementById('auditActorFilter') || {}).value || '';
+      var action = (document.getElementById('auditActionFilter') || {}).value || '';
+      this._auditFilter = { actor: actor, action: action };
+      this.renderAuditLog();
+    },
+
+    renderAuditLog() {
+      var tbody = document.getElementById('auditLogBody');
+      var countEl = document.getElementById('auditLogCount');
+      if (!tbody) return;
+      var data = this._auditLog || { entries: [], actions: [], actors: [] };
+      var actorSel = document.getElementById('auditActorFilter');
+      var actionSel = document.getElementById('auditActionFilter');
+      if (actorSel && actorSel.dataset.optsKey !== (data.actors || []).join('|')) {
+        actorSel.innerHTML = '<option value="">All Actors</option>' + (data.actors || []).map(function(a) { return '<option value="' + escapeHtml(a) + '">' + escapeHtml(a) + '</option>'; }).join('');
+        actorSel.dataset.optsKey = (data.actors || []).join('|');
+        if (this._auditFilter.actor) actorSel.value = this._auditFilter.actor;
+      }
+      if (actionSel && actionSel.dataset.optsKey !== (data.actions || []).join('|')) {
+        actionSel.innerHTML = '<option value="">All Actions</option>' + (data.actions || []).map(function(a) { return '<option value="' + escapeHtml(a) + '">' + escapeHtml(a) + '</option>'; }).join('');
+        actionSel.dataset.optsKey = (data.actions || []).join('|');
+        if (this._auditFilter.action) actionSel.value = this._auditFilter.action;
+      }
+      var filtered = (data.entries || []).filter(function(e) {
+        if (AdminPage._auditFilter.actor && e.actorEmail !== AdminPage._auditFilter.actor) return false;
+        if (AdminPage._auditFilter.action && e.action !== AdminPage._auditFilter.action) return false;
+        return true;
+      });
+      if (countEl) countEl.textContent = filtered.length;
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">' + renderEmptyState({ icon:'fa-history', title:'No audit events', subtitle:'Admin actions will appear here.' }) + '</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filtered.map(function(e) {
+        var when = '';
+        try { when = new Date(e.timestamp).toLocaleString(); } catch (err) { when = e.timestamp || ''; }
+        var actionColor = e.action.indexOf('approve') !== -1 ? 'background:#d1fae5;color:#065f46;' :
+          e.action.indexOf('reject') !== -1 ? 'background:#fee2e2;color:#991b1b;' :
+          e.action.indexOf('update') !== -1 ? 'background:#e0f2fe;color:#0369a1;' :
+          e.action.indexOf('resolve') !== -1 ? 'background:var(--co-accent-50);color:var(--co-accent-700);' :
+          'background:var(--co-surface-sunken);color:var(--co-ink-muted);';
+        var detailsStr = '';
+        if (e.details && typeof e.details === 'object') {
+          var keys = Object.keys(e.details);
+          detailsStr = keys.slice(0, 4).map(function(k) {
+            var v = e.details[k];
+            if (typeof v === 'object') v = JSON.stringify(v);
+            return escapeHtml(k) + ': <span style="color:var(--co-ink);">' + escapeHtml(String(v)) + '</span>';
+          }).join(' · ');
+          if (keys.length > 4) detailsStr += ' …';
+        } else if (e.details) {
+          detailsStr = escapeHtml(String(e.details));
+        }
+        var target = e.targetLabel ? escapeHtml(e.targetLabel) + (e.targetId ? ' <span style="color:var(--co-gray-400);">(' + escapeHtml(e.targetId) + ')</span>' : '') : (e.targetId ? escapeHtml(e.targetId) : '—');
+        return '<tr style="border-bottom:1px solid var(--co-border-subtle);">' +
+          '<td class="py-2.5 px-3 text-[12px]" style="color:var(--co-ink-muted);">' + escapeHtml(when) + '</td>' +
+          '<td class="py-2.5 px-3 text-[12px] font-mono" style="color:var(--co-ink-muted);">' + escapeHtml(e.actorEmail || '—') + '</td>' +
+          '<td class="py-2.5 px-3"><span class="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full" style="' + actionColor + '">' + escapeHtml(e.action) + '</span></td>' +
+          '<td class="py-2.5 px-3 text-[13px]" style="color:var(--co-ink);">' + target + '</td>' +
+          '<td class="py-2.5 px-3 text-[12px]" style="color:var(--co-ink-muted);">' + detailsStr + '</td>' +
+          '</tr>';
+      }).join('');
+    },
+
+    loadPendingOwnerNames() {
+      var listEl = document.getElementById('pendingOwnerList');
+      if (listEl) listEl.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Scanning projects...';
+      var icon = document.getElementById('pendingOwnerRefreshIcon');
+      if (icon) icon.classList.add('fa-spin');
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (icon) icon.classList.remove('fa-spin');
+          if (!result || !result.success) {
+            if (listEl) listEl.innerHTML = '<span style="color:var(--co-error);">' + escapeHtml((result && result.error) || 'Failed to load') + '</span>';
+            return;
+          }
+          self._pendingOwnerNames = result.names || [];
+          self.renderPendingOwnerList();
+        })
+        .withFailureHandler(function(error) {
+          if (icon) icon.classList.remove('fa-spin');
+          if (listEl) listEl.innerHTML = '<span style="color:var(--co-error);">' + escapeHtml(error.message || 'Failed to load') + '</span>';
+        })
+        .getPendingOwnerNames();
+    },
+
+    renderPendingOwnerList() {
+      var listEl = document.getElementById('pendingOwnerList');
+      if (!listEl) return;
+      var names = this._pendingOwnerNames || [];
+      if (!names.length) {
+        listEl.innerHTML = renderEmptyState({ variant:'compact', icon:'fa-check-circle', title:'All resolved', subtitle:'Every project owner resolves to a user account.' });
+        return;
+      }
+      listEl.innerHTML = names.map(function(entry) {
+        var candidates = entry.candidates || [];
+        var cand = candidates.length === 1
+          ? '<span class="text-[11px] px-2 py-0.5 rounded-full" style="background:#d1fae5;color:#065f46;">1 match: ' + escapeHtml(candidates[0].email) + '</span>'
+          : (candidates.length > 1
+            ? '<span class="text-[11px] px-2 py-0.5 rounded-full" style="background:#fef3c7;color:#92400e;">' + candidates.length + ' matches</span>'
+            : '<span class="text-[11px] px-2 py-0.5 rounded-full" style="background:#fee2e2;color:#991b1b;">No match</span>');
+        return '<div class="flex items-center gap-3 py-2.5 border-b" style="border-color:var(--co-border-subtle);">' +
+          '<div class="flex-1 min-w-0">' +
+          '<div class="text-[13px] font-medium" style="color:var(--co-ink);">' + escapeHtml(entry.name) + '</div>' +
+          '<div class="text-[11px] mt-0.5" style="color:var(--co-gray-500);">' + entry.projects.length + ' project' + (entry.projects.length === 1 ? '' : 's') + ' · ' +
+            entry.projects.slice(0, 3).map(function(p) { return escapeHtml(p.name); }).join(', ') +
+            (entry.projects.length > 3 ? ' …+' + (entry.projects.length - 3) + ' more' : '') +
+          '</div>' +
+          '</div>' +
+          cand +
+          '<button onclick="AdminPage.openResolvePending(\'' + escapeHtml(entry.name).replace(/'/g, '&#39;') + '\')" class="co-btn-solid" style="padding:0.25rem 0.625rem;font-size:0.75rem;"><i class="fas fa-link text-[10px]" aria-hidden="true"></i> Resolve</button>' +
+          '</div>';
+      }).join('');
+    },
+
+    openResolvePending(rawName) {
+      var name = String(rawName || '').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+      var entry = (this._pendingOwnerNames || []).find(function(e) { return e.name === name; });
+      if (!entry) return;
+      this._resolvePendingTarget = name;
+      var labelEl = document.getElementById('resolvePendingNameLabel');
+      var projEl = document.getElementById('resolvePendingProjectsLabel');
+      if (labelEl) labelEl.textContent = name;
+      if (projEl) projEl.textContent = entry.projects.length + ' project' + (entry.projects.length === 1 ? '' : 's') + ' will be linked';
+      var sel = document.getElementById('resolvePendingUserSelect');
+      if (sel) {
+        var options = '<option value="">— pick a user —</option>';
+        var users = (this.users && this.users.length) ? this.users : (State.users || []);
+        users
+          .filter(function(u) { return u.email && (u.active !== false); })
+          .sort(function(a, b) { return (a.name || a.email).localeCompare(b.name || b.email); })
+          .forEach(function(u) {
+            options += '<option value="' + escapeHtml(u.email) + '">' + escapeHtml(u.name || u.email) + ' &lt;' + escapeHtml(u.email) + '&gt;</option>';
+          });
+        sel.innerHTML = options;
+        if ((entry.candidates || []).length === 1) sel.value = entry.candidates[0].email;
+      }
+      var modal = document.getElementById('resolvePendingModal');
+      if (modal) modal.classList.remove('hidden');
+    },
+
+    closeResolvePendingModal(e) {
+      if (e && e.target && e.target.id !== 'resolvePendingModal') return;
+      var modal = document.getElementById('resolvePendingModal');
+      if (modal) modal.classList.add('hidden');
+      this._resolvePendingTarget = null;
+    },
+
+    confirmResolvePending() {
+      var name = this._resolvePendingTarget;
+      if (!name) return;
+      var sel = document.getElementById('resolvePendingUserSelect');
+      var email = sel ? sel.value : '';
+      if (!email) { toast('Pick a user first', 'error'); return; }
+      var btn = document.getElementById('resolvePendingConfirmBtn');
+      if (btn) btn.disabled = true;
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (btn) btn.disabled = false;
+          if (!result || !result.success) {
+            toast((result && result.error) || 'Resolve failed', 'error');
+            return;
+          }
+          toast('Linked ' + (result.linkedProjects || 0) + ' project' + ((result.linkedProjects === 1) ? '' : 's') + ' to ' + email, 'success');
+          self.closeResolvePendingModal();
+          self.loadPendingOwnerNames();
+        })
+        .withFailureHandler(function(error) {
+          if (btn) btn.disabled = false;
+          toast(error.message || 'Resolve failed', 'error');
+        })
+        .resolvePendingOwnerName(name, email);
+    },
+
+    confirmEditUser() {
+      var email = this._editTarget;
+      if (!email) return;
+      var nameEl = document.getElementById('editUserName');
+      var roleEl = document.getElementById('editUserRole');
+      var activeEl = document.getElementById('editUserActive');
+      var titleEl = document.getElementById('editUserTitle');
+      var deptEl = document.getElementById('editUserDepartment');
+      var updates = {
+        name: nameEl ? nameEl.value : '',
+        role: roleEl ? roleEl.value : '',
+        active: activeEl ? activeEl.value === 'true' : true,
+        title: titleEl ? titleEl.value : '',
+        department: deptEl ? deptEl.value : ''
+      };
+      var self = this;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && result.success) {
+            toast('User updated', 'success');
+            self.closeEditUserModal();
+            self.loadUsers();
+          } else {
+            toast((result && result.error) || 'Failed to update', 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          toast(error.message || 'Failed to update', 'error');
+        })
+        .adminUpdateUser(email, updates);
+    }
+  };
+  window.AdminPage = AdminPage;
 
   function loadAccessRequests() {
-    var listEl = $('accessRequestsList');
-    if (listEl) listEl.innerHTML = '<p class="text-gray-400">Loading...</p>';
+    if (window.AdminPage && typeof AdminPage.loadAccessRequests === 'function') AdminPage.loadAccessRequests();
+  }
+
+  var _bgRefreshCount = 0;
+  function setBackgroundRefreshing(active) {
+    if (active) _bgRefreshCount++;
+    else _bgRefreshCount = Math.max(0, _bgRefreshCount - 1);
+    var pip = document.getElementById('topbarRefreshPip');
+    if (!pip) return;
+    if (_bgRefreshCount > 0) pip.classList.remove('hidden');
+    else pip.classList.add('hidden');
+  }
+  window.setBackgroundRefreshing = setBackgroundRefreshing;
+
+  function updateAdminNavBadge(count) {
+    var badge = document.getElementById('navAdminBadge');
+    if (!badge) return;
+    var n = parseInt(count, 10) || 0;
+    if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+  }
+  window.updateAdminNavBadge = updateAdminNavBadge;
+
+  function refreshAdminBadgeIfAdmin() {
+    if (!hasMinRole('admin')) return;
     google.script.run
       .withSuccessHandler(function(result) {
-        if (!listEl) return;
-        if (!result.success) {
-          listEl.innerHTML = '<p class="text-red-500">' + (result.error || 'Failed to load') + '</p>';
-          return;
-        }
-        if (!result.requests || result.requests.length === 0) {
-          listEl.innerHTML = '<p class="text-gray-400">No pending access requests.</p>';
-          return;
-        }
-        var html = '<div class="space-y-3">';
-        result.requests.forEach(function(req) {
-          html += '<div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">' +
-            '<div>' +
-            '<p class="font-medium text-gray-900">' + (req.email || '') + '</p>' +
-            '<p class="text-xs text-gray-500">Requested: ' + (req.requestedAt || '') + '</p>' +
-            '</div>' +
-            '<div class="flex gap-2">' +
-            '<button onclick="handleApproveAccess(\'' + req.email + '\')" class="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg">Approve</button>' +
-            '<button onclick="promptRejectAccess(\'' + req.email + '\')" class="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg">Reject</button>' +
-            '</div></div>';
-        });
-        html += '</div>';
-        listEl.innerHTML = html;
+        if (result && result.success) updateAdminNavBadge((result.requests || []).length);
       })
-      .withFailureHandler(function(error) {
-        if (listEl) listEl.innerHTML = '<p class="text-red-500">' + (error.message || 'Failed to load') + '</p>';
-      })
+      .withFailureHandler(function() {})
       .getPendingAccessRequests();
   }
+  window.refreshAdminBadgeIfAdmin = refreshAdminBadgeIfAdmin;
 
-  function handleApproveAccess(email) {
-    if (!email) return;
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result.success) {
-          toast('Access granted to ' + email, 'success');
-          loadAccessRequests();
-        } else {
-          toast(result.error || 'Failed to approve', 'error');
-        }
-      })
-      .withFailureHandler(function(error) {
-        toast(error.message || 'Failed to approve', 'error');
-      })
-      .approveAccessRequest(email);
-  }
+  var AdminTools = {
+    _lastDryRun: null,
 
-  function promptRejectAccess(email) {
-    if (!email) return;
-    var reason = prompt('Reason for rejection (optional):');
-    if (reason === null) return;
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result.success) {
-          toast('Request from ' + email + ' rejected', 'info');
-          loadAccessRequests();
-        } else {
-          toast(result.error || 'Failed to reject', 'error');
-        }
-      })
-      .withFailureHandler(function(error) {
-        toast(error.message || 'Failed to reject', 'error');
-      })
-      .rejectAccessRequest(email, reason || '');
+    runReclassifyOrigins: function() {
+      var btn = document.getElementById('reclassifyOriginsBtn');
+      var out = document.getElementById('reclassifyOriginsResult');
+      if (btn) btn.disabled = true;
+      if (out) out.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Reclassifying...';
+      google.script.run
+        .withSuccessHandler(function(resp) {
+          if (btn) btn.disabled = false;
+          if (!resp || !resp.success) {
+            if (out) out.innerHTML = '<span style="color:#dc2626;">Failed: ' + escapeHtml((resp && resp.error) || 'Unknown') + '</span>';
+            return;
+          }
+          if (out) out.innerHTML = '<i class="fas fa-check-circle mr-2" style="color:var(--co-success);"></i>Reclassified ' + (resp.changed || 0) + ' project' + (resp.changed === 1 ? '' : 's') + '. Refresh to see updated badges.';
+          if (typeof toast === 'function') toast('Reclassification complete', 'success');
+        })
+        .withFailureHandler(function(err) {
+          if (btn) btn.disabled = false;
+          if (out) out.innerHTML = '<span style="color:#dc2626;">Failed: ' + escapeHtml((err && err.message) || 'Unknown') + '</span>';
+        })
+        .bulkReclassifyProjectOrigins();
+    },
+
+    _setApplyEnabled: function(enabled, count) {
+      var btn = document.getElementById('repairOwnersApplyBtn');
+      var hint = document.getElementById('repairOwnersHint');
+      if (!btn) return;
+      btn.disabled = !enabled;
+      btn.className = enabled ? 'co-btn-solid' : 'co-btn-outline';
+      if (hint) hint.textContent = enabled
+        ? 'Apply will update ' + count + ' project' + (count === 1 ? '' : 's') + '.'
+        : 'Run a dry-run first to enable Apply.';
+    },
+
+    _renderResult: function(report, applied) {
+      var resultEl = document.getElementById('repairOwnersResult');
+      if (!resultEl) return;
+      var summary = '<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">' +
+        AdminTools._statCard('Scanned', report.scanned, 'gray') +
+        AdminTools._statCard('Already email', report.alreadyEmail, 'gray') +
+        AdminTools._statCard(applied ? 'Applied' : 'Will repair', applied ? report.applied.length : report.matched.length, applied ? 'green' : 'blue') +
+        AdminTools._statCard('Ambiguous', report.ambiguous.length, 'yellow') +
+        AdminTools._statCard('Unmatched', report.unmatched.length, 'red') +
+        '</div>';
+      var html = summary;
+      if (!applied && report.matched.length) {
+        html += AdminTools._renderTable('Will repair (single match found)', report.matched, [
+          { key: 'projectId', label: 'Project ID' },
+          { key: 'projectName', label: 'Name' },
+          { key: 'currentOwnerId', label: 'Current ownerId' },
+          { key: 'suggestedEmail', label: 'New ownerId' }
+        ]);
+      }
+      if (applied && report.applied.length) {
+        html += AdminTools._renderTable('Applied changes', report.applied, [
+          { key: 'projectId', label: 'Project ID' },
+          { key: 'projectName', label: 'Name' },
+          { key: 'from', label: 'From' },
+          { key: 'to', label: 'To' }
+        ]);
+      }
+      if (report.ambiguous.length) {
+        html += AdminTools._renderTable('Ambiguous (multiple users match — fix manually)', report.ambiguous, [
+          { key: 'projectId', label: 'Project ID' },
+          { key: 'projectName', label: 'Name' },
+          { key: 'currentOwnerId', label: 'Current ownerId' },
+          { key: 'candidates', label: 'Possible emails', formatter: function(v) { return Array.isArray(v) ? v.join(', ') : (v || ''); } }
+        ]);
+      }
+      if (report.unmatched.length) {
+        html += AdminTools._renderTable('Unmatched (no user found — fix manually)', report.unmatched, [
+          { key: 'projectId', label: 'Project ID' },
+          { key: 'projectName', label: 'Name' },
+          { key: 'currentOwnerId', label: 'Current ownerId' },
+          { key: 'error', label: 'Error', formatter: function(v) { return v || ''; } }
+        ]);
+      }
+      resultEl.innerHTML = html;
+    },
+
+    _statCard: function(label, value, tone) {
+      var palette = {
+        gray: 'bg-gray-50 text-gray-700 border-gray-200',
+        blue: 'bg-blue-50 text-blue-800 border-blue-200',
+        green: 'bg-green-50 text-green-800 border-green-200',
+        yellow: 'bg-yellow-50 text-yellow-800 border-yellow-200',
+        red: 'bg-red-50 text-red-800 border-red-200'
+      }[tone] || 'bg-gray-50 text-gray-700 border-gray-200';
+      return '<div class="border rounded-lg p-3 ' + palette + '">' +
+        '<div class="text-xs uppercase tracking-wide opacity-75">' + label + '</div>' +
+        '<div class="text-xl font-semibold mt-1">' + value + '</div>' +
+        '</div>';
+    },
+
+    _renderTable: function(title, rows, columns) {
+      if (!rows.length) return '';
+      var headHtml = columns.map(function(c) { return '<th class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide px-3 py-2 border-b border-gray-200">' + c.label + '</th>'; }).join('');
+      var bodyHtml = rows.map(function(r) {
+        return '<tr>' + columns.map(function(c) {
+          var raw = r[c.key];
+          var v = c.formatter ? c.formatter(raw) : (raw == null ? '' : String(raw));
+          return '<td class="text-sm text-gray-800 px-3 py-2 border-b border-gray-100 align-top">' + escapeHtml(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      return '<div class="mb-5">' +
+        '<h3 class="text-sm font-semibold text-gray-700 mb-2">' + escapeHtml(title) + ' <span class="text-gray-400 font-normal">(' + rows.length + ')</span></h3>' +
+        '<div class="overflow-x-auto border border-gray-200 rounded-lg">' +
+        '<table class="min-w-full"><thead><tr>' + headHtml + '</tr></thead><tbody>' + bodyHtml + '</tbody></table>' +
+        '</div></div>';
+    },
+
+    _executeRepair: function(apply) {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (!result || !result.success) {
+            toast((result && result.error) || 'Repair failed', 'error');
+            return;
+          }
+          var report = result.report;
+          if (!apply) {
+            AdminTools._lastDryRun = report;
+            AdminTools._setApplyEnabled(report.matched.length > 0, report.matched.length);
+            AdminTools._renderResult(report, false);
+            toast('Dry-run complete: ' + report.matched.length + ' fixable, ' + report.ambiguous.length + ' ambiguous, ' + report.unmatched.length + ' unmatched', 'info');
+          } else {
+            AdminTools._lastDryRun = null;
+            AdminTools._setApplyEnabled(false, 0);
+            AdminTools._renderResult(report, true);
+            toast('Repaired ' + report.applied.length + ' project' + (report.applied.length === 1 ? '' : 's'), 'success');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          console.error('repairProjectOwnerIds failed:', error);
+          toast('Repair failed: ' + (error.message || 'unknown error'), 'error');
+        })
+        .repairProjectOwnerIds({ apply: apply === true });
+    },
+
+    runOwnerRepair: function(apply) {
+      if (apply && (!AdminTools._lastDryRun || !AdminTools._lastDryRun.matched.length)) {
+        toast('Run a dry-run first', 'error');
+        return;
+      }
+      if (!apply) {
+        AdminTools._executeRepair(false);
+        return;
+      }
+      var count = AdminTools._lastDryRun.matched.length;
+      var msg = 'Apply repair to ' + count + ' project' + (count === 1 ? '' : 's') + '? This rewrites the ownerId column in the Projects sheet. Re-scans server-side, so the dry-run preview is advisory.';
+      ConfirmModal(msg, { title: 'Apply owner repair?', confirmText: 'Apply', cancelText: 'Cancel' }).then(function(confirmed) {
+        if (!confirmed) return;
+        AdminTools._executeRepair(true);
+      });
+    },
+
+    _setNormalizeApplyEnabled: function(enabled, count) {
+      var btn = document.getElementById('normalizeOwnersApplyBtn');
+      var hint = document.getElementById('normalizeOwnersHint');
+      if (!btn) return;
+      btn.disabled = !enabled;
+      btn.className = enabled ? 'co-btn-solid' : 'co-btn-outline';
+      if (hint) hint.textContent = enabled
+        ? 'Apply will update ' + count + ' project' + (count === 1 ? '' : 's') + '.'
+        : 'Run a dry-run first to enable Apply.';
+    },
+
+    _renderNormalizeResult: function(report, applied) {
+      var resultEl = document.getElementById('normalizeOwnersResult');
+      if (!resultEl) return;
+      var html = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">' +
+        AdminTools._statCard('Scanned', report.scanned, 'gray') +
+        AdminTools._statCard(applied ? 'Applied' : 'Will change', applied ? report.applied.length : (report.preview ? report.preview.length : 0), applied ? 'green' : 'blue') +
+        AdminTools._statCard('Owner rewritten', report.rewrittenOwner, 'gray') +
+        AdminTools._statCard('Secondary rewritten', report.rewrittenSecondary, 'gray') +
+        AdminTools._statCard('To pendingOwner', report.movedToPendingOwner, 'yellow') +
+        AdminTools._statCard('To pendingSecondary', report.movedToPendingSecondary, 'yellow') +
+        AdminTools._statCard('Ambiguous', (report.ambiguousOwner || []).length, 'yellow') +
+        AdminTools._statCard('Unresolved', (report.unresolvedOwner || []).length, 'red') +
+      '</div>';
+      if (applied && report.applied && report.applied.length) {
+        html += AdminTools._renderTable('Applied changes', report.applied, [
+          { key: 'projectId', label: 'Project ID' },
+          { key: 'projectName', label: 'Name' },
+          { key: 'changes', label: 'Changes', formatter: function(v){ return (Array.isArray(v) ? v : []).map(function(c){ return escapeHtml(c.field + ': ' + (c.from || '') + ' → ' + (c.to || '')); }).join('<br>'); } }
+        ]);
+      } else if (!applied && report.preview && report.preview.length) {
+        html += AdminTools._renderTable('Will change (dry-run preview)', report.preview, [
+          { key: 'projectId', label: 'Project ID' },
+          { key: 'projectName', label: 'Name' },
+          { key: 'changes', label: 'Changes', formatter: function(v){ return (Array.isArray(v) ? v : []).map(function(c){ return escapeHtml(c.field + ': ' + (c.from || '') + ' → ' + (c.to || '')); }).join('<br>'); } }
+        ]);
+      }
+      if (report.ambiguousOwner && report.ambiguousOwner.length) {
+        html += AdminTools._renderTable('Ambiguous owner names (multiple users match — fix via Link button)', report.ambiguousOwner, [
+          { key: 'projectId', label: 'Project ID' },
+          { key: 'projectName', label: 'Name' },
+          { key: 'currentOwnerId', label: 'Current Value' },
+          { key: 'candidates', label: 'Candidates', formatter: function(v){ return (Array.isArray(v) ? v : []).map(escapeHtml).join('<br>'); } }
+        ]);
+      }
+      resultEl.innerHTML = html;
+    },
+
+    _executeNormalize: function(apply) {
+      var resultEl = document.getElementById('normalizeOwnersResult');
+      if (resultEl) resultEl.innerHTML = '<p class="text-sm text-gray-500"><i class="fas fa-spinner fa-spin mr-1"></i>' + (apply ? 'Applying normalization...' : 'Scanning all projects...') + '</p>';
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || !result.success) {
+            if (resultEl) resultEl.innerHTML = '<p class="text-sm text-red-600">' + escapeHtml((result && result.error) || 'Failed') + '</p>';
+            return;
+          }
+          var report = result.report;
+          if (!apply) {
+            AdminTools._lastNormalizeDryRun = report;
+            var willChange = report.preview ? report.preview.length : 0;
+            AdminTools._setNormalizeApplyEnabled(willChange > 0, willChange);
+            AdminTools._renderNormalizeResult(report, false);
+          } else {
+            AdminTools._lastNormalizeDryRun = null;
+            AdminTools._setNormalizeApplyEnabled(false, 0);
+            AdminTools._renderNormalizeResult(report, true);
+            toast('Normalized ' + (report.applied || []).length + ' project' + ((report.applied || []).length === 1 ? '' : 's'), 'success');
+          }
+        })
+        .withFailureHandler(function(error) {
+          if (resultEl) resultEl.innerHTML = '<p class="text-sm text-red-600">' + escapeHtml(error.message || 'Failed') + '</p>';
+          console.error('normalizeAllProjectOwners failed:', error);
+        })
+        .normalizeAllProjectOwners({ apply: apply === true });
+    },
+
+    runOwnerNormalize: function(apply) {
+      if (apply && (!AdminTools._lastNormalizeDryRun || !AdminTools._lastNormalizeDryRun.preview || !AdminTools._lastNormalizeDryRun.preview.length)) {
+        toast('Run a dry-run first', 'error');
+        return;
+      }
+      if (!apply) {
+        AdminTools._executeNormalize(false);
+        return;
+      }
+      var count = AdminTools._lastNormalizeDryRun.preview.length;
+      var msg = 'Apply normalization to ' + count + ' project' + (count === 1 ? '' : 's') + '? Names will be resolved to emails or moved to pending fields. Server re-scans, so dry-run is advisory.';
+      ConfirmModal(msg, { title: 'Apply owner normalization?', confirmText: 'Apply', cancelText: 'Cancel' }).then(function(confirmed) {
+        if (!confirmed) return;
+        AdminTools._executeNormalize(true);
+      });
+    }
+  };
+  window.AdminTools = AdminTools;
+
+  function loadAdminTools() {
+    var resultEl = document.getElementById('repairOwnersResult');
+    if (resultEl) resultEl.innerHTML = '<p class="text-sm text-gray-400">Click <strong>Run Dry-Run</strong> to scan all projects.</p>';
+    AdminTools._lastDryRun = null;
+    AdminTools._setApplyEnabled(false, 0);
+    var normEl = document.getElementById('normalizeOwnersResult');
+    if (normEl) normEl.innerHTML = '<p class="text-sm text-gray-400">Click <strong>Run Dry-Run</strong> to preview owner normalization.</p>';
+    AdminTools._lastNormalizeDryRun = null;
+    AdminTools._setNormalizeApplyEnabled(false, 0);
   }
+  window.loadAdminTools = loadAdminTools;
 
   function handleInitError(error) {
     console.error("Init error:", error);
@@ -1160,25 +2207,23 @@
   function applyRoleBasedVisibility() {
     if (!State.user) return;
     var role = (State.user.role || 'member').toLowerCase();
-    var roleLevel = { admin: 3, manager: 2, member: 1, viewer: 0 };
+    var roleLevel = { admin: 3, manager: 2, member: 1, viewer: 0, client: -1 };
     var userLevel = roleLevel[role] !== undefined ? roleLevel[role] : 1;
 
-    // Show/hide nav items based on data-min-role attribute
+    // Show/hide nav items based on data-min-role attribute (data-allow-roles overrides as a allowlist)
     $$('[data-min-role]').forEach(function(el) {
       var requiredRole = el.getAttribute('data-min-role');
       var requiredLevel = roleLevel[requiredRole] !== undefined ? roleLevel[requiredRole] : 2;
-      if (userLevel >= requiredLevel) {
+      var allowAttr = el.getAttribute('data-allow-roles') || '';
+      var allowList = allowAttr.split(/[,\s]+/).map(function(r) { return r.trim().toLowerCase(); }).filter(Boolean);
+      var explicitAllow = allowList.indexOf(role) !== -1;
+      if (userLevel >= requiredLevel || explicitAllow) {
         el.style.display = '';
       } else {
         el.style.display = 'none';
       }
     });
 
-    // Show/hide "New Project" link (admin/manager only)
-    var newProjectLink = document.querySelector('[onclick="openProjectModal()"]');
-    if (newProjectLink) {
-      newProjectLink.style.display = (userLevel >= 1) ? '' : 'none';
-    }
 
     // Show role badge next to user name
     var roleDisplay = $("userRole");
@@ -1190,7 +2235,7 @@
   function hasMinRole(minRole) {
     if (!State.user) return false;
     var role = (State.user.role || 'member').toLowerCase();
-    var roleLevel = { admin: 3, manager: 2, member: 1, viewer: 0 };
+    var roleLevel = { admin: 3, manager: 2, member: 1, viewer: 0, client: -1 };
     var userLevel = roleLevel[role] !== undefined ? roleLevel[role] : 1;
     var requiredLevel = roleLevel[minRole] !== undefined ? roleLevel[minRole] : 2;
     return userLevel >= requiredLevel;

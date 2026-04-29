@@ -37,6 +37,19 @@ window.__COLONY_DEEP_LINK__ = <?!= JSON.stringify(deepLink || {}) ?>;
 </head>
 <body class="h-screen overflow-hidden" style="background:var(--co-page-bg);">
 <script>
+(function() {
+  try {
+    var theme = localStorage.getItem('co-theme') || 'system';
+    var resolved = theme === 'system'
+      ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : theme;
+    document.documentElement.dataset.theme = resolved;
+    var density = localStorage.getItem('co-density');
+    if (density) document.documentElement.dataset.density = density;
+    var accent = localStorage.getItem('co-accent');
+    if (accent) document.documentElement.dataset.accent = accent;
+  } catch (e) {}
+})();
 function _pc(pageName, method) {
   var page = window[pageName];
   if (!page || typeof page[method] !== 'function') {
@@ -48,87 +61,89 @@ function _pc(pageName, method) {
 }
 </script>
 <div id="app" class="flex h-full">
-<aside id="sidebar" class="w-60 text-white flex flex-col" style="background:#1c1b18;">
-<div class="flex items-center gap-2.5 px-5 py-4" style="border-bottom:1px solid rgba(255,255,255,0.06);">
-<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-sm" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#d89a6a"/><stop offset="100%" stop-color="#c06b4a"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-sm)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-sm)" fill="none" opacity="0.4"/></svg>
-<div class="flex-1 min-w-0">
+<aside id="sidebar" class="text-white flex flex-col" style="background:#1c1b18;width:240px;transition:width 0.22s ease;">
+<div class="flex items-center gap-2.5 px-5 py-4 sidebar-brand-row" style="border-bottom:1px solid rgba(255,255,255,0.06);">
+<svg class="w-6 h-6 shrink-0 sidebar-brand-logo" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><defs><linearGradient id="hex-grad-sm" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#d89a6a"/><stop offset="100%" stop-color="#c06b4a"/></linearGradient></defs><path d="M12 2.5 L21 7.7 L21 16.3 L12 21.5 L3 16.3 L3 7.7 Z" stroke="url(#hex-grad-sm)" fill="none"/><path d="M12 6.5 L16.5 9.1 L16.5 14.9 L12 17.5 L7.5 14.9 L7.5 9.1 Z" stroke="url(#hex-grad-sm)" fill="none" opacity="0.4"/></svg>
+<div class="flex-1 min-w-0 sidebar-brand-text">
 <span class="font-semibold text-[15px] tracking-tight">COLONY</span>
 <div id="sidebarDate" class="text-[11px] text-gray-400 mt-0.5"></div>
 </div>
+<button id="sidebarCollapseBtn" type="button" onclick="toggleSidebarCollapse()" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-md transition-colors" style="color:rgba(255,255,255,0.55);" onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='#fff';" onmouseout="this.style.background='transparent';this.style.color='rgba(255,255,255,0.55)';" title="Collapse sidebar (Cmd/Ctrl+B)" aria-label="Collapse sidebar">
+<i id="sidebarCollapseIcon" class="fas fa-angles-left text-[12px]"></i>
+</button>
 </div>
 <nav class="flex-1 py-4 overflow-y-auto">
 <div class="px-3 mb-2">
-<span class="nav-link active" data-view="home" onclick="switchView('home')">
-<i class="fas fa-home w-5"></i> Home
+<span class="nav-link active" data-view="home" onclick="switchView('home')" data-label="Home" title="Home">
+<i class="fas fa-home w-5"></i><span class="nav-link-text"> Home</span>
 </span>
-<span class="nav-link" data-view="my" onclick="switchView('my')">
-<i class="fas fa-user w-5"></i> My Board
+<span class="nav-link" data-view="my" onclick="switchView('my')" data-label="My Board" title="My Board">
+<i class="fas fa-user w-5"></i><span class="nav-link-text"> My Board</span>
 </span>
-<span class="nav-link" data-view="projects" onclick="switchView('projects')">
-<i class="fas fa-folder-open w-5"></i> My Projects
+<span class="nav-link" data-view="projects" onclick="switchView('projects')" data-label="My Projects" title="My Projects">
+<i class="fas fa-folder-open w-5"></i><span class="nav-link-text"> My Projects</span>
 </span>
-<span class="nav-link" data-view="dataassets" onclick="switchView('dataassets')">
-<i class="fas fa-database w-5"></i> Data Assets
+<span class="nav-link" data-view="dataassets" onclick="switchView('dataassets')" data-label="Data Assets" title="Data Assets">
+<i class="fas fa-database w-5"></i><span class="nav-link-text"> Data Assets</span>
 </span>
-<span class="nav-link" data-view="adhoc" onclick="switchView('adhoc')">
-<i class="fas fa-clipboard-list w-5"></i> Ad Hoc
+<span class="nav-link" data-view="adhoc" onclick="switchView('adhoc')" data-label="Ad Hoc" title="Ad Hoc">
+<i class="fas fa-clipboard-list w-5"></i><span class="nav-link-text"> Ad Hoc</span>
 </span>
 </div>
-<div class="px-3 mb-2">
+<div class="px-3 mb-2 sidebar-group">
 <div class="sidebar-group-header" onclick="toggleSidebarGroup('workViews')">
-<span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Work Views</span>
-<i id="sidebarChevron-workViews" class="fas fa-chevron-down text-xs text-gray-500"></i>
+<span class="text-xs font-semibold text-gray-500 uppercase tracking-wider sidebar-group-label">Work Views</span>
+<i id="sidebarChevron-workViews" class="fas fa-chevron-down text-xs text-gray-500 sidebar-group-chevron"></i>
 </div>
 <div id="sidebarGroup-workViews" class="sidebar-group-content">
-<span class="nav-link" data-view="list" onclick="switchView('list')">
-<i class="fas fa-list w-5"></i> Task List
+<span class="nav-link" data-view="list" onclick="switchView('list')" data-label="Task List" title="Task List">
+<i class="fas fa-list w-5"></i><span class="nav-link-text"> Task List</span>
 </span>
 </div>
 </div>
-<div class="px-3 mb-2" data-min-role="manager" style="display:none;">
+<div class="px-3 mb-2 sidebar-group" data-min-role="manager" style="display:none;">
 <div class="sidebar-group-header" onclick="toggleSidebarGroup('management')">
-<span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Management</span>
-<i id="sidebarChevron-management" class="fas fa-chevron-down text-xs text-gray-500"></i>
+<span class="text-xs font-semibold text-gray-500 uppercase tracking-wider sidebar-group-label">Management</span>
+<i id="sidebarChevron-management" class="fas fa-chevron-down text-xs text-gray-500 sidebar-group-chevron"></i>
 </div>
 <div id="sidebarGroup-management" class="sidebar-group-content">
-<span class="nav-link" data-view="master" data-min-role="manager" onclick="switchView('master')" style="display:none;">
-<i class="fas fa-layer-group w-5"></i> Master Board
+<span class="nav-link" data-view="master" data-min-role="manager" onclick="switchView('master')" data-label="Master Board" title="Master Board" style="display:none;">
+<i class="fas fa-layer-group w-5"></i><span class="nav-link-text"> Master Board</span>
 </span>
-<span class="nav-link" data-view="analytics" data-min-role="manager" onclick="switchView('analytics')" style="display:none;">
-<i class="fas fa-chart-bar w-5"></i> Analytics
+<span class="nav-link" data-view="analytics" data-min-role="manager" onclick="switchView('analytics')" data-label="Analytics" title="Analytics" style="display:none;">
+<i class="fas fa-chart-bar w-5"></i><span class="nav-link-text"> Analytics</span>
 </span>
-<span class="nav-link" data-view="funnel" data-min-role="manager" onclick="switchView('funnel')" style="display:none;">
-<i class="fas fa-filter w-5"></i> Funnel
+<span class="nav-link" data-view="funnel" data-min-role="manager" onclick="switchView('funnel')" data-label="Funnel" title="Funnel" style="display:none;">
+<i class="fas fa-filter w-5"></i><span class="nav-link-text"> Funnel</span>
 </span>
 </div>
 </div>
 <div class="px-3 mb-2">
-<span class="nav-link" data-view="surge" onclick="switchView('surge')">
-<i class="fas fa-hand-paper w-5"></i> Pick Ups
+<span class="nav-link" data-view="surge" data-min-role="member" onclick="switchView('surge')" data-label="Pick Ups" title="Pick Ups">
+<i class="fas fa-hand-paper w-5"></i><span class="nav-link-text"> Pick Ups</span>
 </span>
-<span class="nav-link" data-view="access-requests" data-min-role="admin" onclick="switchView('access-requests')" style="display:none;">
-<i class="fas fa-user-plus w-5"></i> Access Requests
-</span>
-</div>
-<div class="px-3 mb-4">
-<span class="nav-link text-primary-300" onclick="openProjectModal()">
-<i class="fas fa-plus w-5"></i> New Project
+<span class="nav-link" data-view="admin" data-min-role="admin" onclick="switchView('admin')" data-label="Admin" title="Admin" style="display:none;">
+<i class="fas fa-user-shield w-5"></i><span class="nav-link-text"> Admin</span>
+<span id="navAdminBadge" class="hidden ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style="background:var(--co-accent-500);color:#fff;line-height:1;">0</span>
 </span>
 </div>
 </nav>
-<div class="px-4 py-3.5" style="border-top:1px solid rgba(255,255,255,0.06);">
+<div class="px-4 py-3.5 sidebar-user-row" style="border-top:1px solid rgba(255,255,255,0.06);">
 <div class="flex items-center gap-3">
 <div id="userAvatar"
-class="w-9 h-9 rounded-full bg-primary-700 flex items-center justify-center font-semibold text-sm cursor-pointer transition-all overflow-hidden"
+class="w-9 h-9 shrink-0 rounded-full bg-primary-700 flex items-center justify-center font-semibold text-sm cursor-pointer transition-all overflow-hidden"
 style="border:1px solid rgba(255,255,255,0.08);"
 onmouseover="this.style.boxShadow='0 0 0 2px rgba(192,107,74,0.35)'"
 onmouseout="this.style.boxShadow='none'"
 onclick="if(typeof AvatarPicker!=='undefined')AvatarPicker.open()"
 oncontextmenu="event.preventDefault(); if(typeof BadgeShowcase!=='undefined')BadgeShowcase.open(); return false;"
-title="Change avatar (right-click for badges)">
+title="Change avatar (right-click for badges)"
+role="button"
+tabindex="0"
+aria-label="Change avatar (right-click for badges)">
 ?
 </div>
-<div class="flex-1 overflow-hidden">
+<div class="flex-1 overflow-hidden sidebar-user-meta">
 <div id="userName" class="font-medium text-[13px] truncate text-white">
 Loading...
 </div>
@@ -138,10 +153,11 @@ Loading...
 </div>
 <button
 onclick="handleLogout()"
-class="text-gray-500 hover:text-white p-1.5 rounded transition-colors"
+class="sidebar-user-logout text-gray-500 hover:text-white p-1.5 rounded transition-colors"
 title="Sign Out"
+aria-label="Sign out"
 >
-<i class="fas fa-sign-out-alt text-sm"></i>
+<i class="fas fa-sign-out-alt text-sm" aria-hidden="true"></i>
 </button>
 </div>
 </div>
@@ -152,7 +168,7 @@ title="Sign Out"
 <h1 id="viewTitle" class="text-[15px] font-semibold whitespace-nowrap shrink-0" style="color:var(--co-ink);">My Board</h1>
 <div class="w-px h-4 shrink-0" style="background:var(--co-border-soft);"></div>
 <div class="relative shrink-0" id="projectSelectorContainer">
-  <button id="projectSelectorBtn" onclick="toggleProjectDropdown()" class="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors" style="color:var(--co-ink-muted);background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);" onmouseover="this.style.background='var(--co-border-subtle)';this.style.color='var(--co-ink)';" onmouseout="this.style.background='var(--co-surface-sunken)';this.style.color='var(--co-ink-muted)';">
+  <button id="projectSelectorBtn" onclick="toggleProjectDropdown()" class="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors" style="color:var(--co-ink-muted);background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);" onmouseover="this.style.background='var(--co-border-subtle)';this.style.color='var(--co-ink)';" onmouseout="this.style.background='var(--co-surface-sunken)';this.style.color='var(--co-ink-muted)';" aria-label="Select project filter" aria-haspopup="listbox">
     <i class="fas fa-layer-group text-xs" style="color:var(--co-gray-400);"></i>
     <span id="projectSelectorLabel" class="truncate max-w-[160px]">All Projects</span>
     <i class="fas fa-chevron-down text-[10px]" style="color:var(--co-gray-400);" id="projectSelectorChevron"></i>
@@ -173,6 +189,19 @@ title="Sign Out"
 >
   <i class="fas fa-plus text-[10px]"></i> New Task
 </button>
+<button
+  data-min-role="member"
+  data-allow-roles="client"
+  onclick="hydrateScript('ProjectViewScript'); _pc('ProjectPage','openNewProjectForm')"
+  class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
+  style="background:var(--co-surface);color:var(--co-ink);border:1px solid var(--co-border-soft);"
+  onmouseover="this.style.background='var(--co-surface-sunken)';this.style.borderColor='var(--co-primary-400)';"
+  onmouseout="this.style.background='var(--co-surface)';this.style.borderColor='var(--co-border-soft)';"
+  title="Create a new project"
+  aria-label="Create a new project"
+>
+  <i class="fas fa-folder-plus text-[10px]" aria-hidden="true"></i> New Project
+</button>
 </div>
 <div class="flex items-center gap-0.5 shrink-0 header-actions">
 <button
@@ -182,25 +211,73 @@ title="Sign Out"
   onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';"
   onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';"
   title="Help Guide"
+  aria-label="Open help guide"
 >
-  <i class="fas fa-question-circle text-sm"></i>
+  <i class="fas fa-question-circle text-sm" aria-hidden="true"></i>
 </button>
 <button
   id="topbarRefreshBtn"
   onclick="refreshCurrentView()"
-  class="w-8 h-8 flex items-center justify-center rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+  class="relative w-8 h-8 flex items-center justify-center rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
   style="color:var(--co-gray-400);"
   onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';"
   onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';"
   title="Refresh"
+  aria-label="Refresh current view"
 >
-  <i id="topbarRefreshIcon" class="fas fa-sync-alt text-sm"></i>
+  <i id="topbarRefreshIcon" class="fas fa-sync-alt text-sm" aria-hidden="true"></i>
+  <span id="topbarRefreshPip" class="co-refresh-pip hidden" aria-hidden="true"></span>
 </button>
+<div class="relative">
+  <button
+    id="appearanceBtn"
+    onclick="ThemeManager.toggleMenu()"
+    class="w-8 h-8 flex items-center justify-center rounded-md transition-colors"
+    style="color:var(--co-gray-400);"
+    onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';"
+    onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';"
+    title="Appearance"
+    aria-label="Appearance settings"
+    aria-haspopup="true"
+    aria-expanded="false"
+  >
+    <i class="fas fa-palette text-sm" aria-hidden="true"></i>
+  </button>
+  <div id="appearanceMenu" class="co-appearance-menu hidden" role="dialog" aria-label="Appearance settings">
+    <div class="co-appearance-section">
+      <span class="co-appearance-label">Theme</span>
+      <div class="co-appearance-segmented" data-theme-group>
+        <button type="button" data-theme-value="light" onclick="ThemeManager.setTheme('light')">Light</button>
+        <button type="button" data-theme-value="dark" onclick="ThemeManager.setTheme('dark')">Dark</button>
+        <button type="button" data-theme-value="system" onclick="ThemeManager.setTheme('system')">Auto</button>
+      </div>
+    </div>
+    <div class="co-appearance-section">
+      <span class="co-appearance-label">Density</span>
+      <div class="co-appearance-segmented" data-density-group>
+        <button type="button" data-density-value="compact" onclick="ThemeManager.setDensity('compact')">Compact</button>
+        <button type="button" data-density-value="comfortable" onclick="ThemeManager.setDensity('comfortable')">Default</button>
+        <button type="button" data-density-value="spacious" onclick="ThemeManager.setDensity('spacious')">Spacious</button>
+      </div>
+    </div>
+    <div class="co-appearance-section">
+      <span class="co-appearance-label">Accent</span>
+      <div class="co-appearance-accents" data-accent-group>
+        <button type="button" class="co-appearance-accent" data-accent="forge" onclick="ThemeManager.setAccent('forge')" title="Forge" aria-label="Forge accent"></button>
+        <button type="button" class="co-appearance-accent" data-accent="lake" onclick="ThemeManager.setAccent('lake')" title="Lake" aria-label="Lake accent"></button>
+        <button type="button" class="co-appearance-accent" data-accent="garden" onclick="ThemeManager.setAccent('garden')" title="Garden" aria-label="Garden accent"></button>
+        <button type="button" class="co-appearance-accent" data-accent="plum" onclick="ThemeManager.setAccent('plum')" title="Plum" aria-label="Plum accent"></button>
+        <button type="button" class="co-appearance-accent" data-accent="slate" onclick="ThemeManager.setAccent('slate')" title="Slate" aria-label="Slate accent"></button>
+      </div>
+    </div>
+  </div>
+</div>
 <button
   id="lofiToggle"
   onclick="toggleLofi()"
   class="w-9 h-9 flex items-center justify-center rounded-md overflow-hidden hover:ring-2 hover:ring-gray-300 transition-all"
   title="lofi hip hop radio"
+  aria-label="Toggle lofi music player"
 >
   <svg id="lofiCassette" viewBox="0 0 120 80" class="w-8 h-6" style="opacity:0.45;">
     <rect x="2" y="2" width="116" height="76" rx="6" fill="#2a2a2a" stroke="#555" stroke-width="1.5"/>
@@ -281,46 +358,320 @@ title="Sign Out"
 <div id="surgeView" class="flex-1 overflow-auto p-4 hidden">
 <?!= include('ui/SurgeView'); ?>
 </div>
-<div id="access-requestsView" class="flex-1 overflow-auto p-4 hidden">
-<div class="max-w-3xl mx-auto">
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-<div class="flex items-center justify-between mb-4">
-<h2 class="text-lg font-semibold text-gray-900">Pending Access Requests</h2>
-<button onclick="loadAccessRequests()" class="text-sm text-gray-500 hover:text-gray-700"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
+<div id="adminView" class="flex-1 overflow-auto hidden">
+<div class="max-w-5xl mx-auto px-6 py-6">
+<div class="flex items-center justify-between mb-5">
+<div>
+<h2 class="text-[18px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);letter-spacing:-0.015em;">
+<i class="fas fa-user-shield" style="color:var(--co-accent-500);font-size:14px;"></i>Admin
+</h2>
+<p class="text-[12px] mt-1" style="color:var(--co-ink-muted);">Manage access requests, users, and project data integrity</p>
 </div>
-<div id="accessRequestsList" class="text-sm text-gray-500">Loading...</div>
+<button onclick="AdminPage.refresh()" class="co-btn-outline">
+<i id="adminRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh
+</button>
+</div>
+<div class="flex items-center gap-1 mb-5 overflow-x-auto" style="border-bottom:1px solid var(--co-border-subtle);">
+<button class="co-tab co-tab-active" data-admin-tab="access" onclick="AdminPage.switchTab('access')">
+<i class="fas fa-user-plus text-[11px] mr-1.5"></i>Access Requests
+<span id="adminAccessCount" class="hidden ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style="background:var(--co-accent-500);color:#fff;">0</span>
+</button>
+<button class="co-tab" data-admin-tab="users" onclick="AdminPage.switchTab('users')">
+<i class="fas fa-users text-[11px] mr-1.5"></i>Users
+</button>
+<button class="co-tab" data-admin-tab="tools" onclick="AdminPage.switchTab('tools')">
+<i class="fas fa-wrench text-[11px] mr-1.5"></i>Project Tools
+</button>
+<button class="co-tab" data-admin-tab="audit" onclick="AdminPage.switchTab('audit')">
+<i class="fas fa-history text-[11px] mr-1.5"></i>Audit Log
+</button>
+</div>
+<div id="adminTab_access" class="space-y-3">
+<div id="accessBulkBar" class="hidden rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style="background:var(--co-ink);color:#fff;border:1px solid var(--co-border-subtle);">
+<span id="accessBulkCount" class="text-[12px] font-semibold">0 selected</span>
+<span style="width:1px;height:14px;background:rgba(255,255,255,0.18);"></span>
+<label class="text-[11px] uppercase tracking-wider" style="color:rgba(255,255,255,0.6);">Role</label>
+<select id="accessBulkRole" class="co-filter-select" style="background:rgba(255,255,255,0.08);color:#fff;border-color:rgba(255,255,255,0.18);">
+<option value="member">Member</option>
+<option value="manager">Manager</option>
+<option value="admin">Admin</option>
+<option value="viewer">Viewer</option>
+<option value="client">Client</option>
+</select>
+<button id="accessBulkApproveBtn" onclick="AdminPage.bulkApproveSelected()" class="co-btn-solid" style="background:#0f8565;border-color:#0f8565;"><i class="fas fa-check text-[11px]"></i> Bulk Approve</button>
+<button onclick="AdminPage.bulkRejectSelected()" class="co-btn-outline" style="background:transparent;color:#fff;border-color:rgba(255,255,255,0.25);"><i class="fas fa-times text-[11px]"></i> Bulk Reject</button>
+<button onclick="AdminPage._selectedAccess={};AdminPage.renderAccessRequests();" class="text-[12px] underline-offset-2 hover:underline ml-auto" style="color:rgba(255,255,255,0.6);background:transparent;border:none;cursor:pointer;">Clear</button>
+</div>
+<div id="accessRequestsList" class="text-sm space-y-3" style="color:var(--co-ink-muted);">Loading...</div>
+</div>
+<div id="adminTab_users" class="hidden space-y-3">
+<div id="userBulkBar" class="hidden rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style="background:var(--co-ink);color:#fff;border:1px solid var(--co-border-subtle);">
+<span id="userBulkCount" class="text-[12px] font-semibold">0 selected</span>
+<span style="width:1px;height:14px;background:rgba(255,255,255,0.18);"></span>
+<label class="text-[11px] uppercase tracking-wider" style="color:rgba(255,255,255,0.6);">Set Role</label>
+<select id="userBulkRole" class="co-filter-select" style="background:rgba(255,255,255,0.08);color:#fff;border-color:rgba(255,255,255,0.18);">
+<option value="">— role —</option>
+<option value="admin">Admin</option>
+<option value="manager">Manager</option>
+<option value="member">Member</option>
+<option value="viewer">Viewer</option>
+<option value="client">Client</option>
+</select>
+<button onclick="AdminPage.bulkChangeRole()" class="co-btn-solid" style="background:var(--co-accent-500);border-color:var(--co-accent-500);"><i class="fas fa-user-tag text-[11px]"></i> Apply Role</button>
+<span style="width:1px;height:14px;background:rgba(255,255,255,0.18);"></span>
+<button onclick="AdminPage.bulkSetActive(true)" class="co-btn-outline" style="background:transparent;color:#fff;border-color:rgba(255,255,255,0.25);"><i class="fas fa-circle-check text-[11px]"></i> Activate</button>
+<button onclick="AdminPage.bulkSetActive(false)" class="co-btn-outline" style="background:transparent;color:#fff;border-color:rgba(255,255,255,0.25);"><i class="fas fa-circle-xmark text-[11px]"></i> Deactivate</button>
+<button onclick="AdminPage._selectedUsers={};AdminPage.renderUsers();" class="text-[12px] underline-offset-2 hover:underline ml-auto" style="color:rgba(255,255,255,0.6);background:transparent;border:none;cursor:pointer;">Clear</button>
+</div>
+<div class="rounded-xl overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="px-5 py-3 flex items-center justify-between flex-wrap gap-2" style="border-bottom:1px solid var(--co-border-subtle);">
+<div class="flex items-center gap-2">
+<input type="text" id="adminUserSearch" oninput="AdminPage.filterUsers()" placeholder="Search by name or email..." class="co-search-input w-72" />
+<select id="adminUserRoleFilter" onchange="AdminPage.filterUsers()" class="co-filter-select">
+<option value="">All Roles</option>
+<option value="admin">Admin</option>
+<option value="manager">Manager</option>
+<option value="member">Member</option>
+<option value="viewer">Viewer</option>
+<option value="client">Client</option>
+</select>
+<select id="adminUserStatusFilter" onchange="AdminPage.filterUsers()" class="co-filter-select">
+<option value="">All Status</option>
+<option value="active">Active</option>
+<option value="inactive">Inactive</option>
+</select>
+</div>
+<div class="text-[12px]" style="color:var(--co-gray-500);"><span id="adminUserCount">0</span> users</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-sm">
+<thead style="background:var(--co-surface-sunken);">
+<tr style="border-bottom:1px solid var(--co-border-subtle);">
+<th class="py-2.5 px-3 w-8"><input type="checkbox" id="adminUserSelectAll" onchange="AdminPage.toggleAllUsers(this.checked)" aria-label="Select all visible users" /></th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Name</th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Email</th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider w-32" style="color:var(--co-ink-muted);">Role</th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider w-32" style="color:var(--co-ink-muted);">Status</th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider w-28" style="color:var(--co-ink-muted);">Actions</th>
+</tr>
+</thead>
+<tbody id="adminUserTableBody">
+<tr><td colspan="6" class="py-12 text-center" style="color:var(--co-gray-400);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading users...</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div id="adminTab_tools" class="hidden space-y-5">
+<div class="rounded-xl p-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="flex items-start justify-between gap-3 mb-3 flex-wrap">
+<div>
+<h3 class="text-[14px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);"><i class="fas fa-user-tag text-[12px]" style="color:var(--co-gray-400);"></i>Pending Owner Names</h3>
+<p class="text-[12px] mt-1.5" style="color:var(--co-ink-muted);">Names imported from worklogs/legacy data that haven't been resolved to a user account. Pick a matching user to backfill ownerships in one shot.</p>
+</div>
+<button onclick="AdminPage.loadPendingOwnerNames()" class="co-btn-outline"><i id="pendingOwnerRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh</button>
+</div>
+<div id="pendingOwnerList" class="text-[13px]" style="color:var(--co-ink-muted);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</div>
+</div>
+<div class="rounded-xl p-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="mb-3">
+<h3 class="text-[14px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);"><i class="fas fa-user-shield text-[12px]" style="color:var(--co-gray-400);"></i>Repair Project Owners</h3>
+<p class="text-[12px] mt-1.5" style="color:var(--co-ink-muted);">Finds projects whose Primary Owner is stored as a name (e.g. "Firstname Lastname") instead of an email, and replaces it with the matching user's email so the edit form pre-selects correctly.</p>
+</div>
+<div class="flex items-center gap-2 mt-4 flex-wrap">
+<button id="repairOwnersDryRunBtn" onclick="AdminTools.runOwnerRepair(false)" class="co-btn-solid"><i class="fas fa-eye text-[11px]"></i> Run Dry-Run</button>
+<button id="repairOwnersApplyBtn" onclick="AdminTools.runOwnerRepair(true)" disabled class="co-btn-outline"><i class="fas fa-check text-[11px]"></i> Apply Repair</button>
+<span id="repairOwnersHint" class="text-[11px]" style="color:var(--co-gray-500);">Run a dry-run first to enable Apply.</span>
+</div>
+<div id="repairOwnersResult" class="mt-5"></div>
+</div>
+<div class="rounded-xl p-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="mb-3">
+<h3 class="text-[14px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);"><i class="fas fa-broom text-[12px]" style="color:var(--co-gray-400);"></i>Normalize Project Owners</h3>
+<p class="text-[12px] mt-1.5" style="color:var(--co-ink-muted);">Sweeps every project. Resolves names to emails when a single match exists, moves unresolved/ambiguous names to <strong>pendingOwnerName</strong>/<strong>pendingSecondaryUsers</strong>, and lowercases existing email IDs. Run after a worklog import or a large user-roster change.</p>
+</div>
+<div class="flex items-center gap-2 mt-4 flex-wrap">
+<button id="normalizeOwnersDryRunBtn" onclick="AdminTools.runOwnerNormalize(false)" class="co-btn-solid"><i class="fas fa-eye text-[11px]"></i> Run Dry-Run</button>
+<button id="normalizeOwnersApplyBtn" onclick="AdminTools.runOwnerNormalize(true)" disabled class="co-btn-outline"><i class="fas fa-check text-[11px]"></i> Apply Normalization</button>
+<span id="normalizeOwnersHint" class="text-[11px]" style="color:var(--co-gray-500);">Run a dry-run first to enable Apply.</span>
+</div>
+<div id="normalizeOwnersResult" class="mt-5"></div>
+</div>
+<div class="rounded-xl p-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="mb-3">
+<h3 class="text-[14px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);"><i class="fas fa-handshake text-[12px]" style="color:var(--co-gray-400);"></i>Reclassify Project Origins</h3>
+<p class="text-[12px] mt-1.5" style="color:var(--co-ink-muted);">Backfills <strong>origin</strong> on every project that hasn't been manually overridden. Internal vs. client is decided by the creator's email domain against the <strong>INTERNAL_DOMAINS</strong> script property. Run once after configuring the property.</p>
+</div>
+<div class="flex items-center gap-2 mt-4 flex-wrap">
+<button id="reclassifyOriginsBtn" onclick="AdminTools.runReclassifyOrigins()" class="co-btn-solid"><i class="fas fa-sync-alt text-[11px]"></i> Run Reclassification</button>
+<span class="text-[11px]" style="color:var(--co-gray-500);">Manual overrides are preserved.</span>
+</div>
+<div id="reclassifyOriginsResult" class="mt-5 text-[12px]" style="color:var(--co-ink-muted);"></div>
+</div>
+</div>
+<div id="adminTab_audit" class="hidden space-y-3">
+<div class="rounded-xl overflow-hidden" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="px-5 py-3 flex items-center justify-between flex-wrap gap-2" style="border-bottom:1px solid var(--co-border-subtle);">
+<div class="flex items-center gap-2 flex-wrap">
+<select id="auditActorFilter" onchange="AdminPage.applyAuditFilters()" class="co-filter-select">
+<option value="">All Actors</option>
+</select>
+<select id="auditActionFilter" onchange="AdminPage.applyAuditFilters()" class="co-filter-select">
+<option value="">All Actions</option>
+</select>
+<button onclick="AdminPage.loadAuditLog()" class="co-btn-outline"><i id="auditLogRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh</button>
+</div>
+<div class="text-[12px]" style="color:var(--co-gray-500);"><span id="auditLogCount">0</span> events</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-sm">
+<thead style="background:var(--co-surface-sunken);">
+<tr style="border-bottom:1px solid var(--co-border-subtle);">
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider w-44" style="color:var(--co-ink-muted);">When</th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Actor</th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Action</th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Target</th>
+<th class="py-2.5 px-3 text-left text-[11px] font-semibold uppercase tracking-wider" style="color:var(--co-ink-muted);">Details</th>
+</tr>
+</thead>
+<tbody id="auditLogBody">
+<tr><td colspan="5" class="py-12 text-center" style="color:var(--co-gray-400);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading audit log...</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div id="approveRequestModal" class="fixed inset-0 flex items-center justify-center z-[10050] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);" onclick="AdminPage.closeApproveModal(event)">
+<div class="rounded-xl w-full max-w-md mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);" onclick="event.stopPropagation()">
+<div class="px-5 py-4 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-[15px] font-semibold tracking-tight" style="color:var(--co-ink);">Approve Access Request</h3>
+<button onclick="AdminPage.closeApproveModal()" class="co-icon-btn"><i class="fas fa-times text-[13px]"></i></button>
+</div>
+<div class="px-5 py-4 space-y-4">
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Email</label>
+<div id="approveModalEmail" class="text-[13px] font-mono" style="color:var(--co-ink-soft);"></div>
+</div>
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Display Name</label>
+<input type="text" id="approveModalName" class="co-search-input w-full" placeholder="Firstname Lastname" oninput="AdminPage._previewLinkage()" />
+<p class="text-[11px] mt-1" style="color:var(--co-gray-500);">Match the format used in legacy project owner fields. Editing this name links matching projects.</p>
+</div>
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Role</label>
+<select id="approveModalRole" class="co-filter-select w-full">
+<option value="member">Member</option>
+<option value="manager">Manager</option>
+<option value="admin">Admin</option>
+<option value="viewer">Viewer</option>
+<option value="client">Client</option>
+</select>
+</div>
+<div id="approveModalLinkagePreview" class="text-[12px] px-3 py-2 rounded-md" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);color:var(--co-ink-muted);">
+Enter a name to preview project linkage.
+</div>
+</div>
+<div class="px-5 py-4 flex items-center justify-end gap-2" style="border-top:1px solid var(--co-border-subtle);">
+<button onclick="AdminPage.closeApproveModal()" class="co-btn-outline">Cancel</button>
+<button id="approveModalConfirmBtn" onclick="AdminPage.confirmApprove()" class="co-btn-solid"><i class="fas fa-check text-[11px]"></i> Approve &amp; Link</button>
+</div>
+</div>
+</div>
+<div id="resolvePendingModal" class="fixed inset-0 flex items-center justify-center z-[10050] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);" onclick="AdminPage.closeResolvePendingModal(event)">
+<div class="rounded-xl w-full max-w-md mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);" onclick="event.stopPropagation()">
+<div class="px-5 py-4 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-[15px] font-semibold tracking-tight" style="color:var(--co-ink);">Resolve Pending Owner Name</h3>
+<button onclick="AdminPage.closeResolvePendingModal()" class="co-icon-btn" aria-label="Close"><i class="fas fa-times text-[13px]" aria-hidden="true"></i></button>
+</div>
+<div class="px-5 py-4 space-y-4">
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Pending Name</label>
+<div id="resolvePendingNameLabel" class="text-[14px] font-medium" style="color:var(--co-ink);"></div>
+<div id="resolvePendingProjectsLabel" class="text-[11px] mt-0.5" style="color:var(--co-gray-500);"></div>
+</div>
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Resolve to user</label>
+<select id="resolvePendingUserSelect" class="co-filter-select w-full">
+<option value="">— pick a user —</option>
+</select>
+<p class="text-[11px] mt-1" style="color:var(--co-gray-500);">Select an active user. All projects matching this name will be re-assigned to their email.</p>
+</div>
+</div>
+<div class="px-5 py-4 flex items-center justify-end gap-2" style="border-top:1px solid var(--co-border-subtle);">
+<button onclick="AdminPage.closeResolvePendingModal()" class="co-btn-outline">Cancel</button>
+<button id="resolvePendingConfirmBtn" onclick="AdminPage.confirmResolvePending()" class="co-btn-solid"><i class="fas fa-link text-[11px]" aria-hidden="true"></i> Resolve &amp; Backfill</button>
+</div>
+</div>
+</div>
+<div id="editUserModal" class="fixed inset-0 flex items-center justify-center z-[10050] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);" onclick="AdminPage.closeEditUserModal(event)">
+<div class="rounded-xl w-full max-w-md mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);" onclick="event.stopPropagation()">
+<div class="px-5 py-4 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-[15px] font-semibold tracking-tight" style="color:var(--co-ink);">Edit User</h3>
+<button onclick="AdminPage.closeEditUserModal()" class="co-icon-btn"><i class="fas fa-times text-[13px]"></i></button>
+</div>
+<div class="px-5 py-4 space-y-4">
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Email</label>
+<div id="editUserEmail" class="text-[13px] font-mono" style="color:var(--co-ink-soft);"></div>
+</div>
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Display Name</label>
+<input type="text" id="editUserName" class="co-search-input w-full" />
+</div>
+<div class="grid grid-cols-2 gap-3">
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Role</label>
+<select id="editUserRole" class="co-filter-select w-full">
+<option value="admin">Admin</option>
+<option value="manager">Manager</option>
+<option value="member">Member</option>
+<option value="viewer">Viewer</option>
+<option value="client">Client</option>
+</select>
+</div>
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Status</label>
+<select id="editUserActive" class="co-filter-select w-full">
+<option value="true">Active</option>
+<option value="false">Inactive</option>
+</select>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-3">
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Title</label>
+<input type="text" id="editUserTitle" class="co-search-input w-full" placeholder="(optional)" />
+</div>
+<div>
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Department</label>
+<input type="text" id="editUserDepartment" class="co-search-input w-full" placeholder="(optional)" />
+</div>
+</div>
+</div>
+<div class="px-5 py-4 flex items-center justify-end gap-2" style="border-top:1px solid var(--co-border-subtle);">
+<button onclick="AdminPage.closeEditUserModal()" class="co-btn-outline">Cancel</button>
+<button onclick="AdminPage.confirmEditUser()" class="co-btn-solid"><i class="fas fa-save text-[11px]"></i> Save Changes</button>
 </div>
 </div>
 </div>
 <!-- Analytics View -->
-<div id="analyticsView" class="flex-1 overflow-auto p-4 hidden">
-<!-- Analytics Header -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-<div class="flex items-center justify-between mb-4">
-<h2 class="text-lg font-semibold text-gray-900">
-Analytics Dashboard
+<div id="analyticsView" class="flex-1 overflow-auto p-6 hidden">
+<div class="rounded-xl p-5 mb-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+<h2 class="text-[18px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);letter-spacing:-0.015em;">
+<i class="fas fa-chart-bar" style="color:var(--co-accent-500);font-size:14px;"></i>Analytics Dashboard
 </h2>
-<div class="flex items-center gap-3">
-<!-- Time Range Filter -->
 <div class="flex items-center gap-2">
-<label class="text-sm text-gray-600">Time Range:</label>
-<select
-id="analyticsDateRange"
-onchange="refreshAnalytics()"
-class="px-3 py-1 border border-gray-300 rounded text-sm"
->
+<select id="analyticsDateRange" onchange="refreshAnalytics()" class="co-filter-select">
 <option value="7">Last 7 days</option>
 <option value="30" selected>Last 30 days</option>
 <option value="90">Last 90 days</option>
 <option value="365">Last year</option>
 </select>
-</div>
-<button
-id="analyticsRefreshBtn"
-onclick="refreshAnalytics()"
-class="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
->
-<i id="analyticsRefreshIcon" class="fas fa-sync-alt mr-1"></i> Refresh
+<button id="analyticsRefreshBtn" onclick="refreshAnalytics()" class="co-btn-outline disabled:opacity-60 disabled:cursor-not-allowed">
+<i id="analyticsRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh
 </button>
 </div>
 </div>
@@ -433,52 +784,97 @@ Priority Distribution
 <div id="projectModal" class="fixed inset-0 flex items-center justify-center z-50 hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);" onclick="closeProjectModal()">
 <div class="rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);" onclick="event.stopPropagation()">
 <div class="flex items-center justify-between px-6 py-4 flex-shrink-0" style="border-bottom:1px solid var(--co-border-subtle);">
+<div class="flex items-center gap-3 min-w-0">
 <h2 class="text-[16px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.01em;">New Project</h2>
-<button onclick="closeProjectModal()" class="p-2 rounded-lg transition-all" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';" onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';"><i class="fas fa-times text-xl"></i></button>
+<div id="newProjDraftHint" class="hidden flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px]" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);color:var(--co-ink-muted);">
+<i class="fas fa-history text-[10px]" style="color:var(--co-accent-500);" aria-hidden="true"></i>
+<span id="newProjDraftHintLabel">Restored draft</span>
+<button type="button" onclick="discardNewProjDraft()" class="text-[10px] underline-offset-2 hover:underline" style="color:var(--co-gray-500);">discard</button>
+</div>
+</div>
+<button onclick="closeProjectModal()" class="p-2 rounded-lg transition-all" style="color:var(--co-gray-400);" onmouseover="this.style.color='var(--co-ink)';this.style.background='var(--co-surface-sunken)';" onmouseout="this.style.color='var(--co-gray-400)';this.style.background='transparent';" aria-label="Close project modal"><i class="fas fa-times text-xl" aria-hidden="true"></i></button>
 </div>
 <div id="newProjTabBar" class="px-6 flex items-center gap-1 flex-shrink-0 overflow-x-auto" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
-<button onclick="switchNewProjTab('overview')" data-nptab="overview" class="co-tab co-tab-active">Overview</button>
-<button onclick="switchNewProjTab('portfolio')" data-nptab="portfolio" class="co-tab">Portfolio</button>
+<button onclick="switchNewProjTab('details')" data-nptab="details" class="co-tab co-tab-active">Details</button>
+<button onclick="switchNewProjTab('deployment')" data-nptab="deployment" class="co-tab">Deployment</button>
 <button onclick="switchNewProjTab('ownership')" data-nptab="ownership" class="co-tab">Ownership</button>
 <button onclick="switchNewProjTab('infrastructure')" data-nptab="infrastructure" class="co-tab">Infrastructure</button>
 <button onclick="switchNewProjTab('documentation')" data-nptab="documentation" class="co-tab">Documentation &amp; Links</button>
 </div>
 <div class="flex-1 overflow-y-auto p-6">
-<div id="newProjTab_overview" class="max-w-2xl space-y-4">
+<div id="newProjTab_details" class="max-w-3xl space-y-4">
+<div class="grid grid-cols-2 gap-4">
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Name *</label>
 <input type="text" id="newProjName" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Primary Owner</label>
 <select id="newProjOwner" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="">Current User (default)</option></select></div>
+</div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Backup Owner(s)</label>
+<p class="text-xs text-gray-500 mt-0 mb-2 italic">Backup team members who can pick up tasks when the primary owner is overloaded or unavailable.</p>
+<div id="newProjSecondaryUserTags" class="flex flex-wrap mb-2"></div>
+<div id="newProjSecondaryUserDropdownWrap"></div></div>
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Description</label>
 <textarea id="newProjDesc" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"></textarea></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Government Project Owners</label>
+<div id="newProjGovOwnersWrap"></div></div>
+<div class="grid grid-cols-3 gap-4">
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Status</label>
+<select id="newProjStatus" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="" disabled selected hidden>-- Select --</option></select></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Development Status</label>
+<select id="newProjSetting_developmentPhase" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="" disabled selected hidden>-- Select --</option></select></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Development Priority</label>
+<select id="newProjSetting_developmentPriority" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="" disabled selected hidden>-- Select --</option></select></div>
+</div>
 <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
 <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Timeline</div>
 <div class="grid grid-cols-2 gap-4">
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Initial Gov Request Received Date</label>
 <input type="date" id="newProjGovRequestDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Start Date</label>
-<input type="date" id="newProjStartDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div id="newProjStartDateContainer"></div></div>
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">First Delivery / Prod Deployment Date</label>
 <input type="date" id="newProjFirstDeployDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Retired Date</label>
 <input type="date" id="newProjRetiredDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
 </div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Requested By</label>
+<input type="text" id="newProjSetting_requestedBy" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" placeholder="Name of requester"></div>
 </div>
-<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Version</label>
-<input type="text" id="newProjVersion" placeholder="0.1.0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
-<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Repository URL</label>
-<input type="url" id="newProjRepoUrl" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
+<div class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+<div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Classification</div>
+<div class="grid grid-cols-2 gap-4">
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">AI Involved</label>
+<select id="newProjSetting_isAiInvolved" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="" disabled selected hidden>-- Select --</option></select></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Project Type</label>
+<select id="newProjSetting_projectType" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="" disabled selected hidden>-- Select --</option></select></div>
+</div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Intended User(s)</label>
+<div id="newProjIntendedUsersWrap"></div></div>
+<div class="grid grid-cols-2 gap-4">
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Workstream</label>
+<select id="newProjSetting_workstream" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="" disabled selected hidden>-- Select --</option></select></div>
+<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">SDMs Supported</label>
+<select id="newProjSetting_sdmSupported" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"><option value="" disabled selected hidden>-- Select --</option></select></div>
+</div>
+<div class="bg-white border border-gray-200 rounded-lg p-3">
+<label class="flex items-start gap-2 cursor-pointer">
+<input id="newProjSetting_isModular" type="checkbox" class="mt-0.5 rounded border-gray-300 text-gray-900 focus:ring-gray-400">
+<div>
+<div class="text-sm font-medium text-gray-900">Modular Build</div>
+<div class="text-xs text-gray-600 mt-0.5">Group related modules under this project. Tasks can be tagged with a specific module without creating separate boards.</div>
+</div></label></div>
+</div>
 <div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Tags (comma separated)</label>
 <input type="text" id="newProjTags" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"></div>
 </div>
-<div id="newProjTab_portfolio" class="max-w-2xl space-y-4 hidden"></div>
-<div id="newProjTab_ownership" class="max-w-2xl space-y-4 hidden"></div>
-<div id="newProjTab_infrastructure" class="max-w-2xl space-y-4 hidden"></div>
-<div id="newProjTab_documentation" class="max-w-2xl space-y-4 hidden">
+<div id="newProjTab_deployment" class="max-w-3xl space-y-4 hidden"></div>
+<div id="newProjTab_ownership" class="max-w-3xl space-y-4 hidden"></div>
+<div id="newProjTab_infrastructure" class="max-w-3xl space-y-4 hidden"></div>
+<div id="newProjTab_documentation" class="max-w-3xl space-y-4 hidden">
 <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
 <div><div class="text-xs font-medium text-gray-600 uppercase tracking-wide">Documentation Completeness</div>
 <div class="text-xs text-gray-500">Filling these raises the project's Documentation score.</div></div>
-<div id="newProjDocCompletenessBadge" class="text-sm font-semibold text-gray-400">0% (0/7)</div>
+<div id="newProjDocCompletenessBadge" class="text-sm font-semibold text-gray-400">0% (0/6)</div>
 </div>
 <div id="newProjDocFields" class="grid grid-cols-1 gap-3"></div>
 </div>
@@ -493,7 +889,8 @@ Priority Distribution
 <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
 <div id="confirmModal" class="fixed inset-0 flex items-center justify-center z-[10050] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
   <div class="rounded-xl w-full max-w-sm p-6 mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">
-    <p id="confirmModalMessage" class="font-medium mb-5 text-[14px]" style="color:var(--co-ink);"></p>
+    <h3 id="confirmModalTitle" class="font-semibold mb-2 text-[15px] hidden" style="color:var(--co-ink);"></h3>
+    <p id="confirmModalMessage" class="font-medium mb-5 text-[14px]" style="color:var(--co-ink);white-space:pre-line;"></p>
     <div class="flex gap-2 justify-end">
       <button id="confirmModalCancel" class="co-btn-outline">Cancel</button>
       <button id="confirmModalConfirm" class="co-btn-solid">Confirm</button>
@@ -507,6 +904,26 @@ Priority Distribution
     <div class="flex gap-2 justify-end">
       <button id="promptModalCancel" class="co-btn-outline">Cancel</button>
       <button id="promptModalConfirm" class="co-btn-solid">OK</button>
+    </div>
+  </div>
+</div>
+<div id="calendarReauthModal" class="fixed inset-0 flex items-center justify-center z-[10060] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+  <div class="rounded-xl w-full max-w-md p-6 mx-4" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">
+    <div class="flex items-start gap-3 mb-4">
+      <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+        <i class="fas fa-calendar-alt" style="color:var(--co-accent-500);"></i>
+      </div>
+      <div class="flex-1">
+        <h3 class="text-[15px] font-semibold mb-1" style="color:var(--co-ink);">Authorize Calendar Access</h3>
+        <p class="text-[13px] leading-relaxed" style="color:var(--co-ink-soft);">COLONY needs your permission to push tasks to Google Calendar. Click the button below, approve the Calendar scope, then close that tab and try again.</p>
+      </div>
+    </div>
+    <p id="calendarReauthReason" class="text-[12px] italic mb-4 px-3 py-2 rounded" style="color:var(--co-ink-muted);background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);display:none;"></p>
+    <div class="flex gap-2 justify-end">
+      <button id="calendarReauthClose" class="co-btn-outline">Not Now</button>
+      <a id="calendarReauthLink" href="#" target="_blank" rel="noopener noreferrer" class="co-btn-solid inline-flex items-center gap-2">
+        <i class="fas fa-external-link-alt text-xs"></i> Authorize Calendar
+      </a>
     </div>
   </div>
 </div>

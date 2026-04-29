@@ -9,69 +9,44 @@
   }
 
   var _newProjSettingsSchema = {
-    portfolio: [
-      { key: 'workstream', label: 'Workstream', type: 'select', optionsKey: 'workstream' },
-      { key: 'projectCategory', label: 'Project Category', type: 'text' },
-      { key: 'projectType', label: 'Project Type', type: 'select', optionsKey: 'projectType' },
-      { key: 'developmentPriority', label: 'Development Priority', type: 'select', optionsKey: 'developmentPriority' },
-      { key: 'developmentPhase', label: 'Development Phase', type: 'select', optionsKey: 'developmentPhase' },
-      { key: 'externalProjectId', label: 'External Project ID', type: 'text' },
-      { key: 'linkedProjectId', label: 'Linked Project ID', type: 'text' },
-      { key: 'sdmSupported', label: 'SDMs Supported', type: 'select', optionsKey: 'sdmSupported' },
-      { key: 'docCompleteness', label: 'Documentation Completeness', type: 'text' },
-      { key: 'govRequestDate', label: 'Gov Request Date', type: 'date' },
-      { key: 'firstDeployDate', label: 'First Deploy Date', type: 'date' },
-      { key: 'isAiInvolved', label: 'AI Involved', type: 'boolean' },
-      { key: 'isInternalHive', label: 'Internal Hive', type: 'boolean' },
-      { key: 'inProjectFlow', label: 'In ProjectFlow', type: 'boolean' },
-      { key: 'legacyWbs', label: 'Legacy WBS', type: 'text' },
-      { key: 'notes', label: 'Notes', type: 'textarea' }
+    deployment: [
+      { key: 'deployedPublicly', label: 'Deployed Publicly', type: 'boolean' },
+      { key: 'deploymentLocation', label: 'Deployment Location', type: 'multiselect', optionsKey: 'deploymentLocation' },
+      { key: 'standaloneAppLink', label: 'Standalone App', type: 'url' },
+      { key: 'd2dLink', label: 'D2D', type: 'url' },
+      { key: 'aasIntranetLink', label: 'AAS Intranet', type: 'url' },
+      { key: 'gsaLink', label: 'External GSA', type: 'url' },
+      { key: 'tableauLink', label: 'Tableau Server', type: 'url' }
     ],
     ownership: [
-      { key: 'projectPoc', label: 'Project POC', type: 'text' },
-      { key: 'clientOwner', label: 'Client Owner', type: 'text' },
-      { key: 'clientStakeholders', label: 'Client Stakeholders', type: 'text' },
-      { key: 'futureOwner', label: 'Future Owner', type: 'text' },
-      { key: 'futureContractHome', label: 'Future Contract Home', type: 'text' },
-      { key: 'transitionPriority', label: 'Transition Priority', type: 'text' },
-      { key: 'transitionMeetingDate', label: 'Transition Meeting Date', type: 'date' },
-      { key: 'transitionComplete', label: 'Transition Complete', type: 'boolean' },
-      { key: 'gasOwner', label: 'GAS Owner', type: 'text' },
-      { key: 'dataMgmtOwner', label: 'Data Mgmt Owner', type: 'text' },
-      { key: 'dataTaskOwnership', label: 'Data Task Ownership', type: 'text' }
+      { key: 'projectPoc', label: 'Other Contractor POC(s)', type: 'searchable_multiselect', sourceKind: 'cpmd', hint: 'Start typing to search CPMD personnel. If empty, ask an admin to set the CPMD workbook ID.' },
+      { key: 'clientOwner', label: 'Primary Gov Stakeholder', type: 'searchable_select', sourceKind: 'fed', hint: 'Start typing a name or email. List from the Fed Staffing workbook (Employees only).' },
+      { key: 'contractInitial', label: 'Contract of Initial Development', type: 'select', optionsKey: 'contractOptions' },
+      { key: 'contractCurrent', label: 'Current Contract Ownership', type: 'select', optionsKey: 'contractOptions' },
+      { key: 'contractTask', label: 'Contract Task-Level Ownership', type: 'select', optionsKey: 'contractTask', hint: 'Specific contract task (e.g., AMPS - Task 2).' }
     ],
     infrastructure: [
-      { key: 'techStack', label: 'Tech Stack', type: 'text' },
-      { key: 'deploymentLocation', label: 'Deployment Location', type: 'multiselect', optionsKey: 'deploymentLocation' },
-      { key: 'deployedPublicly', label: 'Deployed Publicly', type: 'boolean' },
-      { key: 'contractInitial', label: 'Contract (Initial)', type: 'text' },
-      { key: 'contractCurrent', label: 'Contract (Current)', type: 'text' },
-      { key: 'contractTask', label: 'Contract Task', type: 'text' },
-      { key: 'activeGas', label: 'Active GAS Project', type: 'boolean' },
-      { key: 'gasProjectUid', label: 'GAS Project UID', type: 'url' },
-      { key: 'activeDataMgmt', label: 'Active Data Mgmt', type: 'boolean' },
-      { key: 'dataCadence', label: 'Data Cadence', type: 'select', optionsKey: 'dataCadence' },
-      { key: 'dataSourceFiles', label: 'Data Source Files', type: 'text' },
-      { key: 'dataSourceExplain', label: 'Data Source', type: 'textarea' },
-      { key: 'standaloneAppLink', label: 'Standalone App', type: 'url' },
-      { key: 'd2dLink', label: 'D2D Link', type: 'url' },
-      { key: 'aasIntranetLink', label: 'AAS Intranet', type: 'url' },
-      { key: 'gsaLink', label: 'GSA Link', type: 'url' },
-      { key: 'tableauLink', label: 'Tableau', type: 'url' },
-      { key: 'additionalFiles', label: 'Additional Files', type: 'url' }
+      { key: 'techStack', label: 'Tech Stack', type: 'multiselect', optionsKey: 'techStack', hint: 'Select each tool/library in your stack individually.' },
+      { key: 'activeGas', label: 'Active GAS Project', type: 'boolean', hint: 'Set to Yes if this project has a Google Apps Script container/library that needs tracking.' },
+      { key: 'gasProjectUid', label: 'GAS Project Link', type: 'url' },
+      { key: 'activeDataMgmt', label: 'Active Data Management Process', type: 'boolean' },
+      { key: 'dataSourceFiles', label: 'Data Source File(s)', type: 'url', hint: 'You can paste links here at creation; admins can attach Drive files in edit mode after the project is created.' },
+      { key: 'dataCadence', label: 'Data Refresh Cadence', type: 'select', optionsKey: 'dataCadence' },
+      { key: 'dataSourceExplain', label: 'How is Data Sourced', type: 'textarea' }
     ],
     documentation: [
       { key: 'googleDriveFolder', label: 'Google Drive Folder', type: 'url', hint: 'Auto-created on save if blank' },
       { key: 'githubLinks', label: 'Git Repository', type: 'url' },
-      { key: 'devDocs', label: 'Development Documentation', type: 'url' },
       { key: 'designDocs', label: 'Design Documentation', type: 'url' },
-      { key: 'sops', label: 'SOPs (Internal)', type: 'url' },
-      { key: 'userGuides', label: 'User Guides', type: 'url' },
-      { key: 'dataDictionaries', label: 'Data Dictionaries', type: 'url' }
+      { key: 'devDocs', label: 'Development Documentation', type: 'url' },
+      { key: 'dataDictionaries', label: 'Data Dictionary', type: 'url' },
+      { key: 'userGuides', label: 'User Guide', type: 'url' },
+      { key: 'supportRunbook', label: 'Support Runbook', type: 'url' },
+      { key: 'additionalFiles', label: 'Additional Files', type: 'url' }
     ]
   };
 
-  var _DOC_COMPLETENESS_KEYS = ['googleDriveFolder','githubLinks','devDocs','designDocs','sops','userGuides','dataDictionaries'];
+  var _DOC_COMPLETENESS_KEYS = ['googleDriveFolder','githubLinks','devDocs','designDocs','userGuides','dataDictionaries','supportRunbook'];
 
   function _computeDocCompletenessFromSettings(settings) {
     var filled = 0;
@@ -120,21 +95,65 @@
     return [];
   }
 
+  function _newProjAddTag(fieldKey, value) {
+    value = String(value || '').trim();
+    if (!value) return;
+    var el = document.getElementById('newProjSetting_' + fieldKey);
+    if (!el) return;
+    var current = [];
+    try { current = JSON.parse(el.value || '[]'); } catch (e) { current = []; }
+    if (!Array.isArray(current)) current = [];
+    if (current.indexOf(value) !== -1) return;
+    current.push(value);
+    el.value = JSON.stringify(current);
+    _newProjRefreshTagList(fieldKey, current);
+  }
+
+  function _newProjRemoveTag(fieldKey, idx) {
+    var el = document.getElementById('newProjSetting_' + fieldKey);
+    if (!el) return;
+    var current = [];
+    try { current = JSON.parse(el.value || '[]'); } catch (e) { current = []; }
+    if (!Array.isArray(current)) current = [];
+    current.splice(idx, 1);
+    el.value = JSON.stringify(current);
+    _newProjRefreshTagList(fieldKey, current);
+  }
+
+  function _newProjRefreshTagList(fieldKey, tags) {
+    var container = document.getElementById('newProjTagList_' + fieldKey);
+    if (!container) return;
+    if (!tags || !tags.length) {
+      container.innerHTML = '<span class="text-xs text-gray-400">No entries yet</span>';
+      return;
+    }
+    container.innerHTML = tags.map(function(t, idx) {
+      return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+        escapeHtml(t) +
+        '<button type="button" onclick="_newProjRemoveTag(\'' + fieldKey + '\',' + idx + ')" class="text-gray-400 hover:text-gray-700 leading-none"><i class="fas fa-times text-xs"></i></button></span>';
+    }).join('');
+  }
+
   function _buildNewProjSettingsFields(groupKey) {
     var schema = _newProjSettingsSchema[groupKey] || [];
     return schema.map(function(field) {
       var inputHtml = '';
       var id = 'newProjSetting_' + field.key;
       if (field.type === 'boolean') {
+        var defYes = field.defaultValue === true;
+        var defNo = field.defaultValue === false;
+        var blankSelected = !defYes && !defNo ? ' selected' : '';
         inputHtml = '<select id="' + id + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">' +
-          '<option value="false">No</option><option value="true">Yes</option></select>';
+          '<option value="" disabled hidden' + blankSelected + '>-- Select --</option>' +
+          '<option value="false"' + (defNo ? ' selected' : '') + '>No</option>' +
+          '<option value="true"' + (defYes ? ' selected' : '') + '>Yes</option></select>';
       } else if (field.type === 'textarea') {
         inputHtml = '<textarea id="' + id + '" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"></textarea>';
       } else if (field.type === 'date') {
         inputHtml = '<input id="' + id + '" type="date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
       } else if (field.type === 'select') {
         var opts = _getNewProjTaxonomyOptions(field.optionsKey || field.key);
-        var selectHtml = '<option value="">-- Select --</option>';
+        var selectHtml = '<option value="" disabled selected hidden>-- Select --</option>';
         opts.forEach(function(opt) {
           selectHtml += '<option value="' + escapeHtml(opt) + '">' + escapeHtml(opt) + '</option>';
         });
@@ -147,15 +166,38 @@
             '<span class="text-sm text-gray-900">' + escapeHtml(opt) + '</span></label>';
         }).join('');
         inputHtml = '<div id="' + id + '" class="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">' + (checkboxes || '<span class="text-xs text-gray-400">No options available</span>') + '</div>';
+      } else if (field.type === 'searchable_select') {
+        var ssOpts = field.sourceKind && typeof _getPersonnelLabels === 'function'
+          ? _getPersonnelLabels(field.sourceKind)
+          : _getNewProjTaxonomyOptions(field.optionsKey || field.key);
+        var ssListId = 'dl_new_' + field.key + '_' + Math.random().toString(36).slice(2, 8);
+        var ssDlOpts = ssOpts.map(function(o) { return '<option value="' + escapeHtml(o) + '"></option>'; }).join('');
+        inputHtml = '<input id="' + id + '" type="text" list="' + ssListId + '" placeholder="Start typing a name or email…" autocomplete="off" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">' +
+          '<datalist id="' + ssListId + '">' + ssDlOpts + '</datalist>';
+      } else if (field.type === 'searchable_multiselect') {
+        var smsOpts = field.sourceKind && typeof _getPersonnelLabels === 'function'
+          ? _getPersonnelLabels(field.sourceKind)
+          : _getNewProjTaxonomyOptions(field.optionsKey || field.key);
+        var smsListId = 'dl_new_' + field.key + '_' + Math.random().toString(36).slice(2, 8);
+        var smsDlOpts = smsOpts.map(function(o) { return '<option value="' + escapeHtml(o) + '"></option>'; }).join('');
+        inputHtml = '<div id="newProjTagList_' + field.key + '" class="flex flex-wrap mb-2"><span class="text-xs text-gray-400">No entries yet</span></div>' +
+          '<input type="hidden" id="' + id + '" value="[]">' +
+          '<div class="flex items-center gap-2">' +
+            '<input id="newProjTagInput_' + field.key + '" type="text" list="' + smsListId + '" placeholder="Start typing a name or email…" autocomplete="off" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_newProjAddTag(\'' + field.key + '\',this.value);this.value=\'\';}">' +
+            '<button type="button" onclick="var i=document.getElementById(\'newProjTagInput_' + field.key + '\');_newProjAddTag(\'' + field.key + '\',i.value);i.value=\'\';" class="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"><i class="fas fa-plus text-xs mr-1"></i>Add</button>' +
+          '</div>' +
+          '<datalist id="' + smsListId + '">' + smsDlOpts + '</datalist>';
       } else {
         inputHtml = '<input id="' + id + '" type="' + (field.type === 'url' ? 'url' : 'text') + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400">';
       }
-      return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + '</div>';
+      var hintHtml = field.hint ? '<p class="text-xs text-gray-500 mt-1 italic">' + escapeHtml(field.hint) + '</p>' : '';
+      return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + hintHtml + '</div>';
     }).join('');
   }
 
   function switchNewProjTab(tabId) {
-    ['overview', 'portfolio', 'ownership', 'infrastructure', 'documentation'].forEach(function(id) {
+    ['details', 'deployment', 'ownership', 'infrastructure', 'documentation'].forEach(function(id) {
       var panel = $('newProjTab_' + id);
       if (panel) panel.classList.toggle('hidden', id !== tabId);
     });
@@ -167,7 +209,7 @@
   }
 
   function _renderNewProjAllPanels() {
-    ['portfolio', 'ownership', 'infrastructure'].forEach(function(group) {
+    ['deployment', 'ownership', 'infrastructure'].forEach(function(group) {
       var panel = $('newProjTab_' + group);
       if (panel) panel.innerHTML = _buildNewProjSettingsFields(group);
     });
@@ -177,41 +219,464 @@
     _updateNewProjDocBadge();
   }
 
+  var NEW_PROJ_DRAFT_KEY = 'co_newProjectDraft_v1';
+
+  function _captureNewProjDraft() {
+    var modal = $('projectModal');
+    if (!modal) return null;
+    var data = {};
+    var inputs = modal.querySelectorAll('input, textarea, select');
+    var hasContent = false;
+    inputs.forEach(function(el) {
+      if (!el.id || !el.id.startsWith('newProj')) return;
+      if (el.type === 'checkbox') data[el.id] = el.checked;
+      else if (el.type === 'radio') { if (el.checked) data[el.id] = el.value; }
+      else data[el.id] = el.value || '';
+      if (data[el.id] && data[el.id] !== '' && data[el.id] !== false) hasContent = true;
+    });
+    return hasContent ? data : null;
+  }
+
+  function _saveNewProjDraft() {
+    try {
+      var draft = _captureNewProjDraft();
+      if (draft) localStorage.setItem(NEW_PROJ_DRAFT_KEY, JSON.stringify({ data: draft, savedAt: Date.now() }));
+      else localStorage.removeItem(NEW_PROJ_DRAFT_KEY);
+    } catch (e) {}
+  }
+
+  function _restoreNewProjDraft() {
+    try {
+      var raw = localStorage.getItem(NEW_PROJ_DRAFT_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || !parsed.data) return null;
+      if (parsed.savedAt && (Date.now() - parsed.savedAt) > 7 * 24 * 60 * 60 * 1000) {
+        localStorage.removeItem(NEW_PROJ_DRAFT_KEY);
+        return null;
+      }
+      Object.keys(parsed.data).forEach(function(id) {
+        var el = $(id);
+        if (!el) return;
+        var v = parsed.data[id];
+        if (el.type === 'checkbox') el.checked = !!v;
+        else if (el.type === 'radio') el.checked = (el.value === v);
+        else el.value = (v == null ? '' : v);
+      });
+      return parsed.savedAt || Date.now();
+    } catch (e) { return null; }
+  }
+
+  function clearNewProjDraft() {
+    try { localStorage.removeItem(NEW_PROJ_DRAFT_KEY); } catch (e) {}
+    var hint = $('newProjDraftHint');
+    if (hint) hint.classList.add('hidden');
+  }
+  window.clearNewProjDraft = clearNewProjDraft;
+
+  function discardNewProjDraft() {
+    clearNewProjDraft();
+    var modal = $('projectModal');
+    var inputs = modal ? modal.querySelectorAll('input, textarea, select') : [];
+    inputs.forEach(function(el) {
+      if (!el.id || !el.id.startsWith('newProj')) return;
+      if (el.type === 'checkbox') el.checked = false;
+      else if (el.type === 'radio') el.checked = false;
+      else el.value = '';
+    });
+    hide($('projectModal'));
+    setTimeout(openProjectModal, 50);
+  }
+  window.discardNewProjDraft = discardNewProjDraft;
+
+  function _showDraftHint(savedAt) {
+    var hint = $('newProjDraftHint');
+    if (!hint) return;
+    if (!savedAt) { hint.classList.add('hidden'); return; }
+    var minsAgo = Math.max(1, Math.round((Date.now() - savedAt) / 60000));
+    var label = minsAgo < 60 ? minsAgo + ' min ago' : Math.round(minsAgo / 60) + 'h ago';
+    var labelEl = $('newProjDraftHintLabel');
+    if (labelEl) labelEl.textContent = 'Restored draft from ' + label;
+    hint.classList.remove('hidden');
+  }
+
+  var _newProjDraftDebounce = null;
+  function _attachNewProjDraftAutosave() {
+    var modal = $('projectModal');
+    if (!modal || modal.dataset.draftBound === '1') return;
+    modal.dataset.draftBound = '1';
+    var handler = function() {
+      if (_newProjDraftDebounce) clearTimeout(_newProjDraftDebounce);
+      _newProjDraftDebounce = setTimeout(_saveNewProjDraft, 400);
+    };
+    modal.addEventListener('input', handler);
+    modal.addEventListener('change', handler);
+  }
+
   function openProjectModal() {
+    var users = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var sortedUsers = users.slice().sort(function(a, b) {
+      return String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''));
+    });
     var ownerSelect = $('newProjOwner');
     if (ownerSelect) {
-      var users = (typeof State !== 'undefined' && State.users) ? State.users : [];
       ownerSelect.innerHTML = '<option value="">Current User (default)</option>' +
-        users.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '">' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('');
+        sortedUsers.map(function(u) { return '<option value="' + escapeHtml(u.email || u.id) + '">' + escapeHtml(u.name || u.email || u.id) + '</option>'; }).join('');
     }
-    ['newProjName', 'newProjDesc', 'newProjStartDate', 'newProjGovRequestDate', 'newProjFirstDeployDate', 'newProjRetiredDate', 'newProjVersion', 'newProjRepoUrl', 'newProjTags'].forEach(function(id) {
-      var el = $(id);
-      if (el) el.value = '';
-    });
+    var startContainer = $('newProjStartDateContainer');
+    if (startContainer) startContainer.innerHTML = MonthYearPicker.buildHtml('newProjStartDate', '');
+
+    var simpleFields = ['newProjName', 'newProjDesc', 'newProjGovRequestDate', 'newProjFirstDeployDate', 'newProjRetiredDate', 'newProjTags',
+      'newProjStatus', 'newProjSetting_developmentPhase', 'newProjSetting_developmentPriority',
+      'newProjSetting_isAiInvolved', 'newProjSetting_projectType', 'newProjSetting_workstream',
+      'newProjSetting_sdmSupported', 'newProjSetting_requestedBy'];
+    simpleFields.forEach(function(id) { var el = $(id); if (el) el.value = ''; });
+    var modularEl = $('newProjSetting_isModular');
+    if (modularEl) modularEl.checked = false;
     if (ownerSelect) ownerSelect.value = '';
+
+    _renderNewProjOverviewSelects();
+    _renderNewProjSecondaryUsers([]);
+    _renderNewProjGovOwners([]);
+    _renderNewProjIntendedUsers([]);
     _renderNewProjAllPanels();
+
     if (typeof ProjectPage === 'undefined' || !ProjectPage._taxonomyValues) {
       google.script.run
         .withSuccessHandler(function(vals) {
           if (typeof ProjectPage !== 'undefined') ProjectPage._taxonomyValues = vals;
+          _renderNewProjOverviewSelects();
           _renderNewProjAllPanels();
+          var savedAt = _restoreNewProjDraft();
+          _showDraftHint(savedAt);
         })
-        .withFailureHandler(function() {})
+        .withFailureHandler(function() {
+          var savedAt = _restoreNewProjDraft();
+          _showDraftHint(savedAt);
+        })
         .getProjectTaxonomyValues();
+    } else {
+      var savedAt = _restoreNewProjDraft();
+      _showDraftHint(savedAt);
     }
-    switchNewProjTab('overview');
+    switchNewProjTab('details');
+    _attachNewProjDraftAutosave();
     show($("projectModal"));
+    if (typeof SyncManager !== 'undefined' && SyncManager.stopPolling) SyncManager.stopPolling();
   }
 
-  function closeProjectModal() {
+  function _newProjTaxonomyOpts(key) {
+    if (typeof ProjectPage !== 'undefined' && ProjectPage._taxonomyValues && Array.isArray(ProjectPage._taxonomyValues[key])) {
+      return ProjectPage._taxonomyValues[key];
+    }
+    return [];
+  }
+
+  function _renderNewProjOverviewSelects() {
+    var fillSelect = function(id, options, currentVal) {
+      var el = $(id);
+      if (!el) return;
+      var current = currentVal || el.value;
+      var html = '<option value="" disabled' + (current ? '' : ' selected') + ' hidden>-- Select --</option>';
+      options.forEach(function(opt) {
+        html += '<option value="' + escapeHtml(opt) + '"' + (opt === current ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+      });
+      el.innerHTML = html;
+      if (current) el.value = current;
+    };
+    var WORKLOG_STATUSES = [
+      '00-Ideation','01-Requirements Gathering','02-In Development',
+      '03-Deployed (Actively Maintained)','04-Deployed (Inactive-Not Maintained)',
+      '05-Dev Complete/Pending Deployment','06-Retired/Sunset (Permanent)',
+      '07-Backlog','08-Stopped'
+    ];
+    fillSelect('newProjStatus', WORKLOG_STATUSES);
+    fillSelect('newProjSetting_developmentPhase', _newProjTaxonomyOpts('developmentPhase'));
+    fillSelect('newProjSetting_developmentPriority', _newProjTaxonomyOpts('developmentPriority'));
+    fillSelect('newProjSetting_isAiInvolved', _newProjTaxonomyOpts('aiInvolved').length ? _newProjTaxonomyOpts('aiInvolved') : ['Yes','No','Partial']);
+    fillSelect('newProjSetting_workstream', _newProjTaxonomyOpts('workstream'));
+    fillSelect('newProjSetting_projectType', _newProjTaxonomyOpts('projectTypeCode').length ? _newProjTaxonomyOpts('projectTypeCode') : _newProjTaxonomyOpts('projectType'));
+    fillSelect('newProjSetting_sdmSupported', _newProjTaxonomyOpts('sdmSupported'));
+  }
+
+  function _renderNewProjSecondaryUsers(initial) {
+    var wrap = $('newProjSecondaryUserDropdownWrap');
+    var tagsEl = $('newProjSecondaryUserTags');
+    if (!wrap || !tagsEl) return;
+    if (!$('newProjSecondaryUsersHidden')) {
+      var hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.id = 'newProjSecondaryUsersHidden';
+      wrap.appendChild(hidden);
+    }
+    var hidden = $('newProjSecondaryUsersHidden');
+    var current = (Array.isArray(initial) ? initial : []).slice();
+    hidden.value = JSON.stringify(current);
+
+    var users = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var optionsHtml = '<option value="">— Add a backup owner —</option>' +
+      users.slice().sort(function(a, b) { return String(a.name || a.email).localeCompare(String(b.name || b.email)); }).map(function(u) {
+        return '<option value="' + escapeHtml(u.email || u.id) + '">' + escapeHtml(u.name || u.email || u.id) + '</option>';
+      }).join('');
+    wrap.innerHTML = '<select id="newProjSecondaryUserSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">' + optionsHtml + '</select>' +
+      '<input type="hidden" id="newProjSecondaryUsersHidden" value="' + escapeHtml(hidden.value) + '">';
+
+    var renderTags = function(arr) {
+      tagsEl.innerHTML = arr.length ? arr.map(function(email, i) {
+        var u = users.find(function(x) { return (x.email || x.id) === email; });
+        var label = u ? (u.name || u.email) : email;
+        return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+          escapeHtml(label) +
+          '<button type="button" onclick="_removeNewProjSecondaryUser(' + i + ')" class="text-gray-400 hover:text-gray-700 leading-none ml-1"><i class="fas fa-times text-xs"></i></button></span>';
+      }).join('') : '<span class="text-xs text-gray-400">No backup owners selected</span>';
+    };
+    renderTags(current);
+
+    var sel = $('newProjSecondaryUserSelect');
+    sel.addEventListener('change', function() {
+      var val = this.value;
+      if (!val) return;
+      var arr = [];
+      try { arr = JSON.parse($('newProjSecondaryUsersHidden').value || '[]'); } catch(e) { arr = []; }
+      if (arr.indexOf(val) === -1) {
+        arr.push(val);
+        $('newProjSecondaryUsersHidden').value = JSON.stringify(arr);
+        renderTags(arr);
+      }
+      this.value = '';
+    });
+  }
+  window._removeNewProjSecondaryUser = function(idx) {
+    var hidden = $('newProjSecondaryUsersHidden');
+    if (!hidden) return;
+    var arr = [];
+    try { arr = JSON.parse(hidden.value || '[]'); } catch(e) { arr = []; }
+    arr.splice(idx, 1);
+    hidden.value = JSON.stringify(arr);
+    var users = (typeof State !== 'undefined' && State.users) ? State.users : [];
+    var tagsEl = $('newProjSecondaryUserTags');
+    if (tagsEl) {
+      tagsEl.innerHTML = arr.length ? arr.map(function(email, i) {
+        var u = users.find(function(x) { return (x.email || x.id) === email; });
+        var label = u ? (u.name || u.email) : email;
+        return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+          escapeHtml(label) +
+          '<button type="button" onclick="_removeNewProjSecondaryUser(' + i + ')" class="text-gray-400 hover:text-gray-700 leading-none ml-1"><i class="fas fa-times text-xs"></i></button></span>';
+      }).join('') : '<span class="text-xs text-gray-400">No backup owners selected</span>';
+    }
+  };
+
+  function _renderNewProjTagInputField(wrapId, hiddenId, listId, placeholder, addFnName) {
+    var wrap = $(wrapId);
+    if (!wrap) return;
+    wrap.innerHTML =
+      '<div class="flex gap-2">' +
+      '<input type="text" id="' + wrapId + '_input" placeholder="' + placeholder + '" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onkeydown="if(event.key===\'Enter\'){event.preventDefault();' + addFnName + '();}">' +
+      '<button type="button" onclick="' + addFnName + '()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg border border-gray-300"><i class="fas fa-plus text-xs"></i></button>' +
+      '</div>' +
+      '<div id="' + listId + '" class="flex flex-wrap mt-2"></div>' +
+      '<input type="hidden" id="' + hiddenId + '" value="[]">';
+  }
+
+  function _renderNewProjGovOwners(initial) {
+    _renderNewProjTagInputField('newProjGovOwnersWrap', 'newProjGovOwnersHidden', 'newProjGovOwnersList', 'Type a name or email and press Enter', '_addNewProjGovOwner');
+    var arr = Array.isArray(initial) ? initial.slice() : [];
+    $('newProjGovOwnersHidden').value = JSON.stringify(arr);
+    _refreshNewProjGovOwnersTags(arr);
+  }
+  window._addNewProjGovOwner = function() {
+    var input = $('newProjGovOwnersWrap_input');
+    var hidden = $('newProjGovOwnersHidden');
+    if (!input || !hidden) return;
+    var val = String(input.value || '').trim();
+    if (!val) return;
+    var arr = [];
+    try { arr = JSON.parse(hidden.value || '[]'); } catch(e) { arr = []; }
+    if (arr.indexOf(val) === -1) arr.push(val);
+    hidden.value = JSON.stringify(arr);
+    input.value = '';
+    _refreshNewProjGovOwnersTags(arr);
+  };
+  window._removeNewProjGovOwner = function(idx) {
+    var hidden = $('newProjGovOwnersHidden');
+    if (!hidden) return;
+    var arr = [];
+    try { arr = JSON.parse(hidden.value || '[]'); } catch(e) { arr = []; }
+    arr.splice(idx, 1);
+    hidden.value = JSON.stringify(arr);
+    _refreshNewProjGovOwnersTags(arr);
+  };
+  function _refreshNewProjGovOwnersTags(arr) {
+    var listEl = $('newProjGovOwnersList');
+    if (!listEl) return;
+    listEl.innerHTML = arr.length ? arr.map(function(name, i) {
+      return '<span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full border border-gray-200 mr-1 mb-1">' +
+        escapeHtml(name) +
+        '<button type="button" onclick="_removeNewProjGovOwner(' + i + ')" class="text-gray-400 hover:text-gray-700 leading-none ml-1"><i class="fas fa-times text-xs"></i></button></span>';
+    }).join('') : '<span class="text-xs text-gray-400">No government project owners added</span>';
+  }
+
+  function _renderNewProjIntendedUsers(initial) {
+    var wrap = $('newProjIntendedUsersWrap');
+    if (!wrap) return;
+    var opts = _newProjTaxonomyOpts('intendedUsers');
+    var current = Array.isArray(initial) ? initial.slice() : [];
+    var html = '<input type="hidden" id="newProjIntendedUsersHidden" value="' + escapeHtml(JSON.stringify(current)) + '">';
+    if (opts.length) {
+      html += '<div class="border border-gray-300 rounded-lg p-2 max-h-40 overflow-y-auto bg-white">' +
+        opts.map(function(opt) {
+          var checked = current.indexOf(opt) !== -1 ? ' checked' : '';
+          return '<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-50 px-2 rounded">' +
+            '<input type="checkbox" data-newproj-intended="1" value="' + escapeHtml(opt) + '"' + checked + ' onchange="_syncNewProjIntendedUsers()" class="rounded border-gray-300 text-gray-900 focus:ring-gray-400">' +
+            '<span class="text-sm text-gray-900">' + escapeHtml(opt) + '</span></label>';
+        }).join('') + '</div>';
+    } else {
+      html += '<p class="text-xs text-gray-500 italic">No taxonomy values configured. Ask an admin to add Intended User options.</p>';
+    }
+    wrap.innerHTML = html;
+  }
+  window._syncNewProjIntendedUsers = function() {
+    var arr = [];
+    document.querySelectorAll('input[data-newproj-intended="1"]:checked').forEach(function(cb) { arr.push(cb.value); });
+    var hidden = $('newProjIntendedUsersHidden');
+    if (hidden) hidden.value = JSON.stringify(arr);
+  };
+
+  function closeProjectModal(opts) {
+    opts = opts || {};
+    if (!opts.skipGuard) {
+      var draft = _captureNewProjDraft();
+      if (draft) {
+        ConfirmModal('You have unsaved changes. Your draft will be saved so you can pick up where you left off — or discard it.', {
+          title: 'Close without creating?',
+          confirmText: 'Save draft & close',
+          cancelText: 'Keep editing'
+        }).then(function(confirmed) {
+          if (!confirmed) return;
+          _saveNewProjDraft();
+          hide($("projectModal"));
+          if (typeof SyncManager !== 'undefined' && SyncManager.startPolling) SyncManager.startPolling();
+        });
+        return;
+      }
+    }
+    _saveNewProjDraft();
     hide($("projectModal"));
+    if (typeof SyncManager !== 'undefined' && SyncManager.startPolling) SyncManager.startPolling();
+  }
+
+  var DATA_ASSET_PROJECT_TYPES = ['Data Pipeline', 'Database'];
+
+  function _showCreatedModal(kind, name, targetView) {
+    var viewLabel = kind === 'dataAsset' ? 'Data Assets' : 'Projects';
+    var title = kind === 'dataAsset' ? 'Data Asset Created' : 'Project Created';
+    var message = '"' + name + '" was created. You can find it under ' + viewLabel + '.';
+    ConfirmModal(message, {
+      title: title,
+      confirmText: 'Go to ' + viewLabel,
+      cancelText: 'Dismiss'
+    }).then(function(confirmed) {
+      if (confirmed && typeof switchView === 'function') switchView(targetView);
+    });
+  }
+
+  function _buildAssetPayloadFromProjectForm(name, description, ownerId, settings) {
+    var secondaryUsers = settings.secondaryUsers;
+    if (Array.isArray(secondaryUsers)) secondaryUsers = secondaryUsers.join(', ');
+    var deploymentLoc = settings.deploymentLocation;
+    if (Array.isArray(deploymentLoc)) deploymentLoc = deploymentLoc.join(', ');
+    var techStack = settings.techStack;
+    if (Array.isArray(techStack)) techStack = techStack.join(', ');
+    var routedAssetType = '';
+    var incomingProjectType = String(settings.projectType || '').trim();
+    if (incomingProjectType === 'Data Pipeline' || incomingProjectType === 'Database') {
+      routedAssetType = incomingProjectType;
+    }
+    return {
+      status: 'Active',
+      assetType: routedAssetType,
+      assetOwner: ownerId || '',
+      backupOwner: secondaryUsers || '',
+      assetName: name,
+      dataSource: settings.dataSourceExplain || '',
+      targetFiles: settings.dataSourceFiles || '',
+      relatedProjects: settings.linkedProjectId || '',
+      primaryStakeholder: settings.clientOwner || '',
+      updateFrequency: settings.dataCadence || '',
+      currentEnvironment: deploymentLoc || techStack || '',
+      githubLink: settings.githubLinks || '',
+      dataSharingDocLink: settings.dataSharingDocLink || settings.googleDriveFolder || '',
+      jsonData: JSON.stringify({ createdFromProjectForm: true, originalDescription: description || '', originalProjectType: incomingProjectType })
+    };
+  }
+
+  function _submitNewAssetFromProjectForm(projectData, assetPayload) {
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+        if (result && result.success === false) {
+          toast(result.error || 'Failed to create data asset', 'error');
+          return;
+        }
+        clearNewProjDraft();
+        closeProjectModal({ skipGuard: true });
+        if (typeof DataAssetPage !== 'undefined' && typeof DataAssetPage.loadAssets === 'function') {
+          try { DataAssetPage.loadAssets(); } catch (e) {}
+        }
+        _showCreatedModal('dataAsset', assetPayload.assetName, 'dataassets');
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        handleError(error);
+      })
+      .saveNewDataAsset(assetPayload);
+  }
+
+  function _setFieldError(fieldId, message) {
+    var el = $(fieldId);
+    if (!el) return;
+    el.classList.add('co-field-error');
+    var msgId = fieldId + '_err';
+    var existing = document.getElementById(msgId);
+    if (existing) existing.remove();
+    if (message) {
+      var msg = document.createElement('div');
+      msg.id = msgId;
+      msg.className = 'co-field-error-msg';
+      msg.innerHTML = '<i class="fas fa-exclamation-circle" aria-hidden="true"></i><span>' + escapeHtml(message) + '</span>';
+      el.parentNode.appendChild(msg);
+    }
+    var clearOnce = function() {
+      el.classList.remove('co-field-error');
+      var m = document.getElementById(msgId);
+      if (m) m.remove();
+      el.removeEventListener('input', clearOnce);
+      el.removeEventListener('change', clearOnce);
+    };
+    el.addEventListener('input', clearOnce);
+    el.addEventListener('change', clearOnce);
+  }
+
+  function _scrollFieldIntoView(fieldId) {
+    var el = $(fieldId);
+    if (!el) return;
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    setTimeout(function() { try { el.focus(); } catch (e) {} }, 200);
   }
 
   function saveProject() {
     var name = ($('newProjName') || {}).value || '';
-    if (!name.trim()) { toast('Project name is required', 'error'); return; }
+    if (!name.trim()) {
+      switchNewProjTab('details');
+      _setFieldError('newProjName', 'Project name is required');
+      _scrollFieldIntoView('newProjName');
+      return;
+    }
     var settings = {};
-    ['portfolio', 'ownership', 'infrastructure', 'documentation'].forEach(function(group) {
+    ['deployment', 'ownership', 'infrastructure', 'documentation'].forEach(function(group) {
       var schema = _newProjSettingsSchema[group] || [];
       schema.forEach(function(field) {
         if (field.type === 'multiselect') {
@@ -221,10 +686,20 @@
           if (selected.length) settings[field.key] = selected;
           return;
         }
+        if (field.type === 'searchable_multiselect') {
+          var smsEl = $('newProjSetting_' + field.key);
+          if (smsEl) {
+            try {
+              var smsArr = JSON.parse(smsEl.value || '[]');
+              if (Array.isArray(smsArr) && smsArr.length) settings[field.key] = smsArr;
+            } catch (e) {}
+          }
+          return;
+        }
         var el = $('newProjSetting_' + field.key);
         if (!el) return;
         if (field.type === 'boolean') {
-          settings[field.key] = el.value === 'true';
+          if (el.value === 'true' || el.value === 'false') settings[field.key] = el.value === 'true';
         } else if (el.value && el.value.trim()) {
           settings[field.key] = el.value.trim();
         }
@@ -238,25 +713,120 @@
     if (govRequestDate) settings.govRequestDate = govRequestDate;
     if (firstDeployDate) settings.firstDeployDate = firstDeployDate;
     if (projectRetiredDate) settings.projectRetiredDate = projectRetiredDate;
+
+    var captureSelectVal = function(id, key) {
+      var el = $(id);
+      if (el && el.value) settings[key] = el.value;
+    };
+    captureSelectVal('newProjSetting_developmentPhase', 'developmentPhase');
+    captureSelectVal('newProjSetting_developmentPriority', 'developmentPriority');
+    captureSelectVal('newProjSetting_isAiInvolved', 'isAiInvolved');
+    captureSelectVal('newProjSetting_workstream', 'workstream');
+    captureSelectVal('newProjSetting_projectType', 'projectType');
+    captureSelectVal('newProjSetting_sdmSupported', 'sdmSupported');
+    var statusEl = $('newProjStatus');
+    if (statusEl && statusEl.value) settings.projectStatus = statusEl.value;
+    var requestedByEl = $('newProjSetting_requestedBy');
+    if (requestedByEl && requestedByEl.value && requestedByEl.value.trim()) settings.requestedBy = requestedByEl.value.trim();
+    var modularEl = $('newProjSetting_isModular');
+    if (modularEl && modularEl.checked) settings.isModular = true;
+    var govOwnersHidden = $('newProjGovOwnersHidden');
+    if (govOwnersHidden && govOwnersHidden.value) {
+      try {
+        var govArr = JSON.parse(govOwnersHidden.value);
+        if (Array.isArray(govArr) && govArr.length) settings.govProjectOwners = govArr;
+      } catch (e) {}
+    }
+    var intendedHidden = $('newProjIntendedUsersHidden');
+    if (intendedHidden && intendedHidden.value) {
+      try {
+        var intendedArr = JSON.parse(intendedHidden.value);
+        if (Array.isArray(intendedArr) && intendedArr.length) settings.intendedUsers = intendedArr;
+      } catch (e) {}
+    }
+    var secondaryHidden = $('newProjSecondaryUsersHidden');
+    if (secondaryHidden && secondaryHidden.value) {
+      try {
+        var secArr = JSON.parse(secondaryHidden.value);
+        if (Array.isArray(secArr) && secArr.length) settings.secondaryUsers = secArr;
+      } catch (e) {}
+    }
+
+    var trimmedName = name.trim();
+    var ownerId = ($('newProjOwner') || {}).value || '';
+    var description = ($('newProjDesc') || {}).value || '';
+    var rawNewStart = ($('newProjStartDate') || {}).value || '';
+    var newStartDate = /^\d{4}-\d{2}$/.test(rawNewStart) ? (rawNewStart + '-15') : rawNewStart;
     var projectData = {
-      name: name.trim(),
-      description: ($('newProjDesc') || {}).value || '',
-      ownerId: ($('newProjOwner') || {}).value || '',
-      startDate: ($('newProjStartDate') || {}).value || '',
+      name: trimmedName,
+      description: description,
+      ownerId: ownerId,
+      startDate: newStartDate,
       endDate: '',
-      version: ($('newProjVersion') || {}).value || '',
-      repoUrl: ($('newProjRepoUrl') || {}).value || '',
+      version: '',
+      repoUrl: '',
       tags: JSON.stringify(tags),
       settings: JSON.stringify(settings)
     };
+    var incomingType = settings.projectType || '';
+    if (DATA_ASSET_PROJECT_TYPES.indexOf(incomingType) !== -1) {
+      ConfirmModal(
+        'Project Type "' + incomingType + '" is managed as a Data Asset in COLONY. Create "' + trimmedName + '" as a Data Asset instead?',
+        { title: 'Create as Data Asset?', confirmText: 'Create Data Asset', cancelText: 'Cancel' }
+      ).then(function(confirmed) {
+        if (!confirmed) return;
+        var assetPayload = _buildAssetPayloadFromProjectForm(trimmedName, description, ownerId, settings);
+        _submitNewAssetFromProjectForm(projectData, assetPayload);
+      });
+      return;
+    }
     showLoading(true);
     google.script.run
-      .withSuccessHandler(function() {
+      .withSuccessHandler(function(result) {
         showLoading(false);
-        closeProjectModal();
+        if (result && result.success === false) {
+          var msg = result.error || 'Failed to create project';
+          if (result.code === 'ROUTE_TO_DATA_ASSET') {
+            ConfirmModal(msg + ' Create "' + trimmedName + '" as a Data Asset now?', { title: 'Create as Data Asset?', confirmText: 'Create Data Asset', cancelText: 'Cancel' })
+              .then(function(confirmed) {
+                if (!confirmed) return;
+                var assetPayload = _buildAssetPayloadFromProjectForm(trimmedName, description, ownerId, settings);
+                _submitNewAssetFromProjectForm(projectData, assetPayload);
+              });
+            return;
+          }
+          toast(msg, 'error');
+          return;
+        }
+        clearNewProjDraft();
+        closeProjectModal({ skipGuard: true });
+        var created = (result && result.project) ? result.project : (result && result.id ? result : null);
+        if (created && created.id) {
+          var updated = (State.projects || []).slice();
+          var replaced = false;
+          for (var i = 0; i < updated.length; i++) {
+            if (updated[i].id === created.id) { updated[i] = created; replaced = true; break; }
+          }
+          if (!replaced) updated.push(created);
+          if (State.setProjects) State.setProjects(updated);
+          if (typeof LocalCache !== 'undefined' && LocalCache.set) LocalCache.set('projects', updated);
+          if (typeof CacheService !== 'undefined' && CacheService.set) {
+            try { CacheService.set('projects', updated).catch(function() {}); } catch (e) {}
+          }
+        } else {
+          google.script.run
+            .withSuccessHandler(function(res) {
+              if (res && res.success && Array.isArray(res.projects)) {
+                if (State.setProjects) State.setProjects(res.projects);
+                if (typeof LocalCache !== 'undefined' && LocalCache.set) LocalCache.set('projects', res.projects);
+              }
+            })
+            .withFailureHandler(function() {})
+            .getProjectDetailsList();
+        }
         if (typeof loadBoard === 'function') loadBoard();
         if (typeof ProjectPage !== 'undefined' && typeof ProjectPage.loadProjects === 'function') ProjectPage.loadProjects();
-        toast("Project created", "success");
+        _showCreatedModal('project', trimmedName, 'projects');
       })
       .withFailureHandler(function(error) {
         showLoading(false);
@@ -273,15 +843,69 @@
     if (el) el.classList.add("hidden");
   }
 
+  function showCalendarReauthDialog(authUrl, reason) {
+    var modal = document.getElementById('calendarReauthModal');
+    var link = document.getElementById('calendarReauthLink');
+    var closeBtn = document.getElementById('calendarReauthClose');
+    var reasonEl = document.getElementById('calendarReauthReason');
+    if (!modal || !link || !closeBtn) {
+      if (authUrl) window.open(authUrl, '_blank', 'noopener');
+      return;
+    }
+    link.href = authUrl || '#';
+    if (reasonEl) {
+      if (reason) {
+        reasonEl.textContent = 'Details: ' + reason;
+        reasonEl.style.display = '';
+      } else {
+        reasonEl.textContent = '';
+        reasonEl.style.display = 'none';
+      }
+    }
+    show(modal);
+    closeBtn.onclick = function() { hide(modal); };
+    link.onclick = function() {
+      setTimeout(function() { hide(modal); }, 400);
+    };
+  }
+
+  function openCalendarReauthFlow() {
+    google.script.run
+      .withSuccessHandler(function(status) {
+        if (status && status.authorized) {
+          toast('Calendar is already authorized.', 'success');
+          return;
+        }
+        var url = (status && status.authUrl) || '';
+        showCalendarReauthDialog(url, (status && status.error) || '');
+      })
+      .withFailureHandler(function(err) {
+        console.error('openCalendarReauthFlow failed:', err);
+        toast('Could not determine Calendar auth status: ' + (err && err.message || 'Unknown error'), 'error');
+      })
+      .getCalendarAuthStatus();
+  }
+
   function ConfirmModal(message, options) {
     options = options || {};
     return new Promise(function(resolve) {
       var modal = $('confirmModal');
+      var titleEl = $('confirmModalTitle');
       var msgEl = $('confirmModalMessage');
       var confirmBtn = $('confirmModalConfirm');
       var cancelBtn = $('confirmModalCancel');
+      if (titleEl) {
+        if (options.title) {
+          titleEl.textContent = options.title;
+          titleEl.classList.remove('hidden');
+        } else {
+          titleEl.textContent = '';
+          titleEl.classList.add('hidden');
+        }
+      }
       msgEl.textContent = message;
       confirmBtn.textContent = options.confirmText || 'Confirm';
+      cancelBtn.textContent = options.cancelText || 'Cancel';
       confirmBtn.className = options.destructive
         ? 'px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors'
         : 'px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors';

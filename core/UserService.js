@@ -31,7 +31,15 @@ function filterTasksByUserRole(tasks, userEmail, userRole) {
   if (!userRole || userRole === 'admin' || userRole === 'manager') {
     return tasks;
   }
-  // Members and viewers only see tasks assigned to them or created by them
+  if (userRole === 'client') {
+    var allowed = getClientAccessibleProjectIds(userEmail);
+    return tasks.filter(function(task) {
+      var isOwn = (task.assignee && task.assignee.toLowerCase() === userEmail.toLowerCase()) ||
+                  (task.reporter && task.reporter.toLowerCase() === userEmail.toLowerCase());
+      var inAllowedProject = task.projectId && allowed[task.projectId];
+      return isOwn || inAllowedProject;
+    });
+  }
   return tasks.filter(function(task) {
     return (task.assignee && task.assignee.toLowerCase() === userEmail.toLowerCase()) ||
            (task.reporter && task.reporter.toLowerCase() === userEmail.toLowerCase());
@@ -42,6 +50,12 @@ function filterProjectsByUserRole(projects, tasks, userEmail, userRole) {
   if (!userRole || userRole === 'admin' || userRole === 'manager') {
     return projects;
   }
+  if (userRole === 'client') {
+    var allowedSet = getClientAccessibleProjectIds(userEmail, projects);
+    return projects.filter(function(project) {
+      return !!allowedSet[project.id];
+    });
+  }
   var userProjectIds = {};
   tasks.forEach(function(task) {
     if (task.projectId) {
@@ -51,6 +65,43 @@ function filterProjectsByUserRole(projects, tasks, userEmail, userRole) {
   return projects.filter(function(project) {
     return userProjectIds[project.id];
   });
+}
+
+function getClientAccessibleProjectIds(userEmail, optionalProjects) {
+  var out = {};
+  if (!userEmail) return out;
+  var emailLc = String(userEmail).toLowerCase().trim();
+  var projects;
+  try {
+    projects = optionalProjects || (typeof getAllProjectsOptimized === 'function' ? getAllProjectsOptimized() : getAllProjects());
+  } catch (e) {
+    console.error('getClientAccessibleProjectIds: project read failed', e);
+    return out;
+  }
+  for (var i = 0; i < projects.length; i++) {
+    var p = projects[i];
+    if (!p || !p.id) continue;
+    var settings = {};
+    try { settings = typeof p.settings === 'string' ? (p.settings ? JSON.parse(p.settings) : {}) : (p.settings || {}); } catch (e) { settings = {}; }
+    var ownerEmail = String(p.ownerId || '').toLowerCase().trim();
+    if (ownerEmail === emailLc) { out[p.id] = true; continue; }
+    var creatorEmail = String(settings.originCreatorEmail || '').toLowerCase().trim();
+    if (creatorEmail === emailLc) { out[p.id] = true; continue; }
+    var lastUpdater = String(p.lastUpdatedBy || '').toLowerCase().trim();
+    if (lastUpdater === emailLc && settings.origin === 'client') { out[p.id] = true; continue; }
+    var secondary = settings.secondaryUsers;
+    if (Array.isArray(secondary)) {
+      for (var s = 0; s < secondary.length; s++) {
+        if (String(secondary[s] || '').toLowerCase().trim() === emailLc) { out[p.id] = true; break; }
+      }
+    } else if (typeof secondary === 'string' && secondary) {
+      var parts = secondary.split(/[,;]/);
+      for (var j = 0; j < parts.length; j++) {
+        if (parts[j].toLowerCase().trim() === emailLc) { out[p.id] = true; break; }
+      }
+    }
+  }
+  return out;
 }
 
 function getCurrentUserRole() {

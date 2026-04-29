@@ -63,7 +63,9 @@ function saveRequirementsTemplate(projectId, templateId, data, statusOverride) {
     templateDef.fields.forEach(function(field) {
       if (!field.target) return;
       var value = cleanData[field.key];
-      if (value === undefined || value === null || value === '') return;
+      var isEmpty = value === undefined || value === null || value === '' ||
+        (Array.isArray(value) && value.length === 0);
+      if (isEmpty) return;
       if (field.target.indexOf('project.') === 0) {
         var key = field.target.substring('project.'.length);
         projectLevelUpdates[key] = Array.isArray(value) ? value.join(', ') : String(value);

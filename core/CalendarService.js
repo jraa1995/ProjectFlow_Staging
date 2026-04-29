@@ -1,3 +1,55 @@
+function _isCalendarAuthorized() {
+  try {
+    if (typeof CalendarApp === 'undefined' || !CalendarApp.getDefaultCalendar) return false;
+    CalendarApp.getDefaultCalendar();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function getCalendarAuthStatus() {
+  var response = { authorized: false, needsAuth: true, authUrl: '', error: '' };
+  try {
+    var authInfo = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+    var status = authInfo.getAuthorizationStatus();
+    if (status === ScriptApp.AuthorizationStatus.NOT_REQUIRED) {
+      if (_isCalendarAuthorized()) {
+        response.authorized = true;
+        response.needsAuth = false;
+        return response;
+      }
+      response.error = 'Calendar scope authorized but probe failed';
+      response.authUrl = authInfo.getAuthorizationUrl();
+      return response;
+    }
+    response.authUrl = authInfo.getAuthorizationUrl();
+    return response;
+  } catch (err) {
+    console.error('getCalendarAuthStatus failed:', err);
+    response.error = err.message || String(err);
+    try { response.authUrl = ScriptApp.getService().getUrl(); } catch (e2) {}
+    return response;
+  }
+}
+
+function forceCalendarReauth() {
+  try {
+    ScriptApp.invalidateAuth();
+  } catch (e) {
+    console.error('ScriptApp.invalidateAuth failed:', e);
+  }
+  return getCalendarAuthStatus();
+}
+
+function _formatCalendarAuthError(err) {
+  var msg = err && err.message ? String(err.message) : String(err || 'Unknown error');
+  if (msg.indexOf('authoriz') !== -1 || msg.indexOf('permission') !== -1 || msg.indexOf('scope') !== -1 || msg.indexOf('ACCESS_TOKEN') !== -1) {
+    return 'Calendar permission not granted. Reload COLONY, sign in again, and approve the Calendar scope when prompted.';
+  }
+  return msg;
+}
+
 function pushTaskToGoogleCalendar(taskData, options) {
   options = options || {};
   var result = { success: false, eventId: '', taskId: '', errors: [] };
@@ -17,6 +69,8 @@ function pushTaskToGoogleCalendar(taskData, options) {
     try {
       if (!dueDate && !startDate) {
         result.errors.push('Event requires a Start or Due Date');
+      } else if (!_isCalendarAuthorized()) {
+        result.errors.push('Calendar access is not authorized. Open COLONY, sign out and back in to approve the Calendar scope.');
       } else {
         var cal = CalendarApp.getDefaultCalendar();
         var s = startDate ? new Date(startDate) : new Date(dueDate);
@@ -65,7 +119,7 @@ function pushTaskToGoogleCalendar(taskData, options) {
       }
     } catch (err) {
       console.error('pushTaskToGoogleCalendar (event) failed:', err);
-      result.errors.push('Event: ' + err.message);
+      result.errors.push('Event: ' + _formatCalendarAuthError(err));
     }
   }
 
@@ -90,7 +144,7 @@ function pushTaskToGoogleCalendar(taskData, options) {
       }
     } catch (err) {
       console.error('pushTaskToGoogleCalendar (task) failed:', err);
-      result.errors.push('Task: ' + err.message);
+      result.errors.push('Task: ' + _formatCalendarAuthError(err));
     }
   }
 
