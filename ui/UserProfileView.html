@@ -1,0 +1,126 @@
+<style>
+.upv-container { padding: 24px 32px; max-width: 1100px; margin: 0 auto; }
+.upv-header { display:flex; align-items:flex-start; gap:20px; padding:24px; border-radius:12px; background:var(--co-surface); border:1px solid var(--co-border-subtle); margin-bottom:20px; }
+.upv-avatar { width:96px; height:96px; border-radius:50%; flex-shrink:0; overflow:hidden; background:var(--co-surface-sunken); display:flex; align-items:center; justify-content:center; font-size:36px; font-weight:600; color:var(--co-ink); border:1px solid var(--co-border-subtle); }
+.upv-meta { flex:1; min-width:0; }
+.upv-name { font-size:22px; font-weight:600; letter-spacing:-0.015em; color:var(--co-ink); margin-bottom:4px; }
+.upv-email { font-size:13px; color:var(--co-ink-muted); margin-bottom:8px; }
+.upv-role-chip { display:inline-flex; align-items:center; gap:6px; padding:2px 10px; border-radius:999px; font-size:11px; font-weight:500; background:var(--co-surface-sunken); color:var(--co-ink-soft); border:1px solid var(--co-border-subtle); text-transform:uppercase; letter-spacing:0.04em; }
+.upv-streak-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:20px; }
+.upv-stat { padding:14px 16px; border-radius:10px; background:var(--co-surface); border:1px solid var(--co-border-subtle); }
+.upv-stat-value { font-size:24px; font-weight:600; letter-spacing:-0.015em; color:var(--co-ink); line-height:1; }
+.upv-stat-label { font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--co-gray-400); margin-top:6px; font-weight:500; }
+.upv-section { padding:20px 24px; border-radius:12px; background:var(--co-surface); border:1px solid var(--co-border-subtle); margin-bottom:20px; }
+.upv-section-title { font-size:14px; font-weight:600; color:var(--co-ink); margin-bottom:14px; letter-spacing:-0.01em; display:flex; align-items:center; justify-content:space-between; }
+.upv-section-title .upv-section-sub { font-size:11px; font-weight:400; color:var(--co-gray-400); text-transform:none; letter-spacing:normal; }
+.upv-heatmap-wrap { overflow-x:auto; padding-bottom:8px; }
+.upv-heatmap { display:inline-grid; grid-auto-flow:column; grid-template-rows:repeat(7, 12px); gap:3px; }
+.upv-heatmap-cell { width:12px; height:12px; border-radius:2px; background:var(--co-surface-sunken); cursor:pointer; transition:transform 0.08s; }
+.upv-heatmap-cell:hover { transform:scale(1.4); outline:1px solid var(--co-ink); }
+.upv-heatmap-l1 { background:rgba(216, 154, 106, 0.25); }
+.upv-heatmap-l2 { background:rgba(216, 154, 106, 0.5); }
+.upv-heatmap-l3 { background:rgba(192, 107, 74, 0.75); }
+.upv-heatmap-l4 { background:#c06b4a; }
+.upv-legend { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--co-gray-400); margin-top:8px; }
+.upv-legend-cells { display:inline-flex; gap:3px; }
+.upv-legend-cells span { width:12px; height:12px; border-radius:2px; }
+.upv-month-row { display:flex; gap:3px; padding-left:24px; margin-bottom:6px; font-size:10px; color:var(--co-gray-400); height:14px; }
+.upv-month-row span { display:inline-block; min-width:46px; }
+.upv-day-labels { display:grid; grid-template-rows:repeat(7, 12px); gap:3px; margin-right:6px; font-size:9px; color:var(--co-gray-400); }
+.upv-day-labels span { line-height:12px; }
+.upv-heatmap-flex { display:flex; align-items:flex-start; }
+.upv-breakdown { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; }
+.upv-breakdown-item { padding:10px 12px; border-radius:8px; background:var(--co-surface-sunken); border:1px solid var(--co-border-subtle); }
+.upv-breakdown-value { font-size:18px; font-weight:600; color:var(--co-ink); line-height:1; }
+.upv-breakdown-label { font-size:11px; color:var(--co-ink-muted); margin-top:6px; }
+.upv-activity-list { display:flex; flex-direction:column; gap:6px; }
+.upv-activity-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; transition:background 0.1s; }
+.upv-activity-item:hover { background:var(--co-surface-sunken); }
+.upv-activity-icon { width:28px; height:28px; border-radius:6px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; background:var(--co-surface-sunken); color:var(--co-ink-soft); }
+.upv-activity-text { flex:1; min-width:0; font-size:13px; color:var(--co-ink); }
+.upv-activity-text-secondary { font-size:11px; color:var(--co-ink-muted); }
+.upv-activity-date { font-size:11px; color:var(--co-gray-400); flex-shrink:0; }
+.upv-tooltip { position:absolute; z-index:1090; padding:8px 10px; border-radius:6px; background:#1c1b18; color:#fff; font-size:11px; line-height:1.4; box-shadow:0 6px 16px rgba(0,0,0,0.25); pointer-events:none; max-width:240px; }
+.upv-tooltip-date { font-weight:600; margin-bottom:2px; }
+.upv-tooltip-row { display:flex; justify-content:space-between; gap:12px; }
+.upv-tooltip-row span:first-child { color:#a3a3a3; }
+.upv-empty-card { padding:24px; text-align:center; color:var(--co-gray-400); font-size:12px; }
+</style>
+
+<div class="upv-container">
+  <div class="upv-header">
+    <div id="upvAvatar" class="upv-avatar">?</div>
+    <div class="upv-meta">
+      <div id="upvName" class="upv-name">Loading...</div>
+      <div id="upvEmail" class="upv-email"></div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <span id="upvRoleChip" class="upv-role-chip">member</span>
+        <span id="upvBadgesInline"></span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <button onclick="if(typeof AvatarPicker!=='undefined')AvatarPicker.open()" class="co-btn-outline" title="Change avatar">
+        <i class="fas fa-image text-[11px]"></i> Change Avatar
+      </button>
+      <button onclick="if(typeof BadgeShowcase!=='undefined')BadgeShowcase.open()" class="co-btn-outline" title="Badges">
+        <i class="fas fa-award text-[11px]"></i> Badges
+      </button>
+    </div>
+  </div>
+
+  <div class="upv-streak-row">
+    <div class="upv-stat">
+      <div id="upvStatTotal" class="upv-stat-value">—</div>
+      <div class="upv-stat-label">Events (365d)</div>
+    </div>
+    <div class="upv-stat">
+      <div id="upvStatStreak" class="upv-stat-value">—</div>
+      <div class="upv-stat-label">Current Streak</div>
+    </div>
+    <div class="upv-stat">
+      <div id="upvStatLongest" class="upv-stat-value">—</div>
+      <div class="upv-stat-label">Longest Streak</div>
+    </div>
+    <div class="upv-stat">
+      <div id="upvStatShipped" class="upv-stat-value">—</div>
+      <div class="upv-stat-label">Tasks Shipped</div>
+    </div>
+  </div>
+
+  <div class="upv-section">
+    <div class="upv-section-title">
+      Build Activity
+      <span class="upv-section-sub">What you delivered, not what you committed</span>
+    </div>
+    <div id="upvHeatmapMonths" class="upv-month-row"></div>
+    <div class="upv-heatmap-flex">
+      <div class="upv-day-labels">
+        <span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span>
+      </div>
+      <div class="upv-heatmap-wrap">
+        <div id="upvHeatmap" class="upv-heatmap"></div>
+      </div>
+    </div>
+    <div class="upv-legend">
+      <span>Less</span>
+      <span class="upv-legend-cells">
+        <span class="upv-heatmap-cell"></span>
+        <span class="upv-heatmap-cell upv-heatmap-l1"></span>
+        <span class="upv-heatmap-cell upv-heatmap-l2"></span>
+        <span class="upv-heatmap-cell upv-heatmap-l3"></span>
+        <span class="upv-heatmap-cell upv-heatmap-l4"></span>
+      </span>
+      <span>More</span>
+    </div>
+  </div>
+
+  <div class="upv-section">
+    <div class="upv-section-title">Breakdown</div>
+    <div id="upvBreakdown" class="upv-breakdown"></div>
+  </div>
+
+  <div class="upv-section">
+    <div class="upv-section-title">Recent Activity</div>
+    <div id="upvActivityList" class="upv-activity-list"></div>
+  </div>
+</div>

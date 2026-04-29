@@ -1045,6 +1045,18 @@ function updateTask(taskId, updates) {
       task.completedAt = now();
       justCompleted = true;
     }
+    if (updates.hasOwnProperty('shippedRef')) {
+      var shippedClean = String(updates.shippedRef || '').trim().substring(0, 500);
+      if (shippedClean) {
+        task.shippedRef = shippedClean;
+        if (!task.shippedAt) task.shippedAt = now();
+        task.shippedBy = getCurrentUserEmail();
+      } else {
+        task.shippedRef = '';
+        task.shippedAt = '';
+        task.shippedBy = '';
+      }
+    }
     const newRow = objectToRow(task, columns);
     sheet.getRange(rowIndex, 1, 1, columns.length).setValues([newRow]);
     const currentUser = getCurrentUserEmail();

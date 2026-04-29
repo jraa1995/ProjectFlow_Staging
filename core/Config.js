@@ -123,7 +123,10 @@ const CONFIG = {
     'requestedBy',
     'isArchived',
     'archivedAt',
-    'subProjectId'
+    'subProjectId',
+    'shippedRef',
+    'shippedAt',
+    'shippedBy'
   ],
 
   USER_COLUMNS: [

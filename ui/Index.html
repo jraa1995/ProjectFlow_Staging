@@ -146,12 +146,12 @@ class="w-9 h-9 shrink-0 rounded-full bg-primary-700 flex items-center justify-ce
 style="border:1px solid rgba(255,255,255,0.08);"
 onmouseover="this.style.boxShadow='0 0 0 2px rgba(192,107,74,0.35)'"
 onmouseout="this.style.boxShadow='none'"
-onclick="if(typeof AvatarPicker!=='undefined')AvatarPicker.open()"
+onclick="switchView('profile')"
 oncontextmenu="event.preventDefault(); if(typeof BadgeShowcase!=='undefined')BadgeShowcase.open(); return false;"
-title="Change avatar (right-click for badges)"
+title="View profile (right-click for badges)"
 role="button"
 tabindex="0"
-aria-label="Change avatar (right-click for badges)">
+aria-label="View profile (right-click for badges)">
 ?
 </div>
 <div class="flex-1 overflow-hidden sidebar-user-meta">
@@ -371,6 +371,9 @@ aria-label="Sign out"
 </div>
 <div id="wagglesView" class="flex-1 overflow-auto hidden">
 <?!= include('ui/WagglesView'); ?>
+</div>
+<div id="profileView" class="flex-1 overflow-auto hidden">
+<?!= include('ui/UserProfileView'); ?>
 </div>
 <div id="adminView" class="flex-1 overflow-auto hidden">
 <div class="max-w-5xl mx-auto px-6 py-6">
@@ -962,6 +965,7 @@ Priority Distribution
 <script type="text/plain" data-deferred="ProjectViewScript"><?!= include('ui/ProjectViewScript'); ?></script>
 <script type="text/plain" data-deferred="DataAssetViewScript"><?!= include('ui/DataAssetViewScript'); ?></script>
 <script type="text/plain" data-deferred="WagglesViewScript"><?!= include('ui/WagglesViewScript'); ?></script>
+<script type="text/plain" data-deferred="UserProfileViewScript"><?!= include('ui/UserProfileViewScript'); ?></script>
 <script type="text/plain" data-deferred="MentionAutocomplete"><?!= include('ui/MentionAutocomplete'); ?></script>
 <script type="text/plain" data-deferred="TaskDetailPanel"><?!= include('ui/TaskDetailPanel'); ?></script>
 <script type="text/plain" data-deferred="TaskEditModal"><?!= include('ui/TaskEditModal'); ?></script>

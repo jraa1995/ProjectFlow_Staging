@@ -1,0 +1,247 @@
+<script>
+(function() {
+try {
+var UserProfilePage = {
+  data: null,
+  recent: null,
+  _tooltipEl: null,
+
+  init() {
+    this.renderHeader();
+    this.loadHeatmap();
+    this.loadRecent();
+  },
+
+  renderHeader() {
+    var nameEl = document.getElementById('upvName');
+    var emailEl = document.getElementById('upvEmail');
+    var roleEl = document.getElementById('upvRoleChip');
+    var avatarEl = document.getElementById('upvAvatar');
+    var badgesEl = document.getElementById('upvBadgesInline');
+    var u = (typeof State !== 'undefined' && State.user) ? State.user : null;
+    if (!u) {
+      if (nameEl) nameEl.textContent = 'Sign in to view profile';
+      return;
+    }
+    if (nameEl) nameEl.textContent = u.name || u.displayName || (u.email || '').split('@')[0] || 'You';
+    if (emailEl) emailEl.textContent = u.email || '';
+    if (roleEl) roleEl.textContent = (u.role || 'member');
+    if (avatarEl) {
+      var initials = ((u.name || u.email || '?').match(/\b\w/g) || []).slice(0, 2).join('').toUpperCase() || '?';
+      if (u.avatarUrl) {
+        avatarEl.innerHTML = '<img src="' + escapeHtml(u.avatarUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover;" />';
+      } else {
+        avatarEl.textContent = initials;
+      }
+    }
+    if (badgesEl) {
+      var src = document.getElementById('sidebarBadges');
+      badgesEl.innerHTML = src ? src.innerHTML : '';
+    }
+  },
+
+  loadHeatmap() {
+    var self = this;
+    var heatmap = document.getElementById('upvHeatmap');
+    if (heatmap) heatmap.innerHTML = '<div class="upv-empty-card"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          if (heatmap) heatmap.innerHTML = '<div class="upv-empty-card">' + escapeHtml(result && result.error ? result.error : 'Failed to load contribution data') + '</div>';
+          return;
+        }
+        self.data = result;
+        self.renderStats();
+        self.renderHeatmap();
+        self.renderBreakdown();
+      })
+      .withFailureHandler(function(err) {
+        console.error('Profile loadHeatmap failed:', err);
+        if (heatmap) heatmap.innerHTML = '<div class="upv-empty-card">Failed to load contribution data</div>';
+      })
+      .getMyContributionHeatmap('');
+  },
+
+  loadRecent() {
+    var self = this;
+    var list = document.getElementById('upvActivityList');
+    if (list) list.innerHTML = '<div class="upv-empty-card"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          if (list) list.innerHTML = '<div class="upv-empty-card">' + escapeHtml(result && result.error ? result.error : 'Failed to load activity') + '</div>';
+          return;
+        }
+        self.recent = result.items || [];
+        self.renderRecent();
+      })
+      .withFailureHandler(function(err) {
+        console.error('Profile loadRecent failed:', err);
+        if (list) list.innerHTML = '<div class="upv-empty-card">Failed to load activity</div>';
+      })
+      .getMyContributionRecentActivity(20);
+  },
+
+  renderStats() {
+    if (!this.data) return;
+    var t = this.data.totals || {};
+    var c = this.data.counts || {};
+    var setText = function(id, value) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = String(value);
+    };
+    setText('upvStatTotal', c._events || 0);
+    setText('upvStatStreak', (this.data.currentStreak || 0) + 'd');
+    setText('upvStatLongest', (this.data.longestStreak || 0) + 'd');
+    setText('upvStatShipped', c.ship || 0);
+  },
+
+  _scoreLevel(score) {
+    if (!score || score <= 0) return 0;
+    if (score <= 3) return 1;
+    if (score <= 7) return 2;
+    if (score <= 15) return 3;
+    return 4;
+  },
+
+  renderHeatmap() {
+    if (!this.data || !this.data.days) return;
+    var days = this.data.days;
+    var firstDate = new Date(days[0].date + 'T00:00:00');
+    var leadingBlanks = firstDate.getDay();
+    var cells = [];
+    for (var i = 0; i < leadingBlanks; i++) {
+      cells.push({ blank: true });
+    }
+    for (var j = 0; j < days.length; j++) cells.push(days[j]);
+
+    var grid = document.getElementById('upvHeatmap');
+    if (!grid) return;
+    var rows = 7;
+    var cols = Math.ceil(cells.length / rows);
+    grid.style.gridTemplateColumns = 'repeat(' + cols + ', 12px)';
+    var html = '';
+    for (var c = 0; c < cells.length; c++) {
+      var cell = cells[c];
+      if (cell.blank) {
+        html += '<div></div>';
+        continue;
+      }
+      var lvl = this._scoreLevel(cell.score);
+      var cls = 'upv-heatmap-cell' + (lvl > 0 ? ' upv-heatmap-l' + lvl : '');
+      html += '<div class="' + cls + '" data-date="' + escapeHtml(cell.date) + '" data-score="' + cell.score + '" onmousemove="UserProfilePage._showTooltip(event, \'' + escapeHtml(cell.date) + '\')" onmouseleave="UserProfilePage._hideTooltip()"></div>';
+    }
+    grid.innerHTML = html;
+    this._renderMonthLabels(cells, cols);
+  },
+
+  _renderMonthLabels(cells, cols) {
+    var row = document.getElementById('upvHeatmapMonths');
+    if (!row) return;
+    var monthsByCol = {};
+    for (var c = 0; c < cols; c++) {
+      var i = c * 7;
+      var cell = cells[i];
+      if (!cell || cell.blank) continue;
+      var d = new Date(cell.date + 'T00:00:00');
+      var key = d.getMonth();
+      if (!monthsByCol[key]) monthsByCol[key] = c;
+    }
+    var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var html = '';
+    var prevCol = -1;
+    Object.keys(monthsByCol).sort(function(a, b) { return monthsByCol[a] - monthsByCol[b]; }).forEach(function(monthIdx) {
+      var startCol = monthsByCol[monthIdx];
+      var pad = (startCol - prevCol - 1);
+      if (pad > 0) html += '<span style="min-width:' + (pad * 15) + 'px;"></span>';
+      html += '<span>' + monthNames[parseInt(monthIdx, 10)] + '</span>';
+      prevCol = startCol;
+    });
+    row.innerHTML = html;
+  },
+
+  renderBreakdown() {
+    if (!this.data) return;
+    var c = this.data.counts || {};
+    var entries = [
+      { key: 'task',                    label: 'Tasks Closed',       icon: 'fa-check' },
+      { key: 'ship',                    label: 'Ship Attestations',  icon: 'fa-rocket' },
+      { key: 'pickup',                  label: 'Pickups',            icon: 'fa-hand-paper' },
+      { key: 'comment',                 label: 'Comments',           icon: 'fa-comment' },
+      { key: 'waggles_question',        label: 'Questions Asked',    icon: 'fa-question' },
+      { key: 'waggles_answer',          label: 'Answers Posted',     icon: 'fa-comments' },
+      { key: 'waggles_vote_received',   label: 'Upvotes Received',   icon: 'fa-arrow-up' }
+    ];
+    var html = entries.map(function(e) {
+      var v = c[e.key] || 0;
+      return '<div class="upv-breakdown-item">' +
+        '<div class="upv-breakdown-value"><i class="fas ' + e.icon + ' mr-2" style="color:var(--co-accent-500);font-size:13px;"></i>' + v + '</div>' +
+        '<div class="upv-breakdown-label">' + e.label + '</div>' +
+      '</div>';
+    }).join('');
+    var el = document.getElementById('upvBreakdown');
+    if (el) el.innerHTML = html;
+  },
+
+  renderRecent() {
+    var list = document.getElementById('upvActivityList');
+    if (!list) return;
+    if (!this.recent || !this.recent.length) {
+      list.innerHTML = '<div class="upv-empty-card">No activity yet. Close a task or answer a Waggle to start your streak.</div>';
+      return;
+    }
+    var iconMap = {
+      task: 'fa-check', task_shipped: 'fa-rocket', ship: 'fa-rocket', pickup: 'fa-hand-paper',
+      comment: 'fa-comment', waggles_question: 'fa-question', waggles_answer: 'fa-comments',
+      waggles_vote_received: 'fa-arrow-up'
+    };
+    var html = this.recent.map(function(item) {
+      var icon = iconMap[item.source] || 'fa-circle';
+      var ref = '';
+      if (item.shippedRef) {
+        var maybeUrl = /^https?:\/\//i.test(item.shippedRef);
+        ref = ' <span class="upv-activity-text-secondary">— ' + (maybeUrl
+          ? '<a href="' + escapeHtml(item.shippedRef) + '" target="_blank" rel="noopener" style="color:var(--co-accent-600);">' + escapeHtml(item.shippedRef) + '</a>'
+          : escapeHtml(item.shippedRef)) + '</span>';
+      }
+      return '<div class="upv-activity-item">' +
+        '<div class="upv-activity-icon"><i class="fas ' + icon + '"></i></div>' +
+        '<div class="upv-activity-text">' + escapeHtml(item.label || item.source) + ref + '</div>' +
+        '<div class="upv-activity-date">' + escapeHtml(item.date) + '</div>' +
+      '</div>';
+    }).join('');
+    list.innerHTML = html;
+  },
+
+  _showTooltip(event, dateKey) {
+    if (!this.data) return;
+    var day = (this.data.days || []).find(function(d) { return d.date === dateKey; });
+    if (!day) return;
+    if (!this._tooltipEl) {
+      this._tooltipEl = document.createElement('div');
+      this._tooltipEl.className = 'upv-tooltip';
+      document.body.appendChild(this._tooltipEl);
+    }
+    var labelMap = { task: 'Tasks', ship: 'Ships', pickup: 'Pickups', comment: 'Comments', waggles_question: 'Q', waggles_answer: 'A', waggles_vote_received: 'Upvotes' };
+    var rows = '';
+    Object.keys(day.breakdown || {}).forEach(function(k) {
+      rows += '<div class="upv-tooltip-row"><span>' + (labelMap[k] || k) + '</span><span>' + day.breakdown[k] + '</span></div>';
+    });
+    this._tooltipEl.innerHTML = '<div class="upv-tooltip-date">' + escapeHtml(day.date) + '</div>' +
+      (day.score > 0 ? '<div class="upv-tooltip-row" style="margin-bottom:4px;"><span>Total</span><strong>' + day.score + '</strong></div>' + rows : '<div style="color:#a3a3a3;">No activity</div>');
+    this._tooltipEl.style.left = (event.pageX + 12) + 'px';
+    this._tooltipEl.style.top = (event.pageY + 12) + 'px';
+    this._tooltipEl.style.display = 'block';
+  },
+
+  _hideTooltip() {
+    if (this._tooltipEl) this._tooltipEl.style.display = 'none';
+  }
+};
+
+window.UserProfilePage = UserProfilePage;
+} catch (err) {
+  console.error('UserProfilePage init failed:', err);
+}
+})();
+</script>

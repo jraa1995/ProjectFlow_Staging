@@ -50,7 +50,7 @@ autocomplete="off"
 <label for="taskEditStatus" class="form-label">
 <i class="fas fa-flag text-gray-400 mr-1"></i> Status
 </label>
-<select id="taskEditStatus" class="form-select">
+<select id="taskEditStatus" class="form-select" onchange="TaskEditModal._onStatusChange && TaskEditModal._onStatusChange(this.value)">
 <option value="To Do">To Do</option>
 </select>
 </div>
@@ -61,6 +61,15 @@ autocomplete="off"
 <select id="taskEditPriority" class="form-select">
 <option value="Medium">Medium</option>
 </select>
+</div>
+</div>
+<div id="taskEditShippedRow" class="hidden">
+<div class="form-field">
+<label for="taskEditShippedRef" class="form-label">
+<i class="fas fa-rocket text-gray-400 mr-1"></i> Shipped <span style="font-weight:400;color:var(--co-gray-400);font-size:11px;">— optional, attests what shipped</span>
+</label>
+<input id="taskEditShippedRef" type="text" class="form-input" placeholder="e.g. v1.4.2 → prod, PR #213, deploy/2026-04-29" maxlength="500" />
+<span class="text-[11px] mt-1 block" style="color:var(--co-gray-400);">URL, version string, or short note. Counts toward your contribution heatmap.</span>
 </div>
 </div>
 <div class="grid grid-cols-3 gap-4">
@@ -979,6 +988,7 @@ var TaskEditModal = {
     this.populateSelectOptions();
     this.renderWatcherTags();
     if (defaults.status) this.setInputValue('taskEditStatus', defaults.status);
+    this._onStatusChange(defaults.status || 'To Do');
     if (defaults.projectId) {
       var defId = String(defaults.projectId);
       if (defId.indexOf('DA_') === 0) {
@@ -1251,6 +1261,13 @@ var TaskEditModal = {
     this.close();
   },
 
+  _onStatusChange(value) {
+    var row = document.getElementById('taskEditShippedRow');
+    if (!row) return;
+    if (value === 'Done') row.classList.remove('hidden');
+    else row.classList.add('hidden');
+  },
+
   populateForm() {
     if (!this.task) return;
     const task = this.task;
@@ -1259,6 +1276,8 @@ var TaskEditModal = {
     this.setInputValue('taskEditStatus', task.status || 'To Do');
     this.setInputValue('taskEditPriority', task.priority || 'Medium');
     this.setInputValue('taskEditType', task.type || 'Task');
+    this.setInputValue('taskEditShippedRef', task.shippedRef || '');
+    this._onStatusChange(task.status || 'To Do');
     this.setInputValue('taskEditProject', task.projectId || '');
     this.setInputValue('taskEditAssignee', task.assignee || '');
     this.setInputValue('taskEditRequestedBy', task.requestedBy || '');
@@ -2144,11 +2163,15 @@ var TaskEditModal = {
       } catch (e) { existingCustomFields = {}; }
     }
     var nextCustomFields = Object.assign({}, existingCustomFields, { attachments: this._getAttachments() });
+    var shippedRefValue = this.getInputValue('taskEditStatus') === 'Done'
+      ? this.getInputValue('taskEditShippedRef').trim()
+      : '';
     return {
       title: this.getInputValue('taskEditTitle').trim(),
       status: this.getInputValue('taskEditStatus'),
       priority: this.getInputValue('taskEditPriority'),
       type: this.getInputValue('taskEditType'),
+      shippedRef: shippedRefValue,
       projectId: resolvedProjectId,
       subProjectId: subProjectId,
       assignee: this.getInputValue('taskEditAssignee'),
