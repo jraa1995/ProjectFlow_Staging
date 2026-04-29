@@ -1043,7 +1043,7 @@ var ProjectPage = {
 
   _buildComplianceRequirements(project, settings, relatedCountArg) {
     var type = String(settings.projectType || project.projectType || '').trim();
-    var isDeploymentType = type === 'Web Application' || type === 'Data Visualization';
+    var isDeploymentType = type === 'Web Application' || type === 'Data Visualization' || type === 'Dashboard';
     var hasVal = function(v) {
       if (v === null || v === undefined) return false;
       if (typeof v === 'boolean') return v === true;
@@ -1269,7 +1269,7 @@ var ProjectPage = {
     var isEditingThis = this.isEditing && this.editingTab === groupKey;
     var groupLabels = { deployment: 'Deployment', ownership: 'Ownership', infrastructure: 'Infrastructure', documentation: 'Documentation & Links' };
     var projectType = settings.projectType || (this.selectedProject && this.selectedProject.projectType) || '';
-    var isDeploymentEligibleType = projectType === 'Web Application' || projectType === 'Data Visualization';
+    var isDeploymentEligibleType = projectType === 'Web Application' || projectType === 'Data Visualization' || projectType === 'Dashboard';
     var deploymentDisabled = groupKey === 'deployment' && !isDeploymentEligibleType;
     var boolTrue = function(v) { return v === true || v === 'true' || v === 'TRUE'; };
     var deployedPublicly = boolTrue(settings.deployedPublicly);
@@ -1279,7 +1279,7 @@ var ProjectPage = {
     var activeGas = boolTrue(settings.activeGas);
     var activeDmp = boolTrue(settings.activeDataMgmt);
     var fieldIsLocked = function(key) {
-      if (deploymentDisabled) return 'Deployment fields apply only to Web Application or Data Visualization projects.';
+      if (deploymentDisabled) return 'Deployment fields apply only to Web Application, Data Visualization, or Dashboard projects.';
       if (groupKey === 'deployment' && !deployedPublicly && LOCATION_KEYS[key]) return 'Set "Deployed Publicly" to Yes to edit this field.';
       if (GAS_CONDITIONAL_KEYS[key] && !activeGas) return 'Enable "Active GAS Project" to edit this field.';
       if (DMP_CONDITIONAL_KEYS[key] && !activeDmp) return 'Enable "Active Data Management Process" to edit this field.';
@@ -1291,7 +1291,7 @@ var ProjectPage = {
         '<i class="fas fa-info-circle mt-0.5"></i>' +
         '<div class="flex-1"><span class="font-medium">Deployment section not applicable.</span> ' +
         'This project is ' + (projectType ? 'type "' + escapeHtml(projectType) + '"' : 'missing a Project Type') + '. ' +
-        'Deployment fields apply only to Web Application or Data Visualization projects.</div></div>';
+        'Deployment fields apply only to Web Application, Data Visualization, or Dashboard projects.</div></div>';
     }
     if (groupKey === 'deployment' && isDeploymentEligibleType && !deployedPublicly) {
       disabledBanner += '<div class="mb-4 flex items-start gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700">' +
@@ -2124,7 +2124,7 @@ var ProjectPage = {
     }
 
     var projectType = settings.projectType || p.projectType || '';
-    var dataAssetTypes = ['Data Pipeline', 'Database'];
+    var dataAssetTypes = ['Data Pipeline', 'Database', 'ETL'];
     var isDataAssetType = dataAssetTypes.indexOf(projectType) !== -1;
     var alreadyMigrated = !!settings.migratedToAssetId;
     var migrateBtn = (isDataAssetType && !alreadyMigrated && !isArchived)
@@ -2301,7 +2301,7 @@ var ProjectPage = {
       '<div>' + lbl('Intended User(s)') + buildMultiCheck('intendedUsers', 'intendedUsers', settings.intendedUsers) + '</div>' +
       '<div class="grid grid-cols-3 gap-4">' +
       '<div>' + lbl('Workstream') + buildTaxonomySelect('editSetting_workstream', 'workstream', settings.workstream || p.workstream) + '</div>' +
-      '<div>' + lbl('Project Type') + buildSelect('editSetting_projectType', 'projectTypeCode', settings.projectType) + '</div>' +
+      '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide flex items-center gap-1.5">Project Type<button type="button" onclick="showProjectTypeInfoModal()" class="text-gray-400 hover:text-gray-700 inline-flex items-center" title="What does each Project Type mean?" aria-label="Project Type definitions"><i class="fas fa-info-circle text-[11px]"></i></button></label>' + buildSelect('editSetting_projectType', 'projectTypeCode', settings.projectType) + '</div>' +
       '<div>' + lbl('SDMs Supported') + buildTaxonomySelect('editSetting_sdmSupported', 'sdmSupported', settings.sdmSupported) + '</div>' +
       '</div>' +
       '<div class="bg-gray-50 border border-gray-200 rounded-lg p-3">' +
@@ -3172,7 +3172,7 @@ var ProjectPage = {
     if (existing) existing.remove();
 
     var workstreamOpts = ['Business Intelligence', 'Business Development', 'Financial Management', 'Workforce Management', 'Customer Experience', 'Quality Management', 'Contractor Use'];
-    var projectTypeOpts = ['Web Application', 'Data Visualization'];
+    var projectTypeOpts = ['Web Application', 'Data Visualization', 'Dashboard'];
     var contractOpts = ['AMPS', 'Forward', 'SQuAT'];
 
     var p = this.selectedProject;
@@ -3204,7 +3204,7 @@ var ProjectPage = {
       fieldHtml += '<div>' + lbl('Workstream') + buildSelect('pidFieldWorkstream', workstreamOpts, currentWorkstream) + '</div>';
     }
     if (needProjectType) {
-      fieldHtml += '<div>' + lbl('Project Type') + buildSelect('pidFieldProjectType', projectTypeOpts, currentProjectType) + '</div>';
+      fieldHtml += '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide flex items-center gap-1.5">Project Type<button type="button" onclick="showProjectTypeInfoModal()" class="text-gray-400 hover:text-gray-700 inline-flex items-center" title="What does each Project Type mean?" aria-label="Project Type definitions"><i class="fas fa-info-circle text-[11px]"></i></button></label>' + buildSelect('pidFieldProjectType', projectTypeOpts, currentProjectType) + '</div>';
     }
     if (needContract) {
       fieldHtml += '<div>' + lbl('Contract of Initial Development') + buildSelect('pidFieldContractInitial', contractOpts, currentContract) + '</div>';

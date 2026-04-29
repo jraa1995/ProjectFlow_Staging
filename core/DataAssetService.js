@@ -126,3 +126,91 @@ function saveDataAssetsWorkbookId(workbookId) {
     return { success: false, error: error.message };
   }
 }
+
+function previewDataAssetSource(sourceUrl) {
+  try {
+    PermissionGuard.requirePermission('dataasset:read');
+    var fileId = _extractSheetIdFromInput_(sourceUrl);
+    if (!fileId) {
+      return { success: false, error: 'No Google Sheet URL detected. Only Google Sheets can be previewed.' };
+    }
+    var sheetUrl = 'https://docs.google.com/spreadsheets/d/' + fileId + '/edit';
+    var ss;
+    try {
+      ss = SpreadsheetApp.openById(fileId);
+    } catch (e) {
+      var msg = String((e && e.message) || e);
+      var serviceEmail = '';
+      try { serviceEmail = Session.getEffectiveUser().getEmail() || ''; } catch (err) {}
+      return {
+        success: false,
+        code: 'NO_ACCESS',
+        error: msg,
+        serviceEmail: serviceEmail,
+        fileUrl: sheetUrl,
+        fileId: fileId
+      };
+    }
+    var fileName = '';
+    var fileUrl = '';
+    try { fileName = ss.getName(); } catch (e) {}
+    try { fileUrl = ss.getUrl(); } catch (e) {}
+    var allSheets = [];
+    try { allSheets = ss.getSheets(); } catch (e) {}
+    var SHEET_CAP = 20;
+    var COL_CAP = 30;
+    var ROW_CAP = 5;
+    var truncated = allSheets.length > SHEET_CAP;
+    var sheetsOut = [];
+    for (var i = 0; i < Math.min(allSheets.length, SHEET_CAP); i++) {
+      var sheet = allSheets[i];
+      var lastRow = 0;
+      var lastCol = 0;
+      try { lastRow = sheet.getLastRow(); } catch (e) {}
+      try { lastCol = sheet.getLastColumn(); } catch (e) {}
+      if (lastRow === 0 || lastCol === 0) continue;
+      var maxCols = Math.min(lastCol, COL_CAP);
+      var headers = [];
+      var rows = [];
+      try {
+        var headerVals = sheet.getRange(1, 1, 1, maxCols).getDisplayValues();
+        headers = headerVals[0] || [];
+      } catch (e) {}
+      var rowsAvailable = Math.max(0, lastRow - 1);
+      var rowsToRead = Math.min(ROW_CAP, rowsAvailable);
+      if (rowsToRead > 0) {
+        try { rows = sheet.getRange(2, 1, rowsToRead, maxCols).getDisplayValues(); } catch (e) {}
+      }
+      sheetsOut.push({
+        name: sheet.getName(),
+        gid: sheet.getSheetId(),
+        rowCount: lastRow,
+        colCount: lastCol,
+        truncatedCols: lastCol > COL_CAP,
+        headers: headers,
+        rows: rows
+      });
+    }
+    return {
+      success: true,
+      fileId: fileId,
+      fileName: fileName,
+      fileUrl: fileUrl,
+      sheetsTotal: allSheets.length,
+      sheetsTruncated: truncated,
+      sheets: sheetsOut
+    };
+  } catch (error) {
+    console.error('previewDataAssetSource failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function _extractSheetIdFromInput_(input) {
+  if (!input) return '';
+  var s = String(input);
+  var m = s.match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (m) return m[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(s.trim())) return s.trim();
+  return '';
+}

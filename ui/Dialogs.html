@@ -565,7 +565,8 @@
     if (typeof SyncManager !== 'undefined' && SyncManager.startPolling) SyncManager.startPolling();
   }
 
-  var DATA_ASSET_PROJECT_TYPES = ['Data Pipeline', 'Database'];
+  var DATA_ASSET_PROJECT_TYPES = ['Data Pipeline', 'Database', 'ETL'];
+  var PROJECT_TYPE_TO_ASSET_TYPE = { 'Data Pipeline': 'Data Pipeline', 'Database': 'Database', 'ETL': 'Data Process ETL' };
 
   function _showCreatedModal(kind, name, targetView) {
     var viewLabel = kind === 'dataAsset' ? 'Data Assets' : 'Projects';
@@ -587,11 +588,8 @@
     if (Array.isArray(deploymentLoc)) deploymentLoc = deploymentLoc.join(', ');
     var techStack = settings.techStack;
     if (Array.isArray(techStack)) techStack = techStack.join(', ');
-    var routedAssetType = '';
     var incomingProjectType = String(settings.projectType || '').trim();
-    if (incomingProjectType === 'Data Pipeline' || incomingProjectType === 'Database') {
-      routedAssetType = incomingProjectType;
-    }
+    var routedAssetType = PROJECT_TYPE_TO_ASSET_TYPE[incomingProjectType] || '';
     return {
       status: 'Active',
       assetType: routedAssetType,

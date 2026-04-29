@@ -92,7 +92,7 @@
   }
 
   function restoreSidebarGroupStates() {
-    ['workViews', 'management'].forEach(function(groupId) {
+    ['workViews', 'management', 'knowledge'].forEach(function(groupId) {
       var stored = null;
       try { stored = localStorage.getItem('co_sidebar_' + groupId); } catch (e) {}
       if (stored === '0') {

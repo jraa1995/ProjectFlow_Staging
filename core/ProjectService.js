@@ -786,8 +786,11 @@ function migrateProjectToDataAsset(projectId) {
       try { var tParsed = JSON.parse(techStack); if (Array.isArray(tParsed)) techStack = tParsed.join(', '); } catch (e) {}
     }
     var env = deploymentLoc || techStack || '';
+    var assetTypeMap = CONFIG.PROJECT_TYPE_TO_ASSET_TYPE || {};
+    var routedAssetType = assetTypeMap[projectType] || projectType || '';
     var assetPayload = {
       status: 'Active',
+      assetType: routedAssetType,
       assetOwner: project.ownerId || '',
       backupOwner: secondaryUsers || '',
       assetName: project.name || '',
@@ -1293,7 +1296,7 @@ function _boolTrue_(v) {
 
 function buildComplianceRequirements(project, settings, relatedAssetCount) {
   var type = String(settings.projectType || project.projectType || '').trim();
-  var isDeploymentType = type === 'Web Application' || type === 'Data Visualization';
+  var isDeploymentType = type === 'Web Application' || type === 'Data Visualization' || type === 'Dashboard';
   var deployedPublicly = _boolTrue_(settings.deployedPublicly);
   var activeGas = _boolTrue_(settings.activeGas);
   var activeDmp = _boolTrue_(settings.activeDataMgmt);

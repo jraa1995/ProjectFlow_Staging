@@ -77,8 +77,137 @@
   </div>
 </div>
 
+<div id="dataSourcePreviewModal" class="fixed inset-0 z-[10070] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);" onclick="DataAssetPage._previewBackdrop(event)">
+  <div class="flex items-center justify-center h-full p-4">
+    <div class="rounded-xl w-full max-w-6xl max-h-[88vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">
+      <div class="flex items-center justify-between gap-3 px-5 py-3" style="border-bottom:1px solid var(--co-border-subtle);">
+        <div class="flex items-center gap-3 min-w-0 flex-1">
+          <span class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;"><i class="fas fa-table text-[14px]"></i></span>
+          <div class="min-w-0 flex-1">
+            <h3 id="dataSourcePreviewTitle" class="text-[14px] font-semibold tracking-tight truncate" style="color:var(--co-ink);">Loading preview...</h3>
+            <p id="dataSourcePreviewSubtitle" class="text-[11px] truncate mt-0.5" style="color:var(--co-gray-400);"></p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <a id="dataSourcePreviewOpenLink" target="_blank" rel="noopener" class="hidden text-[12px] inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors" style="color:var(--co-ink-muted);border:1px solid var(--co-border-subtle);"><i class="fas fa-external-link-alt text-[10px]"></i>Open</a>
+          <button onclick="DataAssetPage.closePreviewModal()" class="co-icon-btn" aria-label="Close"><i class="fas fa-times text-[13px]"></i></button>
+        </div>
+      </div>
+      <div id="dataSourcePreviewTabs" class="hidden px-3 pt-2 flex flex-wrap gap-0.5" style="background:var(--co-surface-sunken);border-bottom:1px solid var(--co-border-subtle);"></div>
+      <div id="dataSourcePreviewBody" class="flex-1 overflow-auto" style="background:var(--co-surface-sunken);"></div>
+      <div id="dataSourcePreviewFooter" class="px-5 py-2 text-[11px] flex items-center gap-3" style="background:var(--co-surface);color:var(--co-gray-500);border-top:1px solid var(--co-border-subtle);"></div>
+    </div>
+  </div>
+</div>
+
 <style>
 .co-asset-item:hover { background:var(--co-surface-sunken); }
 #daSearchBar { padding:0.625rem 0.875rem; border-bottom:1px solid var(--co-border-subtle); background:var(--co-surface); }
 #daFilterPanel.hidden { display:none; }
+
+.co-source-preview-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  margin-left: 6px;
+  border-radius: 4px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  cursor: pointer;
+  transition: background-color 0.12s;
+  vertical-align: baseline;
+}
+.co-source-preview-pill:hover { background: #d1fae5; }
+
+.data-preview-wrap { padding: 14px 14px 18px; }
+.data-preview-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  background: var(--co-surface);
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  overflow: hidden;
+  table-layout: auto;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.data-preview-table th,
+.data-preview-table td {
+  border-right: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 6px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+  color: #1f2937;
+  vertical-align: top;
+}
+.data-preview-table th:last-child,
+.data-preview-table td:last-child { border-right: none; }
+.data-preview-table tbody tr:last-child td { border-bottom: none; }
+.data-preview-table thead th {
+  background: #f8fafc;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.data-preview-table .data-preview-rownum {
+  background: #f1f5f9;
+  text-align: center;
+  font-size: 10px;
+  color: #64748b;
+  width: 44px;
+  min-width: 44px;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.data-preview-table thead th.data-preview-rownum { z-index: 3; }
+.data-preview-coltag {
+  font-size: 9px;
+  color: #94a3b8;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+.data-preview-colhdr {
+  font-weight: 600;
+  color: #1f2937;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+.data-preview-table tbody tr:nth-child(even) td:not(.data-preview-rownum) { background: #fafbfc; }
+.data-preview-table tbody tr:hover td { background: #f0f9ff !important; }
+.data-preview-table tbody tr:hover td.data-preview-rownum { background: #e0f2fe !important; }
+
+.data-preview-tab {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
+  color: var(--co-gray-500);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.data-preview-tab:hover { color: var(--co-ink); background: rgba(255,255,255,0.5); }
+.data-preview-tab.active {
+  color: var(--co-ink);
+  font-weight: 600;
+  background: var(--co-surface);
+  border-color: var(--co-border-subtle);
+  margin-bottom: -1px;
+  padding-bottom: 7px;
+}
 </style>

@@ -264,4 +264,125 @@
       console.error('preloadPersonnelLists error:', err);
     }
   }
+
+  var Popper = {
+    _attached: {},
+
+    attach: function(triggerEl, popoverEl, options) {
+      if (!triggerEl || !popoverEl) return null;
+      options = options || {};
+      var key = options.key || popoverEl.id || ('pop-' + Math.random().toString(36).slice(2, 9));
+      if (this._attached[key]) this.detach(key);
+
+      var origin = {
+        parent: popoverEl.parentNode,
+        nextSibling: popoverEl.nextSibling,
+        position: popoverEl.style.position,
+        top: popoverEl.style.top,
+        left: popoverEl.style.left,
+        right: popoverEl.style.right,
+        bottom: popoverEl.style.bottom,
+        width: popoverEl.style.width,
+        zIndex: popoverEl.style.zIndex,
+        margin: popoverEl.style.margin
+      };
+
+      if (popoverEl.parentNode !== document.body) document.body.appendChild(popoverEl);
+      popoverEl.style.position = 'fixed';
+      popoverEl.style.right = 'auto';
+      popoverEl.style.bottom = 'auto';
+      popoverEl.style.margin = '0';
+      popoverEl.style.zIndex = String(options.zIndex || 10090);
+
+      var matchWidth = options.matchWidth !== false;
+      var offset = (typeof options.offset === 'number') ? options.offset : 4;
+      var minWidth = options.minWidth || 0;
+      var preferredPlacement = options.placement === 'top' ? 'top' : 'bottom';
+
+      function reposition() {
+        if (detached) return;
+        if (!triggerEl.isConnected) { detach(); return; }
+        var rect = triggerEl.getBoundingClientRect();
+        var width = matchWidth ? Math.max(rect.width, minWidth) : (popoverEl.offsetWidth || 0);
+        if (matchWidth) popoverEl.style.width = width + 'px';
+        var height = popoverEl.offsetHeight || 0;
+        var vh = window.innerHeight;
+        var vw = window.innerWidth;
+        var spaceBelow = vh - rect.bottom - offset;
+        var spaceAbove = rect.top - offset;
+        var placement = preferredPlacement;
+        if (placement === 'bottom' && spaceBelow < height && spaceAbove > spaceBelow) placement = 'top';
+        if (placement === 'top' && spaceAbove < height && spaceBelow > spaceAbove) placement = 'bottom';
+        var top = (placement === 'top') ? (rect.top - height - offset) : (rect.bottom + offset);
+        if (top < 8) top = 8;
+        if (top + height > vh - 8) top = Math.max(8, vh - height - 8);
+        var left = rect.left;
+        if (left + width > vw - 8) left = vw - width - 8;
+        if (left < 8) left = 8;
+        popoverEl.style.top = top + 'px';
+        popoverEl.style.left = left + 'px';
+        popoverEl.dataset.popperPlacement = placement;
+      }
+
+      function onDocMouseDown(e) {
+        if (popoverEl.contains(e.target) || triggerEl.contains(e.target)) return;
+        if (typeof options.onOutsideClick === 'function') options.onOutsideClick(e);
+      }
+      function onKeyDown(e) {
+        if (e.key === 'Escape' && typeof options.onEscape === 'function') options.onEscape(e);
+      }
+      function onScrollOrResize() { reposition(); }
+
+      var detached = false;
+      function detach() {
+        if (detached) return;
+        detached = true;
+        window.removeEventListener('resize', onScrollOrResize);
+        window.removeEventListener('scroll', onScrollOrResize, true);
+        if (options.closeOnOutsideClick !== false) document.removeEventListener('mousedown', onDocMouseDown, true);
+        if (options.closeOnEscape !== false) document.removeEventListener('keydown', onKeyDown, true);
+        delete Popper._attached[key];
+        if (origin.parent && origin.parent !== document.body && origin.parent.isConnected) {
+          if (origin.nextSibling && origin.nextSibling.parentNode === origin.parent) {
+            origin.parent.insertBefore(popoverEl, origin.nextSibling);
+          } else {
+            origin.parent.appendChild(popoverEl);
+          }
+        }
+        popoverEl.style.position = origin.position;
+        popoverEl.style.top = origin.top;
+        popoverEl.style.left = origin.left;
+        popoverEl.style.right = origin.right;
+        popoverEl.style.bottom = origin.bottom;
+        popoverEl.style.width = origin.width;
+        popoverEl.style.zIndex = origin.zIndex;
+        popoverEl.style.margin = origin.margin;
+        delete popoverEl.dataset.popperPlacement;
+      }
+
+      reposition();
+      requestAnimationFrame(reposition);
+      window.addEventListener('resize', onScrollOrResize);
+      window.addEventListener('scroll', onScrollOrResize, true);
+      if (options.closeOnOutsideClick !== false) document.addEventListener('mousedown', onDocMouseDown, true);
+      if (options.closeOnEscape !== false) document.addEventListener('keydown', onKeyDown, true);
+
+      var instance = { key: key, reposition: reposition, detach: detach };
+      this._attached[key] = instance;
+      return instance;
+    },
+
+    detach: function(key) {
+      var instance = this._attached[key];
+      if (instance) instance.detach();
+    },
+
+    reposition: function(key) {
+      var instance = this._attached[key];
+      if (instance) instance.reposition();
+    },
+
+    isAttached: function(key) { return !!this._attached[key]; }
+  };
+  window.Popper = Popper;
 </script>

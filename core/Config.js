@@ -30,7 +30,11 @@ const CONFIG = {
     EMAIL_GROUPS: 'Email_Groups',
     EMAIL_GROUP_MEMBERS: 'Email_Group_Members',
     DATA_ASSET_BUCKETS: 'Data_Asset_Buckets',
-    AUDIT_LOG: 'Audit_Log'
+    AUDIT_LOG: 'Audit_Log',
+    WAGGLES_QUESTIONS: 'Waggles_Questions',
+    WAGGLES_ANSWERS: 'Waggles_Answers',
+    WAGGLES_VOTES: 'Waggles_Votes',
+    WAGGLES_COMMENTS: 'Waggles_Comments'
   },
 
   AUDIT_LOG_COLUMNS: [
@@ -553,7 +557,7 @@ const CONFIG = {
     contractTask: ['AMPS - Task 2', 'AMPS - Other', 'Forward - Other', 'SQuAT - Other', 'N/A'],
     techStack: ['Google Apps Script', 'Google Sheets', 'Google Docs', 'Google Slides', 'Google Forms', 'Google Drive', 'Google Sites', 'Google Calendar', 'Gmail', 'Google Cloud Platform', 'BigQuery', 'Google Analytics', 'Looker Studio', 'Tableau', 'Smartsheet', 'Power BI', 'AWS', 'Azure', 'Python', 'R', 'JavaScript', 'HTML/CSS', 'SQL', 'Google Picker Service API', 'Google Drive API', 'Google Sheets API', 'Google Calendar API', 'Google Tasks API', 'Google Admin SDK API', 'Google Workspace Marketplace SDK'],
     dataCadence: ['Daily', 'Weekly (Mon-Fri)', 'Biweekly', 'Monthly', 'Quarterly', 'Annually', 'Ad Hoc', 'Real-Time', 'N/A'],
-    projectType: ['Web Application', 'Data Visualization']
+    projectType: ['Web Application', 'Data Visualization', 'Dashboard']
   },
 
   BI_SMES: ['Andra Velea', 'Dan Kain', 'Dan Russell', 'Joe Boozer', 'Justin Aguila', 'Michael Gallahan', 'Michael Thoennes', 'Michelle McAllister'],
@@ -572,7 +576,9 @@ const CONFIG = {
     'Web Application': '01',
     'Data Pipeline': '02',
     'Database': '03',
-    'Data Visualization': '04'
+    'Data Visualization': '04',
+    'Dashboard': '05',
+    'ETL': '06'
   },
 
   PROJECT_ID_CONTRACT_CODES: {
@@ -581,9 +587,15 @@ const CONFIG = {
     'AMPS': 'A'
   },
 
-  PROJECT_TYPE_OPTIONS: ['Web Application', 'Data Visualization'],
+  PROJECT_TYPE_OPTIONS: ['Web Application', 'Data Visualization', 'Dashboard'],
 
-  DATA_ASSET_PROJECT_TYPES: ['Data Pipeline', 'Database'],
+  DATA_ASSET_PROJECT_TYPES: ['Data Pipeline', 'Database', 'ETL'],
+
+  PROJECT_TYPE_TO_ASSET_TYPE: {
+    'Data Pipeline': 'Data Pipeline',
+    'Database': 'Database',
+    'ETL': 'Data Process ETL'
+  },
 
   DEPRECATED_SETTINGS_KEYS: ['futureOwner', 'futureContractHome', 'transitionPriority', 'transitionMeetingDate', 'transitionComplete'],
 
@@ -591,7 +603,58 @@ const CONFIG = {
 
   AUTO_ARCHIVE_DONE_DAYS: 3,
 
-  INTERNAL_DOMAINS_PROP_KEY: 'INTERNAL_DOMAINS'
+  INTERNAL_DOMAINS_PROP_KEY: 'INTERNAL_DOMAINS',
+
+  WAGGLES_QUESTION_COLUMNS: [
+    'id',
+    'title',
+    'body',
+    'authorEmail',
+    'authorName',
+    'tags',
+    'projectId',
+    'taskId',
+    'dataAssetId',
+    'status',
+    'acceptedAnswerId',
+    'viewCount',
+    'createdAt',
+    'updatedAt',
+    'lastActivityAt'
+  ],
+
+  WAGGLES_ANSWER_COLUMNS: [
+    'id',
+    'questionId',
+    'body',
+    'authorEmail',
+    'authorName',
+    'isAccepted',
+    'createdAt',
+    'updatedAt'
+  ],
+
+  WAGGLES_VOTE_COLUMNS: [
+    'id',
+    'targetType',
+    'targetId',
+    'voterEmail',
+    'value',
+    'createdAt',
+    'updatedAt'
+  ],
+
+  WAGGLES_COMMENT_COLUMNS: [
+    'id',
+    'targetType',
+    'targetId',
+    'body',
+    'authorEmail',
+    'authorName',
+    'createdAt'
+  ],
+
+  WAGGLES_QUESTION_STATUSES: ['open', 'closed', 'deleted']
 
 };
 

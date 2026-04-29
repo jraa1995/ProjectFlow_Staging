@@ -1,0 +1,82 @@
+<div class="h-full flex flex-col">
+  <div class="px-6 py-3 flex items-center justify-between gap-4 flex-shrink-0" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <h2 class="text-[18px] font-semibold tracking-tight flex items-center gap-2 mr-2" style="color:var(--co-ink);letter-spacing:-0.015em;">
+        <i class="fas fa-comments" style="color:var(--co-accent-500);font-size:14px;"></i>Waggles
+      </h2>
+      <span class="text-[12px]" style="color:var(--co-ink-muted);">Share what you know — ask, answer, level up the colony.</span>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <input id="wgSearchInput" type="text" placeholder="Search questions..." oninput="_pc('WagglesPage','onSearchInput',this.value)" class="co-search-input w-64" />
+      <button id="wgRefreshBtn" onclick="_pc('WagglesPage','loadList',true)" class="co-btn-outline" title="Refresh">
+        <i id="wgRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh
+      </button>
+      <button onclick="_pc('WagglesPage','openAskModal')" class="co-btn-solid">
+        <i class="fas fa-plus text-[11px]"></i> Ask Question
+      </button>
+    </div>
+  </div>
+
+  <div class="flex-1 flex min-h-0 overflow-hidden">
+    <aside class="w-[360px] flex-shrink-0 flex flex-col" style="background:var(--co-surface);border-right:1px solid var(--co-border-subtle);">
+      <div class="px-4 py-3 flex items-center gap-2 flex-wrap" style="border-bottom:1px solid var(--co-border-subtle);">
+        <select id="wgFilterScope" onchange="_pc('WagglesPage','setFilter','scope',this.value)" class="co-filter-select">
+          <option value="all">All questions</option>
+          <option value="unanswered">Unanswered</option>
+          <option value="mine">My questions</option>
+          <option value="answered">Answered</option>
+        </select>
+        <select id="wgFilterSort" onchange="_pc('WagglesPage','setFilter','sort',this.value)" class="co-filter-select">
+          <option value="recent">Most recent</option>
+          <option value="top">Highest score</option>
+          <option value="active">Most active</option>
+        </select>
+      </div>
+      <div id="wgTagsBar" class="px-4 py-2 flex flex-wrap gap-1.5" style="border-bottom:1px solid var(--co-border-subtle);min-height:36px;"></div>
+      <div id="wgList" class="flex-1 overflow-y-auto"></div>
+    </aside>
+
+    <section class="flex-1 min-w-0 overflow-y-auto">
+      <div id="wgDetail" class="max-w-[920px] mx-auto px-8 py-6"></div>
+    </section>
+  </div>
+
+  <div id="wgAskModal" class="hidden fixed inset-0 z-[10070] flex items-center justify-center" style="background:rgba(15,15,12,0.5);">
+    <div class="rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);box-shadow:0 24px 48px rgba(0,0,0,0.25);">
+      <div class="flex items-center justify-between px-6 py-4" style="border-bottom:1px solid var(--co-border-subtle);">
+        <h3 class="text-[15px] font-semibold tracking-tight" style="color:var(--co-ink);letter-spacing:-0.01em;">Ask the colony</h3>
+        <button onclick="_pc('WagglesPage','closeAskModal')" class="co-icon-btn" aria-label="Close">
+          <i class="fas fa-times text-[13px]"></i>
+        </button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Title</label>
+          <input id="wgAskTitle" type="text" placeholder="Be specific. What are you trying to do?" class="co-input w-full" maxlength="200" />
+          <div class="text-[11px] mt-1" style="color:var(--co-gray-400);"><span id="wgAskTitleCount">0</span>/200</div>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Details</label>
+          <textarea id="wgAskBody" rows="8" placeholder="Include context, what you tried, and what you expected. Markdown-ish text is fine." class="co-textarea w-full font-mono text-[13px]"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Tags</label>
+            <input id="wgAskTags" type="text" placeholder="comma,separated,tags" class="co-input w-full" />
+            <div class="text-[11px] mt-1" style="color:var(--co-gray-400);">Up to 5 tags. Lowercase, hyphenated.</div>
+          </div>
+          <div>
+            <label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Link to project (optional)</label>
+            <select id="wgAskProject" class="co-select w-full"><option value="">— None —</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 px-6 py-4" style="border-top:1px solid var(--co-border-subtle);">
+        <button onclick="_pc('WagglesPage','closeAskModal')" class="co-btn-outline">Cancel</button>
+        <button id="wgAskSubmit" onclick="_pc('WagglesPage','submitAsk')" class="co-btn-solid">
+          <i class="fas fa-paper-plane text-[11px]"></i> Post Question
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

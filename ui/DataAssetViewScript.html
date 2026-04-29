@@ -503,6 +503,11 @@ var DataAssetPage = {
     var a = this.selectedAsset;
     var dotColor = this._statusColor(a.status);
 
+    var sheetUrls = this._findSheetUrlsInAsset(a);
+    var hasSheetUrls = sheetUrls.length > 0;
+    var previewBtnAttrs = hasSheetUrls
+      ? 'onclick="DataAssetPage.previewFromHeader()" title="Preview the first Google Sheet linked in this asset"'
+      : 'disabled aria-disabled="true" title="No Google Sheet URL detected in Data Source, Target Files, or Data Sharing Doc" style="opacity:0.5;cursor:not-allowed;"';
     var header = '<div class="px-6 py-3 flex items-center justify-between flex-shrink-0" style="background:var(--co-surface);border-bottom:1px solid var(--co-border-subtle);">' +
       '<div class="flex items-center gap-3 min-w-0">' +
       '<h2 class="text-[16px] font-semibold tracking-tight truncate" style="color:var(--co-ink);letter-spacing:-0.01em;">' + escapeHtml(a.assetName || '-') + '</h2>' +
@@ -511,6 +516,8 @@ var DataAssetPage = {
       escapeHtml(a.status || '') + '</span>' +
       '</div>' +
       '<div class="flex items-center gap-2 flex-shrink-0">' +
+      '<button type="button" ' + previewBtnAttrs + ' class="co-btn-outline" style="border-color:#a7f3d0;color:#047857;">' +
+      '<i class="fas fa-table text-[11px]"></i> Preview Sheet' + (sheetUrls.length > 1 ? ' (' + sheetUrls.length + ')' : '') + '</button>' +
       '<button onclick="DataAssetPage.toggleEdit()" class="co-btn-outline">' +
       '<i class="fas fa-pencil-alt text-[11px]"></i> Edit</button>' +
       '<button onclick="DataAssetPage.confirmDelete(\'' + escapeHtml(a.id) + '\')" class="inline-flex items-center gap-2 px-3.5 py-1.5 text-[13px] rounded-lg transition-colors" style="background:var(--co-surface);border:1px solid rgba(220,38,38,0.25);color:#dc2626;" onmouseover="this.style.background=\'#fef2f2\'" onmouseout="this.style.background=\'var(--co-surface)\'">' +
@@ -528,8 +535,11 @@ var DataAssetPage = {
       if (!url) return '<span class="text-gray-400">-</span>';
       var u = escapeHtml(url);
       var display = url.length > 60 ? escapeHtml(url.substring(0, 57)) + '...' : u;
-      return '<a href="' + u + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 flex items-center gap-1">' +
-        display + '<i class="fas fa-external-link-alt text-xs text-gray-400"></i></a>';
+      var previewBtn = DataAssetPage._isPreviewableSheetUrl(url)
+        ? ' <button type="button" data-url="' + escapeHtml(url) + '" onclick="DataAssetPage.previewSourceUrl(this.dataset.url)" class="co-source-preview-pill"><i class="fas fa-table text-[9px]"></i>Preview</button>'
+        : '';
+      return '<span class="inline-flex items-center flex-wrap gap-1"><a href="' + u + '" target="_blank" class="text-gray-700 hover:text-gray-900 underline underline-offset-2 inline-flex items-center gap-1">' +
+        display + '<i class="fas fa-external-link-alt text-xs text-gray-400"></i></a>' + previewBtn + '</span>';
     };
 
     var relProjectsDisplay = '';
@@ -564,8 +574,8 @@ var DataAssetPage = {
       row('Asset Owner', escapeHtml(a.assetOwner || '')) +
       row('Backup Owner', escapeHtml(a.backupOwner || '')) +
       row('Asset Name', escapeHtml(a.assetName || '')) +
-      row('Data Source', escapeHtml(a.dataSource || '')) +
-      row('Target File(s)', escapeHtml(a.targetFiles || '')) +
+      row('Data Source', this._renderSourceText(a.dataSource)) +
+      row('Target File(s)', this._renderSourceText(a.targetFiles)) +
       row('Related Project(s)', relProjectsDisplay || '') +
       row('Primary Stakeholder', escapeHtml(a.primaryStakeholder || '')) +
       row('Update Frequency', escapeHtml(a.updateFrequency || '')) +
@@ -1515,10 +1525,315 @@ var DataAssetPage = {
       'In Development': '#3b82f6'
     };
     return map[status] || '#9ca3af';
+  },
+
+  _SHEETS_URL_RE: /(https?:\/\/(?:docs|sheets)\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9?=&#_-]*)?)/g,
+
+  _isPreviewableSheetUrl(url) {
+    if (!url) return false;
+    var s = String(url).trim();
+    return /^https?:\/\/(docs|sheets)\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9_-]+/.test(s);
+  },
+
+  _findSheetUrlsInAsset(asset) {
+    if (!asset) return [];
+    var sources = [
+      { field: 'Data Source', text: asset.dataSource },
+      { field: 'Target Files', text: asset.targetFiles },
+      { field: 'Data Sharing Doc', text: asset.dataSharingDocLink }
+    ];
+    var found = [];
+    var seen = {};
+    var re = new RegExp(this._SHEETS_URL_RE.source, 'g');
+    sources.forEach(function(src) {
+      if (!src.text) return;
+      var s = String(src.text);
+      var m;
+      re.lastIndex = 0;
+      while ((m = re.exec(s)) !== null) {
+        var url = m[0].replace(/[.,;:!?)]+$/, '');
+        if (seen[url]) continue;
+        seen[url] = true;
+        found.push({ field: src.field, url: url });
+      }
+    });
+    return found;
+  },
+
+  previewFromHeader() {
+    var asset = this.selectedAsset;
+    if (!asset) return;
+    var found = this._findSheetUrlsInAsset(asset);
+    if (found.length === 0) {
+      if (typeof toast === 'function') toast('No Google Sheet URL found in Data Source, Target Files, or Data Sharing Doc.', 'warning');
+      return;
+    }
+    if (found.length === 1) {
+      this.previewSourceUrl(found[0].url);
+      return;
+    }
+    this._openSheetPicker(found);
+  },
+
+  _openSheetPicker(found) {
+    var existing = document.getElementById('dataSourcePickerModal');
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = 'dataSourcePickerModal';
+    modal.className = 'fixed inset-0 z-[10075] flex items-center justify-center';
+    modal.style.cssText = 'background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    var rows = found.map(function(item, i) {
+      var display = item.url.length > 70 ? item.url.substring(0, 67) + '...' : item.url;
+      return '<button type="button" data-url="' + escapeHtml(item.url) + '" data-idx="' + i + '" class="da-picker-row w-full text-left px-4 py-3 flex items-start gap-3 transition-colors" style="border-bottom:1px solid var(--co-border-subtle);background:transparent;" onmouseover="this.style.background=\'var(--co-surface-sunken)\'" onmouseout="this.style.background=\'transparent\'">' +
+        '<i class="fas fa-table mt-0.5" style="color:#047857;font-size:12px;"></i>' +
+        '<div class="min-w-0 flex-1">' +
+        '<div class="text-[11px] uppercase tracking-wide font-medium" style="color:var(--co-gray-500);">' + escapeHtml(item.field) + '</div>' +
+        '<div class="text-[13px] truncate mt-0.5" style="color:var(--co-ink);">' + escapeHtml(display) + '</div>' +
+        '</div>' +
+        '<i class="fas fa-chevron-right mt-1.5" style="color:var(--co-gray-400);font-size:10px;"></i>' +
+        '</button>';
+    }).join('');
+    modal.innerHTML =
+      '<div class="rounded-xl w-full max-w-md mx-4 overflow-hidden" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">' +
+      '<div class="flex items-center justify-between px-5 py-4" style="border-bottom:1px solid var(--co-border-subtle);">' +
+      '<h3 class="text-[14px] font-semibold tracking-tight" style="color:var(--co-ink);">Choose a sheet to preview</h3>' +
+      '<button type="button" onclick="document.getElementById(\'dataSourcePickerModal\').remove()" class="co-icon-btn" aria-label="Close"><i class="fas fa-times text-[13px]"></i></button>' +
+      '</div>' +
+      '<div>' + rows + '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+    modal.querySelectorAll('.da-picker-row').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var url = btn.dataset.url;
+        modal.remove();
+        DataAssetPage.previewSourceUrl(url);
+      });
+    });
+  },
+
+  _renderSourceText(text) {
+    if (!text) return '<span class="text-gray-400">-</span>';
+    var s = String(text);
+    var re = new RegExp(this._SHEETS_URL_RE.source, 'g');
+    var lastIdx = 0;
+    var out = '';
+    var matched = false;
+    var m;
+    while ((m = re.exec(s)) !== null) {
+      matched = true;
+      out += this._renderTextWithGenericLinks(s.substring(lastIdx, m.index));
+      var url = m[0].replace(/[.,;:!?)]+$/, '');
+      var trail = m[0].substring(url.length);
+      var display = url.length > 60 ? url.substring(0, 57) + '...' : url;
+      out += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" class="text-indigo-600 hover:underline break-all">' + escapeHtml(display) + '</a>';
+      out += ' <button type="button" data-url="' + escapeHtml(url) + '" onclick="DataAssetPage.previewSourceUrl(this.dataset.url)" class="co-source-preview-pill"><i class="fas fa-table text-[9px]"></i>Preview</button>';
+      out += escapeHtml(trail);
+      lastIdx = re.lastIndex;
+    }
+    out += this._renderTextWithGenericLinks(s.substring(lastIdx));
+    if (!matched) {
+      return this._renderTextWithGenericLinks(s);
+    }
+    return out;
+  },
+
+  _renderTextWithGenericLinks(text) {
+    if (!text) return '';
+    if (typeof escapeHtmlWithLinks === 'function') return escapeHtmlWithLinks(text);
+    return escapeHtml(text);
+  },
+
+  previewSourceUrl(url) {
+    var modal = document.getElementById('dataSourcePreviewModal');
+    if (!modal) return;
+    document.getElementById('dataSourcePreviewTitle').textContent = 'Loading preview...';
+    document.getElementById('dataSourcePreviewSubtitle').textContent = url || '';
+    var bodyEl = document.getElementById('dataSourcePreviewBody');
+    bodyEl.innerHTML = '<div class="p-12 text-center text-sm" style="color:var(--co-gray-400);"><i class="fas fa-spinner fa-spin mr-2"></i>Loading sheet...</div>';
+    document.getElementById('dataSourcePreviewTabs').classList.add('hidden');
+    document.getElementById('dataSourcePreviewOpenLink').classList.add('hidden');
+    document.getElementById('dataSourcePreviewFooter').textContent = '';
+    modal.classList.remove('hidden');
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) { self._renderPreviewResult(result, url); })
+      .withFailureHandler(function(err) { self._renderPreviewError((err && err.message) || 'Could not load preview'); })
+      .previewDataAssetSource(url);
+  },
+
+  _renderPreviewResult(result, originalUrl) {
+    if (!result || !result.success) {
+      if (result && result.code === 'NO_ACCESS') {
+        return this._renderNoAccessState(result, originalUrl);
+      }
+      return this._renderPreviewError((result && result.error) || 'Preview failed');
+    }
+    document.getElementById('dataSourcePreviewTitle').textContent = result.fileName || 'Untitled spreadsheet';
+    var subtitle = '';
+    if (result.sheets) {
+      var n = result.sheets.length;
+      subtitle = n + ' sheet' + (n === 1 ? '' : 's');
+      if (result.sheetsTruncated) subtitle += ' (showing first 20)';
+    }
+    document.getElementById('dataSourcePreviewSubtitle').textContent = subtitle;
+    var openLink = document.getElementById('dataSourcePreviewOpenLink');
+    if (result.fileUrl) {
+      openLink.href = result.fileUrl;
+      openLink.innerHTML = '<i class="fas fa-external-link-alt text-[10px]"></i>Open in Sheets';
+      openLink.classList.remove('hidden');
+    }
+    if (!result.sheets || result.sheets.length === 0) {
+      document.getElementById('dataSourcePreviewBody').innerHTML = '<div class="p-12 text-center text-sm" style="color:var(--co-gray-400);">All sheets in this workbook are empty.</div>';
+      return;
+    }
+    this._previewSheets = result.sheets;
+    this._renderPreviewSheet(0);
+  },
+
+  _renderPreviewSheet(idx) {
+    var sheets = this._previewSheets || [];
+    var current = sheets[idx];
+    if (!current) return;
+    var tabsEl = document.getElementById('dataSourcePreviewTabs');
+    if (sheets.length > 1) {
+      tabsEl.classList.remove('hidden');
+      tabsEl.innerHTML = sheets.map(function(s, i) {
+        var cls = 'data-preview-tab' + (i === idx ? ' active' : '');
+        return '<button type="button" class="' + cls + '" onclick="DataAssetPage._renderPreviewSheet(' + i + ')">' + escapeHtml(s.name) + '</button>';
+      }).join('');
+    } else {
+      tabsEl.classList.add('hidden');
+    }
+    var bodyEl = document.getElementById('dataSourcePreviewBody');
+    var headers = current.headers || [];
+    var rows = current.rows || [];
+    if (headers.length === 0) {
+      bodyEl.innerHTML = '<div class="p-12 text-center text-sm" style="color:var(--co-gray-400);">This sheet has no header row.</div>';
+      return;
+    }
+    var colLetter = function(i) {
+      var s = '';
+      var n = i + 1;
+      while (n > 0) {
+        var rem = (n - 1) % 26;
+        s = String.fromCharCode(65 + rem) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    };
+    var headerHtml = '<th class="data-preview-rownum">·</th>' + headers.map(function(h, i) {
+      return '<th><div class="data-preview-coltag">' + escapeHtml(colLetter(i)) + '</div><div class="data-preview-colhdr">' + escapeHtml(h || '') + '</div></th>';
+    }).join('');
+    var bodyHtml;
+    if (rows.length === 0) {
+      bodyHtml = '<tr><td colspan="' + (headers.length + 1) + '" class="text-center" style="padding:24px;color:var(--co-gray-400);font-style:italic;">No data rows beyond the header.</td></tr>';
+    } else {
+      bodyHtml = rows.map(function(r, i) {
+        return '<tr><td class="data-preview-rownum">' + (i + 2) + '</td>' +
+          headers.map(function(_, ci) {
+            var cell = (r && r[ci] != null) ? r[ci] : '';
+            return '<td title="' + escapeHtml(String(cell)) + '">' + escapeHtml(String(cell)) + '</td>';
+          }).join('') + '</tr>';
+      }).join('');
+    }
+    bodyEl.innerHTML = '<div class="data-preview-wrap"><div style="overflow:auto;"><table class="data-preview-table"><thead><tr>' + headerHtml + '</tr></thead><tbody>' + bodyHtml + '</tbody></table></div></div>';
+    var footer = document.getElementById('dataSourcePreviewFooter');
+    var dataRowCount = Math.max(0, current.rowCount - 1);
+    var note = '';
+    if (dataRowCount > 5) note = 'Showing first 5 of ' + dataRowCount.toLocaleString() + ' data rows';
+    else if (dataRowCount > 0) note = 'Showing all ' + dataRowCount + ' row' + (dataRowCount === 1 ? '' : 's');
+    else note = 'Headers only';
+    if (current.truncatedCols) note += ' · First 30 of ' + current.colCount + ' columns';
+    footer.textContent = note;
+  },
+
+  _renderPreviewError(message) {
+    var bodyEl = document.getElementById('dataSourcePreviewBody');
+    bodyEl.innerHTML = '<div class="p-10 text-center"><i class="fas fa-exclamation-triangle text-2xl mb-3" style="color:var(--co-amber-500,#f59e0b);"></i><p class="text-sm font-medium" style="color:var(--co-ink);">' + escapeHtml(message) + '</p></div>';
+    document.getElementById('dataSourcePreviewSubtitle').textContent = 'Unable to load preview';
+  },
+
+  _renderNoAccessState(result, originalUrl) {
+    var bodyEl = document.getElementById('dataSourcePreviewBody');
+    var serviceEmail = (result && result.serviceEmail) || '';
+    var openUrl = (result && result.fileUrl) || originalUrl || '';
+    var copySnippet = '';
+    if (serviceEmail) {
+      copySnippet =
+        '<div class="mt-1 inline-flex items-center gap-2 rounded-md px-2.5 py-1.5" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">' +
+        '<code class="text-[12px]" style="font-family:\'SF Mono\',Menlo,Consolas,monospace;color:var(--co-ink);">' + escapeHtml(serviceEmail) + '</code>' +
+        '<button type="button" data-email="' + escapeHtml(serviceEmail) + '" onclick="DataAssetPage._copyServiceEmail(this)" class="text-[11px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors" style="color:var(--co-ink-muted);background:transparent;border:1px solid var(--co-border-subtle);" title="Copy email"><i class="fas fa-copy text-[10px]"></i>Copy</button>' +
+        '</div>';
+    }
+    var openBtn = openUrl
+      ? '<a href="' + escapeHtml(openUrl) + '" target="_blank" rel="noopener" class="co-btn-solid"><i class="fas fa-external-link-alt text-[10px]"></i>Open in Google Sheets</a>'
+      : '';
+    var html =
+      '<div class="px-10 py-12 text-center mx-auto" style="max-width:520px;">' +
+      '<div class="w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center" style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;"><i class="fas fa-lock text-[18px]"></i></div>' +
+      '<h3 class="text-[15px] font-semibold mb-2" style="color:var(--co-ink);">Permission required</h3>' +
+      '<p class="text-[13px] leading-relaxed mb-4" style="color:var(--co-ink-muted);">' +
+      'COLONY can\'t open this sheet to build a preview. ' +
+      (openUrl ? 'Open it directly to view in your browser — Google will prompt you to request access if you don\'t have it.' : '') +
+      '</p>' +
+      (serviceEmail
+        ? '<p class="text-[12px] leading-relaxed mb-2" style="color:var(--co-gray-500);">To enable previews here, share the sheet (Viewer is enough) with COLONY\'s service account:</p>' + copySnippet
+        : '') +
+      '<div class="flex items-center justify-center gap-2 mt-6">' +
+      openBtn +
+      '<button type="button" onclick="DataAssetPage.closePreviewModal()" class="co-btn-outline">Close</button>' +
+      '</div>' +
+      '</div>';
+    bodyEl.innerHTML = html;
+    document.getElementById('dataSourcePreviewTitle').textContent = 'Sheet not accessible';
+    document.getElementById('dataSourcePreviewSubtitle').textContent = 'Permission required';
+    document.getElementById('dataSourcePreviewOpenLink').classList.add('hidden');
+    document.getElementById('dataSourcePreviewFooter').textContent = '';
+    document.getElementById('dataSourcePreviewTabs').classList.add('hidden');
+  },
+
+  _copyServiceEmail(btn) {
+    var email = (btn && btn.dataset && btn.dataset.email) || '';
+    if (!email) return;
+    var done = function(ok) {
+      if (typeof toast === 'function') {
+        toast(ok ? ('Copied: ' + email) : ('Copy failed. Email: ' + email), ok ? 'success' : 'info');
+      }
+    };
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(email).then(function() { done(true); }, function() { done(false); });
+      return;
+    }
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = email;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      done(ok);
+    } catch (e) { done(false); }
+  },
+
+  _previewBackdrop(event) {
+    if (event.target && event.target.id === 'dataSourcePreviewModal') this.closePreviewModal();
+  },
+
+  closePreviewModal() {
+    var modal = document.getElementById('dataSourcePreviewModal');
+    if (modal) modal.classList.add('hidden');
+    this._previewSheets = null;
   }
 };
 
 window.DataAssetPage = DataAssetPage;
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  var modal = document.getElementById('dataSourcePreviewModal');
+  if (modal && !modal.classList.contains('hidden')) DataAssetPage.closePreviewModal();
+});
 } catch (e) { console.error('DataAssetViewScript init error:', e); }
 })();
 </script>

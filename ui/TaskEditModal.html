@@ -1059,6 +1059,10 @@ var TaskEditModal = {
   },
 
   close() {
+    if (window.Popper) {
+      Popper.detach('searchable-taskEditProject');
+      Popper.detach('searchable-taskEditDataAsset');
+    }
     const modal = document.getElementById('taskEditModal');
     if (modal) {
       modal.classList.add('hidden');
@@ -2058,6 +2062,15 @@ var TaskEditModal = {
     dropdown.innerHTML = listHtml;
     dropdown.classList.remove('hidden');
     var self = this;
+    if (window.Popper) {
+      Popper.attach(input, dropdown, {
+        key: 'searchable-' + selectId,
+        matchWidth: true,
+        offset: 4,
+        onOutsideClick: function() { self._closeSearchableDropdown(selectId); self._syncSearchableDisplay(selectId); },
+        onEscape: function() { self._closeSearchableDropdown(selectId); input.blur(); }
+      });
+    }
     dropdown.querySelectorAll('.co-searchable-option').forEach(function(el) {
       el.addEventListener('mousedown', function(evt) {
         evt.preventDefault();
@@ -2074,6 +2087,7 @@ var TaskEditModal = {
   _closeSearchableDropdown(selectId) {
     var cfg = this._searchableConfig[selectId];
     if (!cfg) return;
+    if (window.Popper) Popper.detach('searchable-' + selectId);
     var dropdown = document.getElementById(cfg.dropdownId);
     if (dropdown) dropdown.classList.add('hidden');
   },
@@ -2271,7 +2285,8 @@ var TaskEditModal = {
     let added = 0;
     const errors = [];
     if (!files.length) return;
-    toast('Uploading ' + files.length + ' file(s)...', 'info');
+    var label = files.length === 1 ? ('Uploading ' + (files[0].name || 'file') + '...') : ('Uploading ' + files.length + ' files...');
+    showLoading(true, label);
     files.forEach(function(file) {
       if (file.size > MAX) {
         errors.push(file.name + ': exceeds 10 MB');
@@ -2310,7 +2325,7 @@ var TaskEditModal = {
   },
 
   _afterAttachmentUpload(added, errors) {
-    if (added > 0) toast('Attached ' + added + ' file(s)', 'success');
+    showLoading(false);
     if (errors && errors.length) toast(errors.join(' · '), 'error');
   },
 
@@ -2331,22 +2346,69 @@ var TaskEditModal = {
   },
 
   pasteScreenshot() {
-    toast('Press Cmd/Ctrl+V to paste a screenshot...', 'info');
-    const handler = async function(e) {
-      const items = (e.clipboardData && e.clipboardData.items) ? Array.prototype.slice.call(e.clipboardData.items) : [];
-      const imageItem = items.find(function(it) { return it.type && it.type.indexOf('image/') === 0; });
-      if (!imageItem) return;
-      e.preventDefault();
-      window.removeEventListener('paste', handler);
-      const blob = imageItem.getAsFile();
-      if (!blob) { toast('No image found in clipboard', 'error'); return; }
-      const ext = (blob.type.split('/')[1] || 'png').toLowerCase();
-      const fname = 'screenshot-' + Date.now() + '.' + ext;
-      const renamed = new File([blob], fname, { type: blob.type });
-      TaskEditModal._uploadAttachmentFiles([renamed]);
+    const self = this;
+    if (navigator.clipboard && typeof navigator.clipboard.read === 'function') {
+      navigator.clipboard.read().then(function(items) {
+        var list = Array.prototype.slice.call(items || []);
+        for (var i = 0; i < list.length; i++) {
+          var item = list[i];
+          var imageType = (item.types || []).find(function(t) { return t && t.indexOf('image/') === 0; });
+          if (imageType) {
+            return item.getType(imageType).then(function(blob) {
+              var ext = (imageType.split('/')[1] || 'png').toLowerCase();
+              var fname = 'screenshot-' + Date.now() + '.' + ext;
+              var file = new File([blob], fname, { type: imageType });
+              self._uploadAttachmentFiles([file]);
+            });
+          }
+        }
+        self._fallbackPasteScreenshot('No image found in clipboard. Take a screenshot, then click Paste Screenshot — or press Cmd/Ctrl+V now.');
+      }).catch(function(err) {
+        console.warn('Clipboard.read() unavailable:', err && err.message);
+        self._fallbackPasteScreenshot('Press Cmd/Ctrl+V to paste a screenshot...');
+      });
+      return;
+    }
+    self._fallbackPasteScreenshot('Press Cmd/Ctrl+V to paste a screenshot...');
+  },
+
+  _fallbackPasteScreenshot(message) {
+    const self = this;
+    toast(message || 'Press Cmd/Ctrl+V to paste a screenshot...', 'info');
+    var receiver = document.createElement('textarea');
+    receiver.setAttribute('aria-hidden', 'true');
+    receiver.setAttribute('tabindex', '-1');
+    receiver.style.cssText = 'position:fixed;left:-9999px;top:0;width:10px;height:10px;opacity:0;';
+    document.body.appendChild(receiver);
+    var prevActive = document.activeElement;
+    receiver.focus();
+    var done = false;
+    var cleanup = function() {
+      if (done) return;
+      done = true;
+      receiver.removeEventListener('paste', handler);
+      if (receiver.parentNode) receiver.parentNode.removeChild(receiver);
+      try { if (prevActive && typeof prevActive.focus === 'function') prevActive.focus(); } catch (e) {}
     };
-    window.addEventListener('paste', handler);
-    setTimeout(function() { window.removeEventListener('paste', handler); }, 30000);
+    var handler = function(e) {
+      var items = (e.clipboardData && e.clipboardData.items) ? Array.prototype.slice.call(e.clipboardData.items) : [];
+      var imageItem = items.find(function(it) { return it.type && it.type.indexOf('image/') === 0; });
+      if (!imageItem) {
+        toast('No image in clipboard. Take a screenshot first, then try again.', 'error');
+        cleanup();
+        return;
+      }
+      e.preventDefault();
+      var blob = imageItem.getAsFile();
+      cleanup();
+      if (!blob) { toast('Could not read image from clipboard', 'error'); return; }
+      var ext = (blob.type.split('/')[1] || 'png').toLowerCase();
+      var fname = 'screenshot-' + Date.now() + '.' + ext;
+      var renamed = new File([blob], fname, { type: blob.type });
+      self._uploadAttachmentFiles([renamed]);
+    };
+    receiver.addEventListener('paste', handler);
+    setTimeout(cleanup, 30000);
   },
 
   _loadAttachmentsFromTask(task) {

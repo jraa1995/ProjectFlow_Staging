@@ -1,0 +1,603 @@
+<script>
+(function() {
+try {
+var WagglesPage = {
+  questions: [],
+  topTags: [],
+  selectedQuestionId: null,
+  detail: null,
+  filter: { scope: 'all', sort: 'recent', tag: '', search: '' },
+  formOptions: { projects: [], dataAssets: [] },
+  _searchTimer: null,
+  _initialLoadDone: false,
+
+  init() {
+    this.loadFormOptions();
+    this.loadList();
+  },
+
+  loadFormOptions() {
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          self.formOptions = { projects: result.projects || [], dataAssets: result.dataAssets || [] };
+          self._populateAskProjectSelect();
+        }
+      })
+      .withFailureHandler(function() {})
+      .getWagglesFormOptions();
+  },
+
+  _populateAskProjectSelect() {
+    var sel = document.getElementById('wgAskProject');
+    if (!sel) return;
+    var html = '<option value="">— None —</option>';
+    this.formOptions.projects.forEach(function(p) {
+      html += '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name) + '</option>';
+    });
+    sel.innerHTML = html;
+  },
+
+  loadList(force) {
+    var btn = document.getElementById('wgRefreshBtn');
+    var icon = document.getElementById('wgRefreshIcon');
+    if (force && btn) btn.disabled = true;
+    if (force && icon) icon.classList.add('fa-spin');
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove('fa-spin');
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Failed to load Waggles', 'error');
+          return;
+        }
+        self.questions = result.questions || [];
+        self.topTags = result.topTags || [];
+        self.renderTagsBar();
+        self.renderList();
+        if (!self._initialLoadDone && self.questions.length > 0 && !self.selectedQuestionId) {
+          self.selectQuestion(self.questions[0].id);
+        } else if (self.selectedQuestionId) {
+          var still = self.questions.some(function(q) { return q.id === self.selectedQuestionId; });
+          if (!still) self.renderEmptyDetail();
+        } else {
+          self.renderEmptyDetail();
+        }
+        self._initialLoadDone = true;
+      })
+      .withFailureHandler(function(err) {
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove('fa-spin');
+        console.error('Waggles loadList failed:', err);
+        toast('Failed to load Waggles', 'error');
+      })
+      .getWagglesList({});
+  },
+
+  setFilter(key, value) {
+    this.filter[key] = value;
+    this.renderList();
+  },
+
+  onSearchInput(value) {
+    var self = this;
+    this.filter.search = String(value || '').trim();
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(function() { self.renderList(); }, 180);
+  },
+
+  toggleTag(tag) {
+    this.filter.tag = (this.filter.tag === tag) ? '' : tag;
+    this.renderTagsBar();
+    this.renderList();
+  },
+
+  _filteredQuestions() {
+    var f = this.filter;
+    var me = (typeof State !== 'undefined' && State.user && State.user.email) ? String(State.user.email).toLowerCase() : '';
+    var search = f.search ? f.search.toLowerCase() : '';
+    var arr = this.questions.slice();
+    if (f.scope === 'unanswered') arr = arr.filter(function(q) { return !q.answerCount; });
+    else if (f.scope === 'answered') arr = arr.filter(function(q) { return q.answerCount > 0; });
+    else if (f.scope === 'mine' && me) arr = arr.filter(function(q) { return String(q.authorEmail || '').toLowerCase() === me; });
+    if (f.tag) arr = arr.filter(function(q) { return (q.tags || []).indexOf(f.tag) !== -1; });
+    if (search) {
+      arr = arr.filter(function(q) {
+        var hay = (q.title + ' ' + q.bodyPreview + ' ' + (q.tags || []).join(' ')).toLowerCase();
+        return hay.indexOf(search) !== -1;
+      });
+    }
+    if (f.sort === 'top') {
+      arr.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+    } else if (f.sort === 'active') {
+      arr.sort(function(a, b) {
+        return new Date(b.lastActivityAt || b.createdAt).getTime() - new Date(a.lastActivityAt || a.createdAt).getTime();
+      });
+    } else {
+      arr.sort(function(a, b) {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    }
+    return arr;
+  },
+
+  renderTagsBar() {
+    var bar = document.getElementById('wgTagsBar');
+    if (!bar) return;
+    if (!this.topTags.length) {
+      bar.innerHTML = '<span class="text-[11px]" style="color:var(--co-gray-400);">No tags yet</span>';
+      return;
+    }
+    var active = this.filter.tag;
+    var html = this.topTags.map(function(t) {
+      var isActive = active === t.name;
+      var bg = isActive ? 'var(--co-accent-500)' : 'var(--co-surface-sunken)';
+      var fg = isActive ? '#fff' : 'var(--co-ink-soft)';
+      return '<span onclick="_pc(\'WagglesPage\',\'toggleTag\',\'' + escapeHtml(t.name) + '\')" ' +
+        'class="cursor-pointer text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors" ' +
+        'style="background:' + bg + ';color:' + fg + ';border:1px solid var(--co-border-subtle);">' +
+        escapeHtml(t.name) + ' <span style="opacity:0.6;">' + t.count + '</span></span>';
+    }).join('');
+    if (active) {
+      html += '<span onclick="_pc(\'WagglesPage\',\'toggleTag\',\'' + escapeHtml(active) + '\')" ' +
+        'class="cursor-pointer text-[11px] px-2 py-0.5 rounded-full" style="color:var(--co-gray-500);">clear</span>';
+    }
+    bar.innerHTML = html;
+  },
+
+  renderList() {
+    var list = document.getElementById('wgList');
+    if (!list) return;
+    var arr = this._filteredQuestions();
+    if (!arr.length) {
+      list.innerHTML = '<div class="px-6 py-10 text-center text-[12px]" style="color:var(--co-gray-400);">' +
+        '<i class="fas fa-comment-slash text-[24px] mb-2" style="opacity:0.4;"></i>' +
+        '<div>No questions match these filters.</div></div>';
+      return;
+    }
+    var selected = this.selectedQuestionId;
+    list.innerHTML = arr.map(function(q) {
+      var isSelected = q.id === selected;
+      var ago = WagglesPage._timeAgo(q.lastActivityAt || q.createdAt);
+      var tags = (q.tags || []).slice(0, 4).map(function(t) {
+        return '<span class="text-[10px] px-1.5 py-0.5 rounded font-medium" style="background:var(--co-surface-sunken);color:var(--co-ink-muted);border:1px solid var(--co-border-subtle);">' + escapeHtml(t) + '</span>';
+      }).join('');
+      var accepted = q.acceptedAnswerId ? '<i class="fas fa-check-circle" style="color:var(--co-accent-500);font-size:11px;" title="Accepted answer"></i>' : '';
+      return '<div onclick="_pc(\'WagglesPage\',\'selectQuestion\',\'' + escapeHtml(q.id) + '\')" ' +
+        'class="cursor-pointer px-4 py-3 transition-colors" ' +
+        'style="border-bottom:1px solid var(--co-border-subtle);' + (isSelected ? 'background:var(--co-surface-sunken);border-left:3px solid var(--co-accent-500);padding-left:13px;' : '') + '">' +
+        '<div class="flex items-start gap-2">' +
+          '<div class="flex flex-col items-center gap-0.5 flex-shrink-0 mt-0.5" style="min-width:38px;">' +
+            '<div class="text-[13px] font-semibold" style="color:' + (q.score > 0 ? 'var(--co-accent-600)' : 'var(--co-ink-soft)') + ';">' + q.score + '</div>' +
+            '<div class="text-[9px] uppercase tracking-wide" style="color:var(--co-gray-400);">votes</div>' +
+            '<div class="text-[12px] font-medium mt-1" style="color:' + (q.acceptedAnswerId ? 'var(--co-accent-600)' : (q.answerCount > 0 ? 'var(--co-ink-soft)' : 'var(--co-gray-400)')) + ';">' + q.answerCount + '</div>' +
+            '<div class="text-[9px] uppercase tracking-wide" style="color:var(--co-gray-400);">answers</div>' +
+          '</div>' +
+          '<div class="flex-1 min-w-0">' +
+            '<div class="text-[13px] font-semibold leading-snug mb-1 flex items-start gap-1.5" style="color:var(--co-ink);">' +
+              accepted + '<span class="flex-1">' + escapeHtml(q.title) + '</span>' +
+            '</div>' +
+            (q.bodyPreview ? '<div class="text-[11px] line-clamp-2 mb-1.5" style="color:var(--co-ink-muted);">' + escapeHtml(q.bodyPreview).substring(0, 140) + '</div>' : '') +
+            '<div class="flex items-center gap-1 flex-wrap mb-1">' + tags + '</div>' +
+            '<div class="text-[10px] flex items-center gap-1.5" style="color:var(--co-gray-400);">' +
+              '<span>' + escapeHtml(q.authorName || (q.authorEmail || '').split('@')[0]) + '</span>' +
+              '<span>·</span>' +
+              '<span>' + ago + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  },
+
+  selectQuestion(questionId) {
+    this.selectedQuestionId = questionId;
+    this.renderList();
+    this.loadDetail(questionId);
+  },
+
+  loadDetail(questionId) {
+    var detail = document.getElementById('wgDetail');
+    if (detail) detail.innerHTML = '<div class="flex items-center justify-center py-12"><i class="fas fa-spinner fa-spin text-[24px]" style="color:var(--co-gray-400);"></i></div>';
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Failed to load question', 'error');
+          self.renderEmptyDetail();
+          return;
+        }
+        self.detail = result;
+        self.renderDetail();
+      })
+      .withFailureHandler(function(err) {
+        console.error('Waggles loadDetail failed:', err);
+        toast('Failed to load question', 'error');
+      })
+      .getWagglesQuestionDetails(questionId);
+  },
+
+  renderEmptyDetail() {
+    var el = document.getElementById('wgDetail');
+    if (!el) return;
+    el.innerHTML = '<div class="flex flex-col items-center justify-center py-24 text-center">' +
+      '<i class="fas fa-comments text-[48px] mb-4" style="color:var(--co-border-soft);"></i>' +
+      '<div class="text-[15px] font-semibold mb-1" style="color:var(--co-ink);">Waggle dance time</div>' +
+      '<div class="text-[12px] max-w-md" style="color:var(--co-ink-muted);">Pick a question from the list, or post one of your own. Worker bees waggle to share what they\'ve found — same idea here.</div>' +
+      '</div>';
+  },
+
+  renderDetail() {
+    var el = document.getElementById('wgDetail');
+    if (!el || !this.detail) return;
+    var d = this.detail;
+    var q = d.question;
+    var answers = d.answers || [];
+    var me = (typeof State !== 'undefined' && State.user && State.user.email) ? String(State.user.email).toLowerCase() : '';
+    var isAuthor = me && String(q.authorEmail || '').toLowerCase() === me;
+
+    var tagsHtml = (q.tags || []).map(function(t) {
+      return '<span class="text-[11px] px-2 py-0.5 rounded-full font-medium" style="background:var(--co-surface-sunken);color:var(--co-ink-muted);border:1px solid var(--co-border-subtle);">' + escapeHtml(t) + '</span>';
+    }).join(' ');
+
+    var answersHtml = answers.length ? answers.map(function(a) {
+      return WagglesPage._renderAnswer(a, q, isAuthor);
+    }).join('') : '<div class="px-4 py-10 text-center text-[12px] rounded-lg" style="color:var(--co-gray-400);background:var(--co-surface-sunken);border:1px dashed var(--co-border-subtle);">No answers yet. Be the first to share what you know.</div>';
+
+    el.innerHTML =
+      '<div class="flex items-start justify-between gap-4 mb-4">' +
+        '<h1 class="text-[22px] font-semibold leading-tight" style="color:var(--co-ink);letter-spacing:-0.015em;">' + escapeHtml(q.title) + '</h1>' +
+        (isAuthor ? '<button onclick="_pc(\'WagglesPage\',\'deleteQuestion\')" class="co-btn-outline text-[11px]" title="Delete question"><i class="fas fa-trash text-[10px]"></i></button>' : '') +
+      '</div>' +
+      '<div class="flex items-center gap-3 text-[11px] mb-5" style="color:var(--co-ink-muted);">' +
+        '<span>Asked ' + this._timeAgo(q.createdAt) + '</span>' +
+        '<span>·</span>' +
+        '<span>Viewed ' + (q.viewCount || 0) + ' times</span>' +
+        (q.acceptedAnswerId ? '<span>·</span><span style="color:var(--co-accent-600);"><i class="fas fa-check-circle"></i> Answer accepted</span>' : '') +
+      '</div>' +
+      '<div class="rounded-lg p-5 mb-6" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">' +
+        '<div class="flex gap-4">' +
+          this._renderVoteColumn('question', q.id, q.score, q.myVote) +
+          '<div class="flex-1 min-w-0">' +
+            '<div class="text-[14px] leading-relaxed whitespace-pre-wrap mb-4" style="color:var(--co-ink);">' + escapeHtml(q.body) + '</div>' +
+            '<div class="flex items-center gap-1.5 flex-wrap mb-3">' + tagsHtml + '</div>' +
+            '<div class="flex items-center justify-between gap-2 pt-3" style="border-top:1px solid var(--co-border-subtle);">' +
+              '<div class="text-[11px]" style="color:var(--co-ink-muted);">' +
+                'Asked by <span style="color:var(--co-ink);font-weight:500;">' + escapeHtml(q.authorName || (q.authorEmail || '').split('@')[0]) + '</span>' +
+              '</div>' +
+              '<button onclick="_pc(\'WagglesPage\',\'toggleCommentForm\',\'question\',\'' + escapeHtml(q.id) + '\')" class="text-[11px] hover:underline" style="color:var(--co-ink-muted);">Add comment</button>' +
+            '</div>' +
+            this._renderComments(q.comments || [], 'question', q.id) +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="flex items-center justify-between mb-3">' +
+        '<h2 class="text-[15px] font-semibold" style="color:var(--co-ink);">' + answers.length + ' Answer' + (answers.length === 1 ? '' : 's') + '</h2>' +
+      '</div>' +
+      '<div class="space-y-4">' + answersHtml + '</div>' +
+      '<div class="mt-8">' +
+        '<h3 class="text-[14px] font-semibold mb-2" style="color:var(--co-ink);">Your answer</h3>' +
+        '<textarea id="wgAnswerBody" rows="6" placeholder="Share what you know..." class="co-textarea w-full font-mono text-[13px]"></textarea>' +
+        '<div class="flex justify-end mt-2">' +
+          '<button id="wgAnswerSubmit" onclick="_pc(\'WagglesPage\',\'submitAnswer\')" class="co-btn-solid">' +
+            '<i class="fas fa-paper-plane text-[11px]"></i> Post Answer' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+  },
+
+  _renderAnswer(a, q, isQuestionAuthor) {
+    var me = (typeof State !== 'undefined' && State.user && State.user.email) ? String(State.user.email).toLowerCase() : '';
+    var isAnswerAuthor = me && String(a.authorEmail || '').toLowerCase() === me;
+    var acceptBtn = '';
+    if (isQuestionAuthor && !a.isAccepted) {
+      acceptBtn = '<button onclick="_pc(\'WagglesPage\',\'acceptAnswer\',\'' + escapeHtml(a.id) + '\')" class="co-btn-outline text-[11px]" title="Accept this answer">' +
+        '<i class="fas fa-check text-[10px]"></i> Accept' +
+      '</button>';
+    }
+    var deleteBtn = '';
+    if (isAnswerAuthor) {
+      deleteBtn = '<button onclick="_pc(\'WagglesPage\',\'deleteAnswer\',\'' + escapeHtml(a.id) + '\')" class="co-btn-outline text-[11px]" title="Delete"><i class="fas fa-trash text-[10px]"></i></button>';
+    }
+    var acceptedBanner = a.isAccepted ? '<div class="text-[11px] font-medium mb-2" style="color:var(--co-accent-600);"><i class="fas fa-check-circle"></i> Accepted answer</div>' : '';
+
+    return '<div class="rounded-lg p-5" style="background:var(--co-surface);border:1px solid ' + (a.isAccepted ? 'var(--co-accent-300)' : 'var(--co-border-subtle)') + ';">' +
+      '<div class="flex gap-4">' +
+        this._renderVoteColumn('answer', a.id, a.score, a.myVote) +
+        '<div class="flex-1 min-w-0">' +
+          acceptedBanner +
+          '<div class="text-[14px] leading-relaxed whitespace-pre-wrap mb-4" style="color:var(--co-ink);">' + escapeHtml(a.body) + '</div>' +
+          '<div class="flex items-center justify-between gap-2 pt-3" style="border-top:1px solid var(--co-border-subtle);">' +
+            '<div class="text-[11px]" style="color:var(--co-ink-muted);">' +
+              'Answered ' + this._timeAgo(a.createdAt) + ' by <span style="color:var(--co-ink);font-weight:500;">' + escapeHtml(a.authorName || (a.authorEmail || '').split('@')[0]) + '</span>' +
+            '</div>' +
+            '<div class="flex items-center gap-1.5">' +
+              '<button onclick="_pc(\'WagglesPage\',\'toggleCommentForm\',\'answer\',\'' + escapeHtml(a.id) + '\')" class="text-[11px] hover:underline" style="color:var(--co-ink-muted);">Add comment</button>' +
+              acceptBtn +
+              deleteBtn +
+            '</div>' +
+          '</div>' +
+          this._renderComments(a.comments || [], 'answer', a.id) +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  },
+
+  _renderVoteColumn(targetType, targetId, score, myVote) {
+    var upActive = myVote === 1;
+    var downActive = myVote === -1;
+    return '<div class="flex flex-col items-center gap-1 flex-shrink-0" style="min-width:36px;">' +
+      '<button onclick="_pc(\'WagglesPage\',\'vote\',\'' + targetType + '\',\'' + escapeHtml(targetId) + '\',1)" class="w-7 h-7 rounded flex items-center justify-center transition-colors" style="background:' + (upActive ? 'var(--co-accent-500)' : 'transparent') + ';color:' + (upActive ? '#fff' : 'var(--co-gray-500)') + ';" title="Upvote">' +
+        '<i class="fas fa-chevron-up text-[12px]"></i>' +
+      '</button>' +
+      '<div class="text-[14px] font-semibold" style="color:' + (score > 0 ? 'var(--co-accent-600)' : (score < 0 ? '#b94e4e' : 'var(--co-ink-soft)')) + ';">' + score + '</div>' +
+      '<button onclick="_pc(\'WagglesPage\',\'vote\',\'' + targetType + '\',\'' + escapeHtml(targetId) + '\',-1)" class="w-7 h-7 rounded flex items-center justify-center transition-colors" style="background:' + (downActive ? '#b94e4e' : 'transparent') + ';color:' + (downActive ? '#fff' : 'var(--co-gray-500)') + ';" title="Downvote">' +
+        '<i class="fas fa-chevron-down text-[12px]"></i>' +
+      '</button>' +
+    '</div>';
+  },
+
+  _renderComments(comments, targetType, targetId) {
+    var commentsHtml = (comments || []).map(function(c) {
+      return '<div class="text-[12px] py-1.5 px-2 rounded" style="background:var(--co-surface-sunken);color:var(--co-ink-muted);">' +
+        escapeHtml(c.body) +
+        ' <span style="color:var(--co-gray-400);font-size:10px;">— ' + escapeHtml(c.authorName || (c.authorEmail || '').split('@')[0]) + ' ' + WagglesPage._timeAgo(c.createdAt) + '</span>' +
+      '</div>';
+    }).join('');
+    var formId = 'wgCommentForm-' + targetType + '-' + targetId;
+    var inputId = 'wgCommentInput-' + targetType + '-' + targetId;
+    return (commentsHtml ? '<div class="mt-3 space-y-1">' + commentsHtml + '</div>' : '') +
+      '<div id="' + formId + '" class="hidden mt-2 flex gap-2">' +
+        '<input id="' + inputId + '" type="text" placeholder="Add a comment..." maxlength="600" class="co-input flex-1 text-[12px]" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_pc(\'WagglesPage\',\'submitComment\',\'' + targetType + '\',\'' + escapeHtml(targetId) + '\');}" />' +
+        '<button onclick="_pc(\'WagglesPage\',\'submitComment\',\'' + targetType + '\',\'' + escapeHtml(targetId) + '\')" class="co-btn-solid text-[11px]">Post</button>' +
+      '</div>';
+  },
+
+  toggleCommentForm(targetType, targetId) {
+    var form = document.getElementById('wgCommentForm-' + targetType + '-' + targetId);
+    if (!form) return;
+    form.classList.toggle('hidden');
+    if (!form.classList.contains('hidden')) {
+      var input = document.getElementById('wgCommentInput-' + targetType + '-' + targetId);
+      if (input) input.focus();
+    }
+  },
+
+  submitComment(targetType, targetId) {
+    var input = document.getElementById('wgCommentInput-' + targetType + '-' + targetId);
+    if (!input) return;
+    var body = input.value.trim();
+    if (!body) return;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Failed to add comment', 'error');
+          return;
+        }
+        input.value = '';
+        if (self.selectedQuestionId) self.loadDetail(self.selectedQuestionId);
+      })
+      .withFailureHandler(function(err) {
+        console.error('Waggles submitComment failed:', err);
+        toast('Failed to add comment', 'error');
+      })
+      .addWagglesComment(targetType, targetId, body);
+  },
+
+  vote(targetType, targetId, value) {
+    var current = this._currentVote(targetType, targetId);
+    var next = current === value ? 0 : value;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Vote failed', 'error');
+          return;
+        }
+        self._applyVoteLocally(targetType, targetId, result.score, next);
+      })
+      .withFailureHandler(function(err) {
+        console.error('Waggles vote failed:', err);
+        toast('Vote failed', 'error');
+      })
+      .voteWaggles(targetType, targetId, next);
+  },
+
+  _currentVote(targetType, targetId) {
+    if (!this.detail) return 0;
+    if (targetType === 'question' && this.detail.question.id === targetId) return this.detail.question.myVote || 0;
+    if (targetType === 'answer') {
+      var a = (this.detail.answers || []).find(function(x) { return x.id === targetId; });
+      if (a) return a.myVote || 0;
+    }
+    return 0;
+  },
+
+  _applyVoteLocally(targetType, targetId, score, myVote) {
+    if (!this.detail) return;
+    if (targetType === 'question' && this.detail.question.id === targetId) {
+      this.detail.question.score = score;
+      this.detail.question.myVote = myVote;
+    } else if (targetType === 'answer') {
+      var a = (this.detail.answers || []).find(function(x) { return x.id === targetId; });
+      if (a) { a.score = score; a.myVote = myVote; }
+    }
+    if (targetType === 'question') {
+      var listItem = this.questions.find(function(q) { return q.id === targetId; });
+      if (listItem) listItem.score = score;
+    }
+    this.renderDetail();
+    this.renderList();
+  },
+
+  openAskModal() {
+    var modal = document.getElementById('wgAskModal');
+    if (!modal) return;
+    document.getElementById('wgAskTitle').value = '';
+    document.getElementById('wgAskBody').value = '';
+    document.getElementById('wgAskTags').value = '';
+    document.getElementById('wgAskTitleCount').textContent = '0';
+    var titleInput = document.getElementById('wgAskTitle');
+    titleInput.oninput = function() {
+      document.getElementById('wgAskTitleCount').textContent = String(this.value.length);
+    };
+    modal.classList.remove('hidden');
+    setTimeout(function() { titleInput.focus(); }, 50);
+  },
+
+  closeAskModal() {
+    var modal = document.getElementById('wgAskModal');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  submitAsk() {
+    var title = document.getElementById('wgAskTitle').value.trim();
+    var body = document.getElementById('wgAskBody').value.trim();
+    var tags = document.getElementById('wgAskTags').value;
+    var projectId = document.getElementById('wgAskProject').value;
+    if (title.length < 8) { toast('Title must be at least 8 characters', 'error'); return; }
+    if (body.length < 15) { toast('Details must be at least 15 characters', 'error'); return; }
+    var btn = document.getElementById('wgAskSubmit');
+    if (btn) btn.disabled = true;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (btn) btn.disabled = false;
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Failed to post', 'error');
+          return;
+        }
+        toast('Question posted', 'success');
+        self.closeAskModal();
+        var newId = result.questionId;
+        self.loadList();
+        setTimeout(function() { self.selectQuestion(newId); }, 200);
+      })
+      .withFailureHandler(function(err) {
+        if (btn) btn.disabled = false;
+        console.error('Waggles submitAsk failed:', err);
+        toast('Failed to post question', 'error');
+      })
+      .createWagglesQuestion({
+        title: title,
+        body: body,
+        tags: tags ? tags.split(',') : [],
+        projectId: projectId
+      });
+  },
+
+  submitAnswer() {
+    if (!this.selectedQuestionId) return;
+    var ta = document.getElementById('wgAnswerBody');
+    if (!ta) return;
+    var body = ta.value.trim();
+    if (body.length < 15) { toast('Answer must be at least 15 characters', 'error'); return; }
+    var btn = document.getElementById('wgAnswerSubmit');
+    if (btn) btn.disabled = true;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (btn) btn.disabled = false;
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Failed to post answer', 'error');
+          return;
+        }
+        toast('Answer posted', 'success');
+        ta.value = '';
+        self.loadList();
+        self.loadDetail(self.selectedQuestionId);
+      })
+      .withFailureHandler(function(err) {
+        if (btn) btn.disabled = false;
+        console.error('Waggles submitAnswer failed:', err);
+        toast('Failed to post answer', 'error');
+      })
+      .createWagglesAnswer(this.selectedQuestionId, body);
+  },
+
+  acceptAnswer(answerId) {
+    if (!this.selectedQuestionId) return;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Failed to accept answer', 'error');
+          return;
+        }
+        toast('Answer accepted', 'success');
+        self.loadList();
+        self.loadDetail(self.selectedQuestionId);
+      })
+      .withFailureHandler(function(err) {
+        console.error('Waggles acceptAnswer failed:', err);
+        toast('Failed to accept', 'error');
+      })
+      .acceptWagglesAnswer(this.selectedQuestionId, answerId);
+  },
+
+  deleteAnswer(answerId) {
+    if (!confirm('Delete this answer? This cannot be undone.')) return;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Failed to delete', 'error');
+          return;
+        }
+        toast('Answer deleted', 'success');
+        self.loadList();
+        if (self.selectedQuestionId) self.loadDetail(self.selectedQuestionId);
+      })
+      .withFailureHandler(function(err) {
+        console.error('Waggles deleteAnswer failed:', err);
+        toast('Failed to delete', 'error');
+      })
+      .deleteWagglesAnswer(answerId);
+  },
+
+  deleteQuestion() {
+    if (!this.selectedQuestionId) return;
+    if (!confirm('Delete this question? This cannot be undone.')) return;
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          toast(result && result.error ? result.error : 'Failed to delete', 'error');
+          return;
+        }
+        toast('Question deleted', 'success');
+        self.selectedQuestionId = null;
+        self.detail = null;
+        self.loadList();
+        self.renderEmptyDetail();
+      })
+      .withFailureHandler(function(err) {
+        console.error('Waggles deleteQuestion failed:', err);
+        toast('Failed to delete', 'error');
+      })
+      .deleteWagglesQuestion(this.selectedQuestionId);
+  },
+
+  _timeAgo(dateStr) {
+    if (!dateStr) return '';
+    var ts = new Date(dateStr).getTime();
+    if (isNaN(ts)) return '';
+    var diff = (Date.now() - ts) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+    if (diff < 2592000) return Math.floor(diff / 604800) + 'w ago';
+    return Math.floor(diff / 2592000) + 'mo ago';
+  }
+};
+
+window.WagglesPage = WagglesPage;
+} catch (err) {
+  console.error('WagglesPage init failed:', err);
+}
+})();
+</script>

@@ -422,6 +422,7 @@
     dataassets: { container: 'dataAssetsView', page: 'DataAssetPage', title: 'Data Assets', scripts: ['DataAssetViewScript'] },
     adhoc: { container: 'adhocView', page: 'AdHocPage', title: 'Ad Hoc' },
     surge: { container: 'surgeView', page: 'SurgePage', title: 'Pick Ups / Surge' },
+    waggles: { container: 'wagglesView', page: 'WagglesPage', title: 'Waggles', scripts: ['WagglesViewScript'] },
     master: { container: 'boardView', loader: 'loadBoard', title: 'Master Board', requiredRole: 'manager', scripts: ['BoardView'] },
     my: { container: 'boardView', loader: 'loadBoard', title: 'My Board', scripts: ['BoardView'] },
     admin: { container: 'adminView', page: 'AdminPage', title: 'Admin', requiredRole: 'admin' },
@@ -505,7 +506,7 @@
     }
   }
 
-  function showLoading(show) {
+  function showLoading(show, message) {
     State.loading = show;
     var overlay = $("loadingOverlay");
     if (!overlay) return;
@@ -514,7 +515,8 @@
       if (State.initialLoadComplete) {
         overlay.style.background = "rgba(0,0,0,0.5)";
         var loaderUI = $("loaderUI");
-        if (loaderUI) loaderUI.innerHTML = '<div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow-xl"><i class="fas fa-spinner fa-spin text-primary-600 text-2xl"></i><span class="text-gray-700 font-medium">Loading...</span></div>';
+        var msg = (typeof message === 'string' && message) ? message : 'Loading...';
+        if (loaderUI) loaderUI.innerHTML = '<div class="bg-white rounded-lg p-6 flex items-center gap-4 shadow-xl"><i class="fas fa-spinner fa-spin text-primary-600 text-2xl"></i><span class="text-gray-700 font-medium">' + escapeHtml(msg) + '</span></div>';
       } else {
         overlay.style.background = "#111827";
         var barWrap = $("loaderBarWrap");
@@ -580,6 +582,76 @@
     showLoading(false);
     toast((error && error.message) || "An error occurred", "error");
   }
+
+  var PROJECT_TYPE_INFO = [
+    {
+      name: 'Web Application',
+      tag: 'Selectable',
+      description: 'A standalone web tool, app, or page built for end users — anything users open in a browser to do work. Examples: a Google Apps Script web app, a custom internal portal, a Standalone App on D2D or AAS Intranet.'
+    },
+    {
+      name: 'Data Visualization',
+      tag: 'Selectable',
+      description: 'A reporting view focused on charts, KPIs, and analysis. Examples: a Looker Studio report, a Tableau workbook, an embedded chart page. Distinct from "Dashboard" when the deliverable is a single, narrative-style report or visual.'
+    },
+    {
+      name: 'Dashboard',
+      tag: 'Selectable',
+      description: 'An interactive operational surface — usually a Google Workbook, workbook tool, Looker dashboard, Tableau dashboard, or other always-on monitoring view. Pick this when the project IS the dashboard (the workbook itself is the product), not a one-off chart.'
+    },
+    {
+      name: 'Data Pipeline',
+      tag: 'Data Asset',
+      description: 'A scheduled or triggered data flow that moves data from one place to another. Managed in the Data Assets view in COLONY. Selecting this from the Project form will offer to create it as a Data Asset instead.'
+    },
+    {
+      name: 'Database',
+      tag: 'Data Asset',
+      description: 'A persisted store of records (BigQuery, a curated Sheet, a relational table). Managed in the Data Assets view in COLONY. Selecting this from the Project form will offer to create it as a Data Asset instead.'
+    },
+    {
+      name: 'ETL',
+      tag: 'Data Asset',
+      description: 'An Extract / Transform / Load process — typically scripted data movement with shaping in the middle. Managed as a Data Asset (asset type "Data Process ETL"). Existing projects of type ETL show a "Move to Data Assets" button on their detail page.'
+    }
+  ];
+
+  function showProjectTypeInfoModal() {
+    var modal = document.getElementById('projectTypeInfoModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'projectTypeInfoModal';
+      modal.className = 'fixed inset-0 flex items-center justify-center z-[10070] hidden';
+      modal.style.cssText = 'background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);';
+      modal.addEventListener('click', function(e) { if (e.target === modal) modal.classList.add('hidden'); });
+      document.body.appendChild(modal);
+    }
+    var rows = PROJECT_TYPE_INFO.map(function(t) {
+      var tagClass = t.tag === 'Data Asset'
+        ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
+        : 'bg-gray-100 text-gray-600 border-gray-200';
+      return '<div class="py-3 border-b border-gray-100 last:border-b-0">' +
+        '<div class="flex items-center gap-2 mb-1">' +
+        '<span class="text-sm font-semibold text-gray-900">' + escapeHtml(t.name) + '</span>' +
+        '<span class="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded border ' + tagClass + '">' + escapeHtml(t.tag) + '</span>' +
+        '</div>' +
+        '<div class="text-[12px] text-gray-600 leading-relaxed">' + escapeHtml(t.description) + '</div>' +
+        '</div>';
+    }).join('');
+    modal.innerHTML = '<div class="rounded-xl w-full max-w-xl p-6 mx-4 max-h-[80vh] overflow-y-auto" style="background:var(--co-surface);box-shadow:var(--co-shadow-2xl);border:1px solid var(--co-border-subtle);">' +
+      '<div class="flex items-start justify-between mb-2"><div>' +
+      '<h3 class="font-semibold text-gray-900">Project Types</h3>' +
+      '<p class="text-[12px] text-gray-500 mt-0.5">What each option means and where it lives in COLONY.</p>' +
+      '</div>' +
+      '<button type="button" onclick="document.getElementById(\'projectTypeInfoModal\').classList.add(\'hidden\')" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button></div>' +
+      '<div class="mt-3">' + rows + '</div>' +
+      '<div class="mt-4 text-[11px] text-gray-500 leading-relaxed border-t border-gray-100 pt-3">' +
+      '<i class="fas fa-info-circle mr-1 text-gray-400"></i>' +
+      'Web Application, Data Visualization, and Dashboard are deployment-eligible — their Deployment fields apply. Data Pipeline, Database, and ETL are managed as Data Assets.' +
+      '</div></div>';
+    modal.classList.remove('hidden');
+  }
+  window.showProjectTypeInfoModal = showProjectTypeInfoModal;
 
   function formatRelativeTime(timestamp) {
     if (!timestamp) return "";
