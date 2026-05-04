@@ -5,7 +5,7 @@ function loadMyBoard(projectId) {
 function loadMasterBoard(projectId) {
   try {
     var userRole = getCurrentUserRole();
-    if (userRole !== 'admin' && userRole !== 'manager') {
+    if (userRole !== 'admin' && !isManagerRole(userRole)) {
       throw new Error('Permission denied: Master Board requires admin or manager access.');
     }
 
@@ -13,6 +13,10 @@ function loadMasterBoard(projectId) {
     var filteredTasks = projectId
       ? batchData.tasks.filter(function(task) { return task.projectId === projectId; })
       : batchData.tasks;
+    if (getManagerContractFromRole(userRole)) {
+      var userEmail = getCurrentUserEmailOptimized();
+      filteredTasks = filterTasksByUserRole(filteredTasks, userEmail, userRole);
+    }
 
     var board = buildBoardData(filteredTasks, projectId, { view: 'master' });
 

@@ -1522,6 +1522,10 @@ function createProject(projectData) {
       pSettings.originSource = 'auto';
     }
     if (!pSettings.originCreatorEmail) pSettings.originCreatorEmail = currentUser || '';
+    if (typeof getCurrentUserRole === 'function' && typeof getManagerContractFromRole === 'function') {
+      var creatorContract = getManagerContractFromRole(getCurrentUserRole());
+      if (creatorContract) pSettings.contractCurrent = creatorContract;
+    }
     project.settings = JSON.stringify(pSettings);
   } catch (e) {}
   var sheetHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function(h) { return String(h).trim(); });
@@ -1574,6 +1578,13 @@ function updateProject(projectId, updates) {
           CONFIG.TAXONOMY_FIELDS.concat(['linkedProjectId']).forEach(function(f) {
             if (uSettings[f]) project[f] = String(uSettings[f]);
           });
+          if (typeof getCurrentUserRole === 'function' && typeof getManagerContractFromRole === 'function') {
+            var updaterContract = getManagerContractFromRole(getCurrentUserRole());
+            if (updaterContract && uSettings.contractCurrent && uSettings.contractCurrent !== updaterContract) {
+              uSettings.contractCurrent = updaterContract;
+              project.settings = JSON.stringify(uSettings);
+            }
+          }
         } catch (e) {}
         project.updatedAt = now();
         project.lastUpdatedBy = getCurrentUserEmail();

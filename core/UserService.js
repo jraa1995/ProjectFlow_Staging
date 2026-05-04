@@ -27,9 +27,55 @@ function sanitizeUserForClient(user) {
   };
 }
 
+var MANAGER_ROLE_TO_CONTRACT = {
+  manager_squat: 'SQuAT',
+  manager_forward: 'Forward',
+  manager_amps: 'AMPS'
+};
+
+function getManagerContractFromRole(role) {
+  if (!role) return null;
+  return MANAGER_ROLE_TO_CONTRACT[String(role).toLowerCase()] || null;
+}
+
+function isManagerRole(role) {
+  if (!role) return false;
+  var r = String(role).toLowerCase();
+  return r === 'manager' || !!MANAGER_ROLE_TO_CONTRACT[r];
+}
+
+function getManagerAccessibleProjectIds(role, optionalProjects) {
+  var out = {};
+  var contract = getManagerContractFromRole(role);
+  if (!contract) return out;
+  var projects;
+  try {
+    projects = optionalProjects || (typeof getAllProjectsOptimized === 'function' ? getAllProjectsOptimized() : getAllProjects());
+  } catch (e) {
+    console.error('getManagerAccessibleProjectIds: project read failed', e);
+    return out;
+  }
+  var contractLc = contract.toLowerCase();
+  for (var i = 0; i < projects.length; i++) {
+    var p = projects[i];
+    if (!p || !p.id) continue;
+    var settings = {};
+    try { settings = typeof p.settings === 'string' ? (p.settings ? JSON.parse(p.settings) : {}) : (p.settings || {}); } catch (e) { settings = {}; }
+    var current = String(settings.contractCurrent || '').toLowerCase().trim();
+    if (current === contractLc) out[p.id] = true;
+  }
+  return out;
+}
+
 function filterTasksByUserRole(tasks, userEmail, userRole) {
   if (!userRole || userRole === 'admin' || userRole === 'manager') {
     return tasks;
+  }
+  if (getManagerContractFromRole(userRole)) {
+    var mgrAllowed = getManagerAccessibleProjectIds(userRole);
+    return tasks.filter(function(task) {
+      return task.projectId && mgrAllowed[task.projectId];
+    });
   }
   if (userRole === 'client') {
     var allowed = getClientAccessibleProjectIds(userEmail);
@@ -49,6 +95,10 @@ function filterTasksByUserRole(tasks, userEmail, userRole) {
 function filterProjectsByUserRole(projects, tasks, userEmail, userRole) {
   if (!userRole || userRole === 'admin' || userRole === 'manager') {
     return projects;
+  }
+  if (getManagerContractFromRole(userRole)) {
+    var mgrAllowed = getManagerAccessibleProjectIds(userRole, projects);
+    return projects.filter(function(project) { return !!mgrAllowed[project.id]; });
   }
   if (userRole === 'client') {
     var allowedSet = getClientAccessibleProjectIds(userEmail, projects);

@@ -121,7 +121,7 @@ function pingProjectOwner(projectId, reason, payload) {
     PermissionGuard.requirePermission('project:update', { projectId: projectId });
     var currentUser = getCurrentUserEmail();
     var userRole = getCurrentUserRole ? getCurrentUserRole() : null;
-    if (userRole && userRole !== 'admin' && userRole !== 'manager') {
+    if (userRole && userRole !== 'admin' && !isManagerRole(userRole)) {
       throw new Error('Only admin or manager can ping project owners.');
     }
     var project = getProjectById(projectId);

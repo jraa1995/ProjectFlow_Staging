@@ -1582,8 +1582,12 @@
         this._renderUserBulkBar();
         return;
       }
+      var formatRoleLabel = function(r) {
+        var map = { manager_squat: 'Manager — SQuAT', manager_forward: 'Manager — Forward', manager_amps: 'Manager — AMPS' };
+        return map[r] || (r || 'member');
+      };
       tbody.innerHTML = filtered.map(function(u) {
-        var roleColor = u.role === 'admin' ? 'background:#fef2f2;color:#991b1b;' : (u.role === 'manager' ? 'background:#f5f3ff;color:#5b21b6;' : (u.role === 'viewer' ? 'background:#f3f4f6;color:#374151;' : 'background:var(--co-surface-sunken);color:var(--co-ink-soft);'));
+        var roleColor = u.role === 'admin' ? 'background:#fef2f2;color:#991b1b;' : ((u.role === 'manager' || u.role === 'manager_squat' || u.role === 'manager_forward' || u.role === 'manager_amps') ? 'background:#f5f3ff;color:#5b21b6;' : (u.role === 'viewer' ? 'background:#f3f4f6;color:#374151;' : 'background:var(--co-surface-sunken);color:var(--co-ink-soft);'));
         var statusColor = u.active ? 'background:#d1fae5;color:#065f46;' : 'background:#fee2e2;color:#991b1b;';
         var statusLabel = u.active ? 'Active' : 'Inactive';
         var checked = !!AdminPage._selectedUsers[u.email];
@@ -1591,7 +1595,7 @@
           '<td class="py-2.5 px-3 w-8"><input type="checkbox" data-user-email="' + escapeHtml(u.email) + '" ' + (checked ? 'checked' : '') + ' onchange="AdminPage.toggleUser(\'' + escapeHtml(u.email) + '\', this.checked)" aria-label="Select ' + escapeHtml(u.name || u.email) + '" /></td>' +
           '<td class="py-2.5 px-3 text-[13px]" style="color:var(--co-ink);">' + escapeHtml(u.name || '—') + '</td>' +
           '<td class="py-2.5 px-3 text-[12px] font-mono" style="color:var(--co-ink-muted);">' + escapeHtml(u.email) + '</td>' +
-          '<td class="py-2.5 px-3"><span class="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full" style="' + roleColor + '">' + escapeHtml(u.role || 'member') + '</span></td>' +
+          '<td class="py-2.5 px-3"><span class="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full" style="' + roleColor + '">' + escapeHtml(formatRoleLabel(u.role)) + '</span></td>' +
           '<td class="py-2.5 px-3"><span class="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full" style="' + statusColor + '">' + statusLabel + '</span></td>' +
           '<td class="py-2.5 px-3"><button onclick="AdminPage.openEditUser(\'' + escapeHtml(u.email) + '\')" class="co-btn-outline" style="padding:0.25rem 0.625rem;font-size:0.75rem;"><i class="fas fa-pen text-[10px]"></i> Edit</button></td>' +
           '</tr>';
@@ -1690,7 +1694,20 @@
       var deptEl = document.getElementById('editUserDepartment');
       if (emailEl) emailEl.textContent = u.email;
       if (nameEl) nameEl.value = u.name || '';
-      if (roleEl) roleEl.value = u.role || 'member';
+      if (roleEl) {
+        var currentRole = u.role || 'member';
+        var hasOpt = false;
+        for (var oi = 0; oi < roleEl.options.length; oi++) {
+          if (roleEl.options[oi].value === currentRole) { hasOpt = true; break; }
+        }
+        if (!hasOpt) {
+          var legacyOpt = document.createElement('option');
+          legacyOpt.value = currentRole;
+          legacyOpt.textContent = currentRole.charAt(0).toUpperCase() + currentRole.slice(1) + ' (legacy)';
+          roleEl.appendChild(legacyOpt);
+        }
+        roleEl.value = currentRole;
+      }
       if (activeEl) activeEl.value = u.active ? 'true' : 'false';
       if (titleEl) titleEl.value = u.title || '';
       if (deptEl) deptEl.value = u.department || '';
@@ -2280,7 +2297,7 @@
   function applyRoleBasedVisibility() {
     if (!State.user) return;
     var role = (State.user.role || 'member').toLowerCase();
-    var roleLevel = { admin: 3, manager: 2, member: 1, viewer: 0, client: -1 };
+    var roleLevel = { admin: 3, manager: 2, manager_squat: 2, manager_forward: 2, manager_amps: 2, member: 1, viewer: 0, client: -1 };
     var userLevel = roleLevel[role] !== undefined ? roleLevel[role] : 1;
 
     // Show/hide nav items based on data-min-role attribute (data-allow-roles overrides as a allowlist)
@@ -2301,14 +2318,15 @@
     // Show role badge next to user name
     var roleDisplay = $("userRole");
     if (roleDisplay) {
-      roleDisplay.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+      var roleLabelMap = { manager_squat: 'Manager — SQuAT', manager_forward: 'Manager — Forward', manager_amps: 'Manager — AMPS' };
+      roleDisplay.textContent = roleLabelMap[role] || (role.charAt(0).toUpperCase() + role.slice(1));
     }
   }
 
   function hasMinRole(minRole) {
     if (!State.user) return false;
     var role = (State.user.role || 'member').toLowerCase();
-    var roleLevel = { admin: 3, manager: 2, member: 1, viewer: 0, client: -1 };
+    var roleLevel = { admin: 3, manager: 2, manager_squat: 2, manager_forward: 2, manager_amps: 2, member: 1, viewer: 0, client: -1 };
     var userLevel = roleLevel[role] !== undefined ? roleLevel[role] : 1;
     var requiredLevel = roleLevel[minRole] !== undefined ? roleLevel[minRole] : 2;
     return userLevel >= requiredLevel;

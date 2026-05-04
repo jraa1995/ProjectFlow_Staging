@@ -217,6 +217,25 @@
     if (docPanel) docPanel.innerHTML = _buildNewProjSettingsFields('documentation');
     _bindNewProjDocListeners();
     _updateNewProjDocBadge();
+    _applyManagerContractDefaults();
+  }
+
+  function _applyManagerContractDefaults() {
+    var role = (typeof State !== 'undefined' && State.user && State.user.role) ? String(State.user.role).toLowerCase() : '';
+    var contractMap = { manager_squat: 'SQuAT', manager_forward: 'Forward', manager_amps: 'AMPS' };
+    var contract = contractMap[role];
+    if (!contract) return;
+    var sel = $('newProjSetting_contractCurrent');
+    if (sel) {
+      var found = false;
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === contract) { sel.selectedIndex = i; found = true; break; }
+      }
+      if (found) {
+        sel.disabled = true;
+        sel.title = 'Locked to ' + contract + ' for your role';
+      }
+    }
   }
 
   var NEW_PROJ_DRAFT_KEY = 'co_newProjectDraft_v1';
@@ -373,13 +392,14 @@
   }
 
   function _renderNewProjOverviewSelects() {
-    var fillSelect = function(id, options, currentVal) {
+    var fillSelect = function(id, options, currentVal, formatter) {
       var el = $(id);
       if (!el) return;
       var current = currentVal || el.value;
       var html = '<option value="" disabled' + (current ? '' : ' selected') + ' hidden>-- Select --</option>';
       options.forEach(function(opt) {
-        html += '<option value="' + escapeHtml(opt) + '"' + (opt === current ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+        var label = formatter ? formatter(opt) : opt;
+        html += '<option value="' + escapeHtml(opt) + '"' + (opt === current ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
       });
       el.innerHTML = html;
       if (current) el.value = current;
@@ -390,7 +410,7 @@
       '05-Dev Complete/Pending Deployment','06-Retired/Sunset (Permanent)',
       '07-Backlog','08-Stopped'
     ];
-    fillSelect('newProjStatus', WORKLOG_STATUSES);
+    fillSelect('newProjStatus', WORKLOG_STATUSES, null, (typeof formatProjectStatus === 'function') ? formatProjectStatus : null);
     fillSelect('newProjSetting_developmentPhase', _newProjTaxonomyOpts('developmentPhase'));
     fillSelect('newProjSetting_developmentPriority', _newProjTaxonomyOpts('developmentPriority'));
     fillSelect('newProjSetting_isAiInvolved', _newProjTaxonomyOpts('aiInvolved').length ? _newProjTaxonomyOpts('aiInvolved') : ['Yes','No','Partial']);

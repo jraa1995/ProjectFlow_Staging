@@ -41,7 +41,7 @@ function pickUpSurgeTask(taskId) {
 
 function getProjectDetailsList() {
   try {
-    const projects = getAllProjectsOptimized();
+    var projects = getAllProjectsOptimized();
     const tasks = getAllTasksOptimized();
     var countMap = {};
     for (var i = 0; i < tasks.length; i++) {
@@ -72,7 +72,7 @@ function getProjectDetailsList() {
       p.originSource = parsedSettings.originSource || 'auto';
     }
     var userRole = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
-    if (userRole === 'client') {
+    if (userRole === 'client' || (typeof getManagerContractFromRole === 'function' && getManagerContractFromRole(userRole))) {
       var userEmail = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
       projects = filterProjectsByUserRole(projects, [], userEmail, userRole);
     }
@@ -92,6 +92,12 @@ function getProjectDetails(projectId) {
       var userEmail = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
       var allowed = getClientAccessibleProjectIds(userEmail, [project]);
       if (!allowed[project.id]) {
+        return { success: false, error: 'Project not found' };
+      }
+    }
+    if (typeof getManagerContractFromRole === 'function' && getManagerContractFromRole(userRole)) {
+      var mgrAllowed = getManagerAccessibleProjectIds(userRole, [project]);
+      if (!mgrAllowed[project.id]) {
         return { success: false, error: 'Project not found' };
       }
     }

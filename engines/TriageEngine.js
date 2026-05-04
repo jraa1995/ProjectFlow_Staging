@@ -239,7 +239,7 @@ const TriageEngine = {
   },
 
   notifyTriagers(queueItem) {
-    const users = getActiveUsers().filter(u => ['admin', 'manager'].includes(u.role));
+    const users = getActiveUsers().filter(u => u.role === 'admin' || (typeof isManagerRole === 'function' && isManagerRole(u.role)));
     for (const user of users) {
       try {
         NotificationEngine.createNotification({

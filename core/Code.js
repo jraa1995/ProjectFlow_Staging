@@ -452,6 +452,9 @@ function getInitialDataFast() {
         for (var i = 0; i < ids.length; i++) { if (allowedSet[ids[i]]) return true; }
         return false;
       });
+    } else if (user && getManagerContractFromRole && getManagerContractFromRole(user.role)) {
+      var mgrAllowedSet = getManagerAccessibleProjectIds(user.role, batchData.projects);
+      visibleProjects = (batchData.projects || []).filter(function(p) { return p && p.id && mgrAllowedSet[p.id]; });
     }
     if (typeof _decorateProjectOrigin_ === 'function') {
       for (var pi = 0; pi < visibleProjects.length; pi++) _decorateProjectOrigin_(visibleProjects[pi]);
@@ -590,6 +593,45 @@ function getBasicUserSuggestions(query, excludeUsers) {
 
 function registerNewUser() {
   return { success: false, error: 'Self-registration is no longer available. Please request access through the application.' };
+}
+
+function buildLoginPayload_(user, email) {
+  try {
+    var fastData = getInitialDataFast();
+    return {
+      user: sanitizeUserForClient(user),
+      board: fastData.board,
+      config: fastData.config
+    };
+  } catch (e) {
+    console.error('buildLoginPayload_ fast path failed:', e);
+    return {
+      user: sanitizeUserForClient(user),
+      board: {
+        columns: [],
+        projects: [],
+        users: [],
+        stats: { total: 0, completed: 0, progress: 0, dueSoon: 0, overdue: 0 },
+        taskCount: 0
+      },
+      config: {
+        statuses: CONFIG.STATUSES,
+        priorities: CONFIG.PRIORITIES,
+        types: CONFIG.TYPES,
+        colors: CONFIG.COLORS
+      }
+    };
+  }
+}
+
+function logout() {
+  try {
+    clearAllCaches();
+    return { success: true };
+  } catch (error) {
+    console.error('logout failed:', error);
+    return { success: true };
+  }
 }
 
 function getSessionUser() {
@@ -884,7 +926,7 @@ function approveAccessRequestWithOverrides(email, overrides) {
     overrides = overrides || {};
     var overrideName = String(overrides.name || '').trim();
     var overrideRole = String(overrides.role || '').toLowerCase().trim();
-    var allowedRoles = ['admin', 'manager', 'member', 'viewer', 'client'];
+    var allowedRoles = ['admin', 'manager', 'manager_squat', 'manager_forward', 'manager_amps', 'member', 'viewer', 'client'];
     if (overrideRole && allowedRoles.indexOf(overrideRole) === -1) {
       return { success: false, error: 'Invalid role: ' + overrideRole };
     }
@@ -1048,7 +1090,7 @@ function adminUpdateUser(email, updates) {
       if (Object.prototype.hasOwnProperty.call(updates, k)) clean[k] = updates[k];
     });
     if (clean.role) {
-      var allowedRoles = ['admin', 'manager', 'member', 'viewer', 'client'];
+      var allowedRoles = ['admin', 'manager', 'manager_squat', 'manager_forward', 'manager_amps', 'member', 'viewer', 'client'];
       var rawRole = String(clean.role || '').toLowerCase().trim();
       if (allowedRoles.indexOf(rawRole) === -1) return { success: false, error: 'Invalid role: ' + clean.role };
       clean.role = rawRole;
@@ -1089,7 +1131,7 @@ function bulkApproveAccessRequests(emails, role) {
       return { success: false, error: 'At least one email is required' };
     }
     var safeRole = String(role || 'member').toLowerCase().trim();
-    var allowedRoles = ['admin', 'manager', 'member', 'viewer', 'client'];
+    var allowedRoles = ['admin', 'manager', 'manager_squat', 'manager_forward', 'manager_amps', 'member', 'viewer', 'client'];
     if (allowedRoles.indexOf(safeRole) === -1) safeRole = 'member';
     var approved = [];
     var failed = [];

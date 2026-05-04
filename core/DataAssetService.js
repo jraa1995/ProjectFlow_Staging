@@ -127,6 +127,40 @@ function saveDataAssetsWorkbookId(workbookId) {
   }
 }
 
+function setProjectDataAssetLinks(projectId, assetIds) {
+  try {
+    PermissionGuard.requirePermission('dataasset:update');
+    if (!projectId) return { success: false, error: 'projectId required' };
+    var desired = {};
+    (assetIds || []).forEach(function(id) { if (id) desired[String(id)] = true; });
+    var assets = getAllDataAssets();
+    var changed = 0;
+    for (var i = 0; i < assets.length; i++) {
+      var a = assets[i];
+      if (!a || !a.id) continue;
+      var ids = String(a.relatedProjects || '').split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+      var hasLink = ids.indexOf(projectId) !== -1;
+      var shouldHaveLink = !!desired[a.id];
+      if (hasLink === shouldHaveLink) continue;
+      var nextIds = shouldHaveLink ? ids.concat([projectId]) : ids.filter(function(x) { return x !== projectId; });
+      var seen = {};
+      var dedup = [];
+      for (var j = 0; j < nextIds.length; j++) {
+        var v = nextIds[j];
+        if (v && !seen[v]) { seen[v] = true; dedup.push(v); }
+      }
+      updateDataAsset(a.id, { relatedProjects: dedup.join(',') });
+      changed++;
+    }
+    if (changed > 0) invalidateDataAssetCache();
+    var refreshed = changed > 0 ? getAllDataAssetsOptimized() : assets;
+    return { success: true, changed: changed, assets: refreshed };
+  } catch (error) {
+    console.error('setProjectDataAssetLinks failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function previewDataAssetSource(sourceUrl) {
   try {
     PermissionGuard.requirePermission('dataasset:read');

@@ -1,7 +1,7 @@
 function getAnalyticsData(days) {
   try {
     var userRole = getCurrentUserRole();
-    if (userRole !== 'admin' && userRole !== 'manager') {
+    if (userRole !== 'admin' && !isManagerRole(userRole)) {
       throw new Error('Permission denied: Analytics requires admin or manager access.');
     }
 

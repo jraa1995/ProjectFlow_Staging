@@ -22,18 +22,10 @@ const PermissionGuard = {
     'analytics:view:team': 'View team analytics',
     'analytics:view:all': 'View all analytics',
     'admin:settings': 'Manage system settings',
-    'admin:audit_log': 'View audit logs',
-    'admin:automation': 'Manage automation rules',
-    'admin:webhooks': 'Manage webhooks',
     'dataasset:create': 'Create data assets',
     'dataasset:read': 'View data assets',
     'dataasset:update': 'Update data assets',
     'dataasset:delete': 'Delete data assets',
-    'view:masterBoard': 'View master board',
-    'view:analytics': 'View analytics',
-    'view:funnel': 'View funnel',
-    'view:pickups': 'View pick ups (surge)',
-    'view:adminTools': 'View admin tools',
     'project:overrideOrigin': 'Override project origin classification'
   },
 
@@ -48,23 +40,60 @@ const PermissionGuard = {
         'project:overrideOrigin',
         'user:create', 'user:read', 'user:update', 'user:delete', 'user:manage_roles',
         'analytics:view:own', 'analytics:view:team', 'analytics:view:all',
-        'admin:settings', 'admin:audit_log', 'admin:automation', 'admin:webhooks',
-        'dataasset:create', 'dataasset:read', 'dataasset:update', 'dataasset:delete',
-        'view:masterBoard', 'view:analytics', 'view:funnel', 'view:pickups', 'view:adminTools'
+        'admin:settings',
+        'dataasset:create', 'dataasset:read', 'dataasset:update', 'dataasset:delete'
       ],
       isSystemRole: true
     },
     manager: {
       name: 'manager',
-      description: 'Task and project management with team analytics',
+      description: 'Task and project management with team analytics (legacy — use a contract-scoped manager role instead)',
       permissions: [
         'task:create', 'task:read:all', 'task:update:all', 'task:delete:own', 'task:assign',
         'project:create', 'project:read', 'project:update', 'project:manage_members',
         'project:overrideOrigin',
         'user:read',
         'analytics:view:own', 'analytics:view:team',
-        'dataasset:create', 'dataasset:read', 'dataasset:update',
-        'view:masterBoard', 'view:analytics', 'view:funnel', 'view:pickups'
+        'dataasset:create', 'dataasset:read', 'dataasset:update'
+      ],
+      isSystemRole: true
+    },
+    manager_squat: {
+      name: 'manager_squat',
+      description: 'Manager scoped to SQuAT — only sees projects whose Current Contract Ownership is SQuAT',
+      permissions: [
+        'task:create', 'task:read:all', 'task:update:all', 'task:delete:own', 'task:assign',
+        'project:create', 'project:read', 'project:update', 'project:manage_members',
+        'project:overrideOrigin',
+        'user:read',
+        'analytics:view:own', 'analytics:view:team',
+        'dataasset:create', 'dataasset:read', 'dataasset:update'
+      ],
+      isSystemRole: true
+    },
+    manager_forward: {
+      name: 'manager_forward',
+      description: 'Manager scoped to Forward — only sees projects whose Current Contract Ownership is Forward',
+      permissions: [
+        'task:create', 'task:read:all', 'task:update:all', 'task:delete:own', 'task:assign',
+        'project:create', 'project:read', 'project:update', 'project:manage_members',
+        'project:overrideOrigin',
+        'user:read',
+        'analytics:view:own', 'analytics:view:team',
+        'dataasset:create', 'dataasset:read', 'dataasset:update'
+      ],
+      isSystemRole: true
+    },
+    manager_amps: {
+      name: 'manager_amps',
+      description: 'Manager scoped to AMPS — only sees projects whose Current Contract Ownership is AMPS',
+      permissions: [
+        'task:create', 'task:read:all', 'task:update:all', 'task:delete:own', 'task:assign',
+        'project:create', 'project:read', 'project:update', 'project:manage_members',
+        'project:overrideOrigin',
+        'user:read',
+        'analytics:view:own', 'analytics:view:team',
+        'dataasset:create', 'dataasset:read', 'dataasset:update'
       ],
       isSystemRole: true
     },
@@ -76,8 +105,7 @@ const PermissionGuard = {
         'project:create', 'project:read', 'project:update',
         'user:read',
         'analytics:view:own',
-        'dataasset:read', 'dataasset:create', 'dataasset:update',
-        'view:pickups'
+        'dataasset:read', 'dataasset:create', 'dataasset:update'
       ],
       isSystemRole: true
     },
@@ -231,6 +259,9 @@ const PermissionGuard = {
       case 'admin':
         return allPermissions;
       case 'manager':
+      case 'manager_squat':
+      case 'manager_forward':
+      case 'manager_amps':
         return [
           'task:create', 'task:read:all', 'task:update:all', 'task:delete:own', 'task:assign',
           'project:create', 'project:read', 'project:update', 'project:manage_members',

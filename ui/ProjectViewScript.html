@@ -693,7 +693,7 @@ var ProjectPage = {
       var recency = (typeof recencyBadge === 'function') ? recencyBadge(p) : '';
       var origin = (typeof originBadge === 'function') ? originBadge(p) : '';
       var activeStyle = isActive ? 'background:var(--co-surface-sunken);box-shadow:inset 3px 0 0 var(--co-accent-500);' : '';
-      var statusLabel = listStatus || (p.status ? String(p.status).charAt(0).toUpperCase() + String(p.status).slice(1) : '');
+      var statusLabel = listStatus ? formatProjectStatus(listStatus) : (p.status ? String(p.status).charAt(0).toUpperCase() + String(p.status).slice(1) : '');
       return '<div onclick="_pc(\'ProjectPage\',\'selectProject\',\'' + escapeHtml(p.id) + '\')" class="px-4 py-3 cursor-pointer transition-colors co-project-item" style="border-bottom:1px solid var(--co-border-subtle);' + activeStyle + '">' +
         '<div class="flex items-start justify-between gap-2">' +
         '<div class="flex items-center gap-2 min-w-0">' +
@@ -1164,7 +1164,7 @@ var ProjectPage = {
   _buildDetailHeaderActions() {
     if (!this.selectedProject) return '';
     var role = (typeof State !== 'undefined' && State.user && State.user.role) ? String(State.user.role).toLowerCase() : '';
-    var canOverride = role === 'admin' || role === 'manager';
+    var canOverride = role === 'admin' || role === 'manager' || role === 'manager_squat' || role === 'manager_forward' || role === 'manager_amps';
     var originHtml = '';
     if (typeof originBadge === 'function') {
       var badge = originBadge(this.selectedProject, { showInternal: true });
@@ -1278,11 +1278,15 @@ var ProjectPage = {
     var DMP_CONDITIONAL_KEYS = { dataSourceFiles: true, dataCadence: true, dataSourceExplain: true };
     var activeGas = boolTrue(settings.activeGas);
     var activeDmp = boolTrue(settings.activeDataMgmt);
+    var managerContractLockMap = { manager_squat: 'SQuAT', manager_forward: 'Forward', manager_amps: 'AMPS' };
+    var roleNow = (typeof State !== 'undefined' && State.user && State.user.role) ? String(State.user.role).toLowerCase() : '';
+    var managerLockContract = managerContractLockMap[roleNow] || '';
     var fieldIsLocked = function(key) {
       if (deploymentDisabled) return 'Deployment fields apply only to Web Application, Data Visualization, or Dashboard projects.';
       if (groupKey === 'deployment' && !deployedPublicly && LOCATION_KEYS[key]) return 'Set "Deployed Publicly" to Yes to edit this field.';
       if (GAS_CONDITIONAL_KEYS[key] && !activeGas) return 'Enable "Active GAS Project" to edit this field.';
       if (DMP_CONDITIONAL_KEYS[key] && !activeDmp) return 'Enable "Active Data Management Process" to edit this field.';
+      if (key === 'contractCurrent' && managerLockContract) return 'Locked to ' + managerLockContract + ' for your role.';
       return null;
     };
     var disabledBanner = '';
@@ -1483,7 +1487,7 @@ var ProjectPage = {
               dpmTemplateBtn +
             '</div>';
         } else if (field.type === 'data_assets') {
-          inputHtml = ProjectPage._buildRelatedDataAssets() || '<span class="text-gray-400 text-sm py-2 block">No linked data assets</span>';
+          inputHtml = ProjectPage._buildRelatedDataAssetsEditor();
           return '<div><label class="block text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">' + escapeHtml(field.label) + '</label>' + inputHtml + '</div>';
         } else if (field.type === 'userlist') {
           return '';
@@ -1734,6 +1738,14 @@ var ProjectPage = {
   saveSettings(groupKey) {
     var schema = this._settingsSchema[groupKey] || [];
     var settings = this._getSettings();
+    var assetLinkIds = null;
+    if (groupKey === 'infrastructure') {
+      var linkChecks = document.querySelectorAll('input[data-project-asset-link]');
+      if (linkChecks && linkChecks.length) {
+        assetLinkIds = [];
+        linkChecks.forEach(function(cb) { if (cb.checked) assetLinkIds.push(cb.value); });
+      }
+    }
     schema.forEach(function(field) {
       if (field.type === 'userlist' || field.type === 'computed_doc' || field.type === 'readonly' || field.type === 'data_assets') return;
       if (field.type === 'static_multiselect' || field.type === 'taxonomy_multiselect') {
@@ -1780,20 +1792,53 @@ var ProjectPage = {
     });
     var settingsStr = JSON.stringify(settings);
     var payload = { id: this.selectedProject.id, settings: settingsStr };
+    var projectId = this.selectedProject.id;
     showLoading(true);
+    var self = this;
+    var finalize = function() {
+      self.selectedProject.settings = settingsStr;
+      var idx = self.projects.findIndex(function(p) { return p.id === projectId; });
+      if (idx !== -1) self.projects[idx].settings = settingsStr;
+      self._relatedAssetsForSelected = self._findRelatedAssetsFor(projectId);
+      self.isEditing = false;
+      self.editingTab = null;
+      self.renderProjectDetail();
+      toast('Settings updated', 'success');
+    };
     google.script.run
-      .withSuccessHandler((result) => {
-        showLoading(false);
-        if (!result.success) { toast(result.error || 'Failed to save', 'error'); return; }
-        this.selectedProject.settings = settingsStr;
-        var idx = this.projects.findIndex(p => p.id === this.selectedProject.id);
-        if (idx !== -1) this.projects[idx].settings = settingsStr;
-        this.isEditing = false;
-        this.editingTab = null;
-        this.renderProjectDetail();
-        toast('Settings updated', 'success');
+      .withSuccessHandler(function(result) {
+        if (!result || !result.success) {
+          showLoading(false);
+          toast((result && result.error) || 'Failed to save', 'error');
+          return;
+        }
+        if (assetLinkIds === null) {
+          showLoading(false);
+          finalize();
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function(linkRes) {
+            showLoading(false);
+            if (!linkRes || !linkRes.success) {
+              toast((linkRes && linkRes.error) || 'Failed to update data asset links', 'error');
+              finalize();
+              return;
+            }
+            if (Array.isArray(linkRes.assets) && typeof State !== 'undefined') {
+              State.dataAssets = linkRes.assets;
+            }
+            finalize();
+          })
+          .withFailureHandler(function(err) {
+            showLoading(false);
+            console.error('setProjectDataAssetLinks failed:', err);
+            toast('Failed to update data asset links', 'error');
+            finalize();
+          })
+          .setProjectDataAssetLinks(projectId, assetLinkIds);
       })
-      .withFailureHandler((error) => {
+      .withFailureHandler(function(error) {
         showLoading(false);
         console.error('Save settings failed:', error);
         toast('Failed to save settings', 'error');
@@ -2058,7 +2103,7 @@ var ProjectPage = {
 
     var projectStatusValue = self._projectStatusValue(p, settings);
     var projectStatusHtml = projectStatusValue
-      ? '<span class="inline-flex items-center gap-1.5 text-sm text-gray-900"><span class="w-2 h-2 rounded-full ' + self._statusDotColor(projectStatusValue) + '"></span>' + escapeHtml(projectStatusValue) + '</span>'
+      ? '<span class="inline-flex items-center gap-1.5 text-sm text-gray-900"><span class="w-2 h-2 rounded-full ' + self._statusDotColor(projectStatusValue) + '"></span>' + escapeHtml(formatProjectStatus(projectStatusValue)) + '</span>'
       : '<span class="text-gray-400 text-sm">-</span>';
 
     var pane1 =
@@ -2267,10 +2312,10 @@ var ProjectPage = {
           var current = settings.projectStatus || self._deriveWorklogStatusFromLifecycle(p.status);
           var html = '<option value="" disabled' + (current ? '' : ' selected') + ' hidden>-- Select --</option>';
           statuses.forEach(function(s) {
-            html += '<option value="' + escapeHtml(s) + '"' + (s === current ? ' selected' : '') + '>' + escapeHtml(s) + '</option>';
+            html += '<option value="' + escapeHtml(s) + '"' + (s === current ? ' selected' : '') + '>' + escapeHtml(formatProjectStatus(s)) + '</option>';
           });
           if (current && statuses.indexOf(current) === -1) {
-            html += '<option value="' + escapeHtml(current) + '" selected>' + escapeHtml(current) + ' (legacy)</option>';
+            html += '<option value="' + escapeHtml(current) + '" selected>' + escapeHtml(formatProjectStatus(current)) + ' (legacy)</option>';
           }
           return '<select id="editProjectStatus" class="' + cls + ' bg-white">' + html + '</select>';
         })() +
@@ -2498,6 +2543,31 @@ var ProjectPage = {
       '<span class="text-xs text-gray-400 ml-auto">' + related.length + '</span>' +
       '</div>' +
       '<div class="divide-y divide-gray-50">' + items + '</div></div>';
+  },
+
+  _buildRelatedDataAssetsEditor() {
+    if (!this.selectedProject) return '';
+    var projectId = this.selectedProject.id;
+    var dataAssets = (typeof State !== 'undefined' ? State.dataAssets : null) || [];
+    if (!dataAssets.length) {
+      return '<div class="text-xs text-gray-500 italic py-2">No data assets exist yet. Create one in the Data Assets view to link it here.</div>';
+    }
+    var sorted = dataAssets.slice().sort(function(a, b) {
+      return String(a.assetName || '').localeCompare(String(b.assetName || ''));
+    });
+    var checks = sorted.map(function(da) {
+      var ids = String(da.relatedProjects || '').split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+      var checked = ids.indexOf(projectId) !== -1 ? ' checked' : '';
+      var typeLabel = da.assetType ? ' <span class="text-[10px] text-gray-500">(' + escapeHtml(da.assetType) + ')</span>' : '';
+      return '<label class="flex items-center gap-2 py-1 px-1.5 cursor-pointer hover:bg-gray-50 rounded">' +
+        '<input type="checkbox" data-project-asset-link value="' + escapeHtml(da.id) + '"' + checked +
+        ' class="rounded border-gray-300 text-gray-900 focus:ring-gray-400">' +
+        '<span class="text-sm text-gray-900 truncate">' + escapeHtml(da.assetName || da.id) + '</span>' +
+        typeLabel +
+        '</label>';
+    }).join('');
+    return '<div class="border border-gray-300 rounded-lg p-2 max-h-56 overflow-y-auto bg-white">' + checks + '</div>' +
+      '<p class="text-xs text-gray-500 mt-1 italic">Linked assets also appear in the Data Asset record\'s Related Projects.</p>';
   },
 
   _buildRelatedProjects() {
@@ -3839,7 +3909,7 @@ var ProjectPage = {
 
   _buildPingBar() {
     var role = (typeof State !== 'undefined' && State.user && State.user.role) ? String(State.user.role).toLowerCase() : '';
-    if (role !== 'admin' && role !== 'manager') return '';
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_squat' && role !== 'manager_forward' && role !== 'manager_amps') return '';
     if (!this.selectedProject) return '';
     return '<div class="px-6 py-2 flex items-center justify-end gap-2 bg-gray-50 border-b border-gray-200">' +
       '<label class="text-xs text-gray-500">Ping Owner for:</label>' +
