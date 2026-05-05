@@ -228,7 +228,16 @@ class MentionEngine {
       return '';
     }
 
-    let formattedText = text;
+    var _esc = function(v) {
+      return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+    };
+
+    let formattedText = _esc(text);
 
     formattedText = formattedText.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, function(match, name, email) {
       return '<span class="mention" data-user="' + email + '" title="' + email + '">@' + name + '</span>';
@@ -238,8 +247,10 @@ class MentionEngine {
       mentionedUsers.forEach(function(user) {
         var email = typeof user === 'string' ? user : user.email;
         var name = typeof user === 'string' ? email : (user.name || email);
-        var mentionPattern = new RegExp('@' + escapeRegExp(email) + '(?![^<]*>)', 'g');
-        var highlightedMention = '<span class="mention" data-user="' + email + '" title="' + name + '">@' + name + '</span>';
+        var safeEmail = _esc(email);
+        var safeName = _esc(name);
+        var mentionPattern = new RegExp('@' + escapeRegExp(safeEmail) + '(?![^<]*>)', 'g');
+        var highlightedMention = '<span class="mention" data-user="' + safeEmail + '" title="' + safeName + '">@' + safeName + '</span>';
         formattedText = formattedText.replace(mentionPattern, highlightedMention);
       });
     }
@@ -369,6 +380,65 @@ function addCommentWithMentions(taskId, content, userId = null) {
     validation.validUsers,
     comment
   );
+
+  try {
+    if (typeof NotificationEngine !== 'undefined') {
+      var commentTask = (typeof getTaskById === 'function') ? getTaskById(taskId) : null;
+      if (commentTask) {
+        var mentionedEmailSet = {};
+        validation.validUsers.forEach(function(u) {
+          if (u && u.email) mentionedEmailSet[String(u.email).toLowerCase()] = true;
+        });
+        var commenterLc = String(currentUser || '').toLowerCase();
+        var watcherRecipients = {};
+        if (commentTask.assignee) {
+          var assigneeLc = String(commentTask.assignee).toLowerCase();
+          if (assigneeLc !== commenterLc && !mentionedEmailSet[assigneeLc]) {
+            watcherRecipients[commentTask.assignee] = 'You are assigned to this task';
+          }
+        }
+        if (commentTask.watchers) {
+          var wList = typeof commentTask.watchers === 'string'
+            ? commentTask.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+            : (Array.isArray(commentTask.watchers) ? commentTask.watchers : []);
+          wList.forEach(function(w) {
+            var wLc = String(w).toLowerCase();
+            if (wLc === commenterLc) return;
+            if (mentionedEmailSet[wLc]) return;
+            if (!watcherRecipients[w]) watcherRecipients[w] = 'You are watching this task';
+          });
+        }
+        if (commentTask.reporter) {
+          var reporterLc = String(commentTask.reporter).toLowerCase();
+          if (reporterLc !== commenterLc && !mentionedEmailSet[reporterLc] && !watcherRecipients[commentTask.reporter]) {
+            watcherRecipients[commentTask.reporter] = 'You reported this task';
+          }
+        }
+        Object.keys(watcherRecipients).forEach(function(email) {
+          try {
+            NotificationEngine.createNotification({
+              userId: email,
+              type: 'comment_added',
+              title: 'New Comment',
+              message: 'New comment on ' + taskId + ': ' + commentTask.title,
+              entityType: 'task',
+              entityId: taskId,
+              channels: ['in_app', 'email'],
+              reason: watcherRecipients[email]
+            });
+          } catch (notifErr) {
+            console.error('addCommentWithMentions: watcher notify failed for ' + email + ':', notifErr);
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.error('addCommentWithMentions: watcher/assignee/reporter notification block failed:', e);
+  }
+
+  if (currentUser && typeof UserMetricsService !== 'undefined') {
+    try { UserMetricsService.recordCommentPosted(currentUser); } catch (e) { console.error('recordCommentPosted failed:', e); }
+  }
 
   logActivity(currentUser, 'commented', 'task', taskId, {
     preview: content.substring(0, 50),

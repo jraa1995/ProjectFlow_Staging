@@ -48,6 +48,11 @@ function getManagerAccessibleProjectIds(role, optionalProjects) {
   var out = {};
   var contract = getManagerContractFromRole(role);
   if (!contract) return out;
+  var roleKey = String(role || '').toLowerCase();
+  var canCache = !optionalProjects;
+  if (canCache && typeof RequestCache !== 'undefined' && RequestCache._aclManager && RequestCache._aclManager[roleKey]) {
+    return RequestCache._aclManager[roleKey];
+  }
   var projects;
   try {
     projects = optionalProjects || (typeof getAllProjectsOptimized === 'function' ? getAllProjectsOptimized() : getAllProjects());
@@ -63,6 +68,9 @@ function getManagerAccessibleProjectIds(role, optionalProjects) {
     try { settings = typeof p.settings === 'string' ? (p.settings ? JSON.parse(p.settings) : {}) : (p.settings || {}); } catch (e) { settings = {}; }
     var current = String(settings.contractCurrent || '').toLowerCase().trim();
     if (current === contractLc) out[p.id] = true;
+  }
+  if (canCache && typeof RequestCache !== 'undefined' && RequestCache._aclManager) {
+    RequestCache._aclManager[roleKey] = out;
   }
   return out;
 }
@@ -121,6 +129,10 @@ function getClientAccessibleProjectIds(userEmail, optionalProjects) {
   var out = {};
   if (!userEmail) return out;
   var emailLc = String(userEmail).toLowerCase().trim();
+  var canCache = !optionalProjects;
+  if (canCache && typeof RequestCache !== 'undefined' && RequestCache._aclClient && RequestCache._aclClient[emailLc]) {
+    return RequestCache._aclClient[emailLc];
+  }
   var projects;
   try {
     projects = optionalProjects || (typeof getAllProjectsOptimized === 'function' ? getAllProjectsOptimized() : getAllProjects());
@@ -151,6 +163,9 @@ function getClientAccessibleProjectIds(userEmail, optionalProjects) {
       }
     }
   }
+  if (canCache && typeof RequestCache !== 'undefined' && RequestCache._aclClient) {
+    RequestCache._aclClient[emailLc] = out;
+  }
   return out;
 }
 
@@ -168,6 +183,11 @@ function getCurrentUserRole() {
 
 function getUserByEmailOptimized(email) {
   try {
+    if (!email) return null;
+    if (typeof UserCache !== 'undefined' && typeof UserCache.get === 'function') {
+      var cached = UserCache.get(email);
+      if (cached) return cached;
+    }
     const sheet = getUsersSheet();
     const data = sheet.getDataRange().getValues();
 

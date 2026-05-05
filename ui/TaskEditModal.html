@@ -2387,7 +2387,7 @@ var TaskEditModal = {
         }
         self._fallbackPasteScreenshot('No image found in clipboard. Take a screenshot, then click Paste Screenshot — or press Cmd/Ctrl+V now.');
       }).catch(function(err) {
-        console.warn('Clipboard.read() unavailable:', err && err.message);
+        console.error('Clipboard.read() unavailable:', err && err.message);
         self._fallbackPasteScreenshot('Press Cmd/Ctrl+V to paste a screenshot...');
       });
       return;

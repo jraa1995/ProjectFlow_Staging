@@ -11,10 +11,83 @@ function getAllDataAssetsOptimized() {
   return assets;
 }
 
+function _da_filterAssetsForCurrentUser_(assets) {
+  try {
+    if (!Array.isArray(assets)) return [];
+    var role = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (role === 'admin' || role === 'manager') return assets;
+    if (typeof getManagerContractFromRole === 'function' && getManagerContractFromRole(role)) {
+      var mgrAllowed = getManagerAccessibleProjectIds(role);
+      return assets.filter(function(a) {
+        if (!a) return false;
+        var ids = String(a.relatedProjects || '').split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+        if (ids.length === 0) return false;
+        for (var i = 0; i < ids.length; i++) { if (mgrAllowed[ids[i]]) return true; }
+        return false;
+      });
+    }
+    if (role === 'client') {
+      var email = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+      if (!email) return [];
+      var clientAllowed = getClientAccessibleProjectIds(email);
+      return assets.filter(function(a) {
+        if (!a) return false;
+        var ids = String(a.relatedProjects || '').split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+        if (ids.length === 0) return false;
+        for (var i = 0; i < ids.length; i++) { if (clientAllowed[ids[i]]) return true; }
+        return false;
+      });
+    }
+    return assets;
+  } catch (e) {
+    console.error('_da_filterAssetsForCurrentUser_ failed:', e);
+    return [];
+  }
+}
+
+function _da_authorizeAssetAccess_(asset) {
+  if (!asset) return false;
+  try {
+    var role = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (role === 'admin' || role === 'manager') return true;
+    var ids = String(asset.relatedProjects || '').split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+    if (typeof getManagerContractFromRole === 'function' && getManagerContractFromRole(role)) {
+      var mgrAllowed = getManagerAccessibleProjectIds(role);
+      for (var i = 0; i < ids.length; i++) { if (mgrAllowed[ids[i]]) return true; }
+      return false;
+    }
+    if (role === 'client') {
+      var email = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+      if (!email) return false;
+      var clientAllowed = getClientAccessibleProjectIds(email);
+      for (var j = 0; j < ids.length; j++) { if (clientAllowed[ids[j]]) return true; }
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('_da_authorizeAssetAccess_ failed:', e);
+    return false;
+  }
+}
+
+function _da_safePayload_(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  var safe = {};
+  Object.keys(payload).slice(0, 30).forEach(function(k) {
+    var v = payload[k];
+    if (v === null || v === undefined) { safe[k] = v; return; }
+    if (typeof v === 'string') { safe[k] = v.length > 200 ? v.slice(0, 200) + '...' : v; }
+    else if (typeof v === 'number' || typeof v === 'boolean') { safe[k] = v; }
+    else { safe[k] = '[object]'; }
+  });
+  return safe;
+}
+
 function getDataAssetDetailsList() {
   try {
     var assets = getAllDataAssetsOptimized();
-    return { success: true, assets: assets };
+    var filtered = _da_filterAssetsForCurrentUser_(assets);
+    return { success: true, assets: filtered };
   } catch (error) {
     console.error('getDataAssetDetailsList failed:', error);
     return { success: false, error: error.message, assets: [] };
@@ -25,6 +98,9 @@ function getDataAssetDetails(assetId) {
   try {
     var asset = getDataAssetById(assetId);
     if (!asset) return { success: false, error: 'Data asset not found' };
+    if (!_da_authorizeAssetAccess_(asset)) {
+      return { success: false, error: 'Data asset not found' };
+    }
     return { success: true, asset: asset };
   } catch (error) {
     console.error('getDataAssetDetails failed:', error);
@@ -36,6 +112,11 @@ function saveNewDataAsset(assetData) {
   try {
     var asset = createDataAsset(assetData);
     invalidateDataAssetCache();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('dataasset.create', 'dataAsset', asset.id, asset.name || '', { assetType: asset.assetType });
+      }
+    } catch (e) {}
     return { success: true, asset: asset };
   } catch (error) {
     console.error('saveNewDataAsset failed:', error);
@@ -46,9 +127,20 @@ function saveNewDataAsset(assetData) {
 function updateDataAssetDetails(payload) {
   try {
     var assetId = payload.id;
+    var _existingAsset = null;
+    try { _existingAsset = getDataAssetById(assetId); } catch (e) {}
+    if (!_existingAsset) return { success: false, error: 'Data asset not found' };
+    if (!_da_authorizeAssetAccess_(_existingAsset)) {
+      return { success: false, error: 'Permission denied' };
+    }
     delete payload.id;
     var asset = updateDataAsset(assetId, payload);
     invalidateDataAssetCache();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('dataasset.update', 'dataAsset', assetId, (asset && asset.name) || '', _da_safePayload_(payload));
+      }
+    } catch (e) {}
     return { success: true, asset: asset };
   } catch (error) {
     console.error('updateDataAssetDetails failed:', error);
@@ -58,8 +150,19 @@ function updateDataAssetDetails(payload) {
 
 function deleteExistingDataAsset(assetId) {
   try {
+    var _existingAsset = null;
+    try { _existingAsset = getDataAssetById(assetId); } catch (e) {}
+    if (!_existingAsset) return { success: false, error: 'Data asset not found' };
+    if (!_da_authorizeAssetAccess_(_existingAsset)) {
+      return { success: false, error: 'Permission denied' };
+    }
     deleteDataAsset(assetId);
     invalidateDataAssetCache();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('dataasset.delete', 'dataAsset', assetId, (_existingAsset && _existingAsset.name) || '', {});
+      }
+    } catch (e) {}
     return { success: true };
   } catch (error) {
     console.error('deleteExistingDataAsset failed:', error);
@@ -168,6 +271,14 @@ function previewDataAssetSource(sourceUrl) {
     if (!fileId) {
       return { success: false, error: 'No Google Sheet URL detected. Only Google Sheets can be previewed.' };
     }
+    if (!_da_isFileIdRegistered_(fileId)) {
+      try {
+        if (typeof logAuditEvent === 'function') {
+          logAuditEvent('dataasset.preview_denied', 'dataAsset', fileId, '', { reason: 'unregistered_file_id' });
+        }
+      } catch (e) {}
+      return { success: false, error: 'File is not a registered data asset. Preview is restricted to data assets registered in COLONY.' };
+    }
     var sheetUrl = 'https://docs.google.com/spreadsheets/d/' + fileId + '/edit';
     var ss;
     try {
@@ -247,4 +358,29 @@ function _extractSheetIdFromInput_(input) {
   if (m) return m[1];
   if (/^[a-zA-Z0-9-_]{20,}$/.test(s.trim())) return s.trim();
   return '';
+}
+
+function _da_isFileIdRegistered_(fileId) {
+  try {
+    if (!fileId) return false;
+    var assets = getAllDataAssetsOptimized();
+    for (var i = 0; i < assets.length; i++) {
+      var a = assets[i];
+      if (!a) continue;
+      var sourceUrl = String(a.sourceUrl || a.fileUrl || a.url || a.driveFileId || a.fileId || '');
+      if (!sourceUrl) {
+        var raw = '';
+        try { raw = JSON.stringify(a); } catch (e) { raw = ''; }
+        if (raw.indexOf(fileId) !== -1) return true;
+        continue;
+      }
+      var assetFileId = _extractSheetIdFromInput_(sourceUrl);
+      if (assetFileId && assetFileId === fileId) return true;
+      if (sourceUrl.indexOf(fileId) !== -1) return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('_da_isFileIdRegistered_ failed:', e);
+    return false;
+  }
 }

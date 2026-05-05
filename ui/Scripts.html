@@ -556,6 +556,82 @@
     if (preloader) preloader.classList.remove("loading");
   }
 
+  var MaintenanceBanner = {
+    DISMISS_KEY: 'colony_maintenance_dismissed_v',
+    LABELS: {
+      maintenance: 'Scheduled Maintenance',
+      degraded:    'Degraded Service',
+      down:        'Service Outage',
+      resolved:    'Service Restored'
+    },
+    ICONS: {
+      maintenance: 'fa-screwdriver-wrench',
+      degraded:    'fa-triangle-exclamation',
+      down:        'fa-circle-xmark',
+      resolved:    'fa-circle-check'
+    },
+    DISMISSIBLE: { maintenance: true, resolved: true, degraded: false, down: false },
+    _current: null,
+    apply: function(record) {
+      try {
+        var banner = document.getElementById('maintenanceBanner');
+        if (!banner) return;
+        var isInactive = !record || !record.status || record.status === 'none';
+        if (isInactive) { this._hide(banner); this._current = null; return; }
+        var dismissedVer = '';
+        try { dismissedVer = localStorage.getItem(this.DISMISS_KEY) || ''; } catch (e) {}
+        if (this.DISMISSIBLE[record.status] && dismissedVer && record.versionId && dismissedVer === record.versionId) {
+          this._hide(banner); this._current = record; return;
+        }
+        this._show(banner, record);
+        this._current = record;
+      } catch (err) {
+        console.error('MaintenanceBanner.apply failed:', err);
+      }
+    },
+    dismiss: function() {
+      try {
+        if (!this._current || !this._current.versionId) return;
+        if (!this.DISMISSIBLE[this._current.status]) return;
+        localStorage.setItem(this.DISMISS_KEY, this._current.versionId);
+        var banner = document.getElementById('maintenanceBanner');
+        if (banner) this._hide(banner);
+      } catch (e) {}
+    },
+    _show: function(banner, record) {
+      banner.dataset.status = record.status;
+      var labelEl = document.getElementById('maintenanceBannerLabel');
+      var msgEl = document.getElementById('maintenanceBannerMessage');
+      var metaEl = document.getElementById('maintenanceBannerMeta');
+      var dismissBtn = document.getElementById('maintenanceBannerDismiss');
+      var iconEl = banner.querySelector('.mb-icon');
+      if (labelEl) labelEl.textContent = this.LABELS[record.status] || 'System Notice';
+      if (msgEl) msgEl.textContent = record.message || (record.status === 'down' ? 'COLONY is currently unavailable. We are working to restore service.' : (record.status === 'resolved' ? 'COLONY is back online and fully operational.' : 'COLONY is undergoing maintenance.'));
+      if (metaEl) {
+        var bits = [];
+        if (record.setByName) bits.push('Posted by ' + record.setByName);
+        if (record.setAt) {
+          try { bits.push(new Date(record.setAt).toLocaleString()); } catch (e) { bits.push(record.setAt); }
+        }
+        metaEl.textContent = bits.join(' · ');
+      }
+      if (iconEl) {
+        iconEl.className = 'fas mb-icon ' + (this.ICONS[record.status] || 'fa-triangle-exclamation');
+      }
+      if (dismissBtn) dismissBtn.style.display = this.DISMISSIBLE[record.status] ? '' : 'none';
+      banner.classList.add('show');
+      document.body.classList.add('has-maintenance-banner');
+      var h = banner.offsetHeight || 56;
+      document.documentElement.style.setProperty('--maintenance-banner-height', h + 'px');
+    },
+    _hide: function(banner) {
+      banner.classList.remove('show');
+      document.body.classList.remove('has-maintenance-banner');
+      document.documentElement.style.removeProperty('--maintenance-banner-height');
+    }
+  };
+  window.MaintenanceBanner = MaintenanceBanner;
+
   function toast(message, type = "info") {
     const container = $("toastContainer");
     if (!container) return;
@@ -738,7 +814,10 @@
             .withSuccessHandler(function(result) {
               if (!result || !result.authenticated) {
                 localStorage.removeItem('colony_session');
+                try { MaintenanceBanner.apply((result && result.maintenance) || null); } catch (e) {}
                 showAuthenticateScreen();
+              } else {
+                try { MaintenanceBanner.apply(result.maintenance || null); } catch (e) {}
               }
             })
             .withFailureHandler(function() {})
@@ -791,6 +870,7 @@
 
     google.script.run
       .withSuccessHandler(function(result) {
+        try { MaintenanceBanner.apply((result && result.maintenance) || null); } catch (e) {}
         if (result.authenticated) {
           var verbs = [
             'Waking up the hive...',
@@ -804,22 +884,19 @@
           ];
           var shuffled = verbs.sort(function() { return 0.5 - Math.random(); });
           updateAuthSpinnerMessage(shuffled[0]);
+          handleInitialData(result);
+          State.initialLoadComplete = true;
+          try { localStorage.setItem('colony_session', JSON.stringify({ user: result.user, data: result, timestamp: Date.now() })); } catch(e) {}
           setTimeout(function() {
             updateAuthSpinnerMessage(shuffled[1]);
-          }, 700);
-          setTimeout(function() {
-            updateAuthSpinnerMessage(shuffled[2]);
-          }, 1400);
+          }, 200);
           setTimeout(function() {
             updateAuthSpinnerMessage('You\'re in!');
-          }, 2100);
+          }, 450);
           setTimeout(function() {
             hideAuthScreen();
-            handleInitialData(result);
-            State.initialLoadComplete = true;
-            try { localStorage.setItem('colony_session', JSON.stringify({ user: result.user, data: result, timestamp: Date.now() })); } catch(e) {}
             toast('Welcome back, ' + (result.user.name || result.user.email) + '!', 'success');
-          }, 2200);
+          }, 650);
         } else if (result.reason === 'disabled') {
           showAuthMessage('Account Disabled', 'Your account has been disabled. Contact your administrator for assistance.', 'fa-ban');
         } else if (result.reason === 'no_account') {
@@ -1001,6 +1078,7 @@
     State.projects = data.board?.projects || [];
     State.users = data.board?.users || [];
     State.config = data.config;
+    try { MaintenanceBanner.apply(data.maintenance || null); } catch (e) {}
     if (State.board && data.config) {
       State.board.config = data.config;
     }
@@ -1076,7 +1154,10 @@
     if (!deepLinkHandled) switchView('home');
     try { if (typeof preloadPersonnelLists === 'function') preloadPersonnelLists(); } catch (e) { console.error('preloadPersonnelLists kickoff failed:', e); }
     updateSidebarDate();
-    setInterval(updateSidebarDate, 60000);
+    setInterval(function() {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      updateSidebarDate();
+    }, 60000);
     setTimeout(function() {
       try {
         SyncManager.init();
@@ -1236,6 +1317,7 @@
       if (this.activeTab === 'access') this.loadAccessRequests(done);
       else if (this.activeTab === 'users') this.loadUsers(done);
       else if (this.activeTab === 'audit') { this.loadAuditLog(); done(); }
+      else if (this.activeTab === 'system') { if (window.MaintenancePanel) MaintenancePanel.refresh(); done(); }
       else { if (typeof loadAdminTools === 'function') loadAdminTools(); this.loadPendingOwnerNames(); done(); }
     },
 
@@ -1245,7 +1327,7 @@
       tabs.forEach(function(el) {
         el.classList.toggle('co-tab-active', el.getAttribute('data-admin-tab') === tab);
       });
-      ['access', 'users', 'tools'].forEach(function(t) {
+      ['access', 'users', 'tools', 'audit', 'system'].forEach(function(t) {
         var pane = document.getElementById('adminTab_' + t);
         if (pane) pane.classList.toggle('hidden', t !== tab);
       });
@@ -1256,6 +1338,7 @@
         this.loadPendingOwnerNames();
       }
       if (tab === 'audit') this.loadAuditLog();
+      if (tab === 'system' && window.MaintenancePanel) MaintenancePanel.init();
     },
 
     loadAccessRequests(cb) {
@@ -1956,6 +2039,215 @@
   };
   window.AdminPage = AdminPage;
 
+  var MaintenancePanel = {
+    LABELS: {
+      none: 'Operational — no banner shown',
+      maintenance: 'Scheduled Maintenance',
+      degraded: 'Degraded Service',
+      down: 'Service Outage',
+      resolved: 'Service Restored'
+    },
+    DEFAULT_MESSAGES: {
+      maintenance: 'COLONY is undergoing scheduled maintenance. Some features may be unavailable.',
+      degraded:    'COLONY is experiencing intermittent issues. We are investigating.',
+      down:        'COLONY is currently unavailable. We are working to restore service.',
+      resolved:    'COLONY is back online and fully operational. Thanks for your patience.'
+    },
+    _initialized: false,
+    init: function() {
+      this._wireMessageCounter();
+      this.refresh();
+      this.previewSelection();
+      this._initialized = true;
+    },
+    refresh: function() {
+      var icon = document.getElementById('maintenanceRefreshIcon');
+      if (icon) icon.classList.add('fa-spin');
+      google.script.run
+        .withSuccessHandler(function(record) {
+          if (icon) icon.classList.remove('fa-spin');
+          MaintenancePanel._renderCurrent(record);
+          MaintenancePanel._syncFormFromRecord(record);
+        })
+        .withFailureHandler(function(err) {
+          if (icon) icon.classList.remove('fa-spin');
+          MaintenancePanel._renderCurrent(null, err && err.message);
+        })
+        .getMaintenanceStatus();
+    },
+    _wireMessageCounter: function() {
+      var ta = document.getElementById('maintenanceMessage');
+      var counter = document.getElementById('maintenanceMessageCount');
+      if (!ta || !counter || ta._mpWired) return;
+      var update = function() {
+        var len = (ta.value || '').length;
+        counter.textContent = len + ' / 1000';
+      };
+      ta.addEventListener('input', function() { update(); MaintenancePanel.previewSelection(); });
+      ta._mpWired = true;
+      update();
+    },
+    _renderCurrent: function(record, errMsg) {
+      var box = document.getElementById('maintenanceCurrent');
+      var dot = document.getElementById('adminMaintenanceDot');
+      if (!box) return;
+      if (errMsg) {
+        box.innerHTML = '<span style="color:var(--co-error);"><i class="fas fa-exclamation-circle mr-2"></i>' + escapeHtml(errMsg) + '</span>';
+        if (dot) dot.classList.add('hidden');
+        return;
+      }
+      var status = (record && record.status) || 'none';
+      if (!record || status === 'none') {
+        box.innerHTML = '<i class="fas fa-circle-check mr-2" style="color:var(--co-success);"></i><strong style="color:var(--co-ink);">Operational.</strong> No banner is currently shown to users.';
+        if (dot) dot.classList.add('hidden');
+        return;
+      }
+      var label = MaintenancePanel.LABELS[status] || status;
+      var when = '';
+      try { when = record.setAt ? new Date(record.setAt).toLocaleString() : ''; } catch (e) { when = record.setAt || ''; }
+      var bits = [];
+      if (record.setByName) bits.push('Posted by ' + escapeHtml(record.setByName));
+      if (when) bits.push(escapeHtml(when));
+      box.innerHTML =
+        '<div class="flex items-start gap-3">' +
+        '<i class="fas fa-circle-dot mt-0.5" style="color:var(--co-warning);"></i>' +
+        '<div class="flex-1 min-w-0">' +
+        '<div style="color:var(--co-ink);"><strong>Active:</strong> ' + escapeHtml(label) + '</div>' +
+        (record.message ? '<div class="mt-1" style="color:var(--co-ink-soft);white-space:pre-wrap;">' + escapeHtml(record.message) + '</div>' : '') +
+        (bits.length ? '<div class="mt-1 text-[11px]" style="color:var(--co-gray-500);">' + bits.join(' &middot; ') + '</div>' : '') +
+        '</div>' +
+        '</div>';
+      if (dot) dot.classList.remove('hidden');
+    },
+    _syncFormFromRecord: function(record) {
+      var sel = document.getElementById('maintenanceStatusSelect');
+      var msg = document.getElementById('maintenanceMessage');
+      if (sel) sel.value = (record && record.status) || 'none';
+      if (msg) msg.value = (record && record.message) || '';
+      this._wireMessageCounter();
+      var counter = document.getElementById('maintenanceMessageCount');
+      if (counter && msg) counter.textContent = (msg.value || '').length + ' / 1000';
+      this.previewSelection();
+    },
+    previewSelection: function() {
+      var sel = document.getElementById('maintenanceStatusSelect');
+      var msg = document.getElementById('maintenanceMessage');
+      var box = document.getElementById('maintenancePreview');
+      if (!sel || !box) return;
+      var status = sel.value;
+      var hint = document.getElementById('maintenanceStatusHint');
+      if (hint) {
+        if (status === 'down' || status === 'degraded') hint.textContent = 'Users cannot dismiss this banner — stays visible until cleared.';
+        else if (status === 'resolved' || status === 'maintenance') hint.textContent = 'Users can dismiss this banner after seeing it once.';
+        else hint.textContent = 'Pick "No banner" to clear an active notice.';
+      }
+      if (status === 'none') {
+        box.innerHTML = '<div class="px-4 py-6 text-center text-[12px]" style="color:var(--co-gray-500);background:var(--co-surface-sunken);">Operational — no banner will be shown.</div>';
+        return;
+      }
+      var text = (msg && msg.value) ? msg.value : (this.DEFAULT_MESSAGES[status] || '');
+      var record = { status: status, message: text, setByName: (State.user && State.user.name) || '', setAt: new Date().toISOString(), versionId: 'preview' };
+      var bits = [];
+      if (record.setByName) bits.push('Posted by ' + escapeHtml(record.setByName));
+      try { bits.push(new Date(record.setAt).toLocaleString()); } catch (e) {}
+      var styles = {
+        maintenance: { bg:'#fef3c7', ink:'#92400e', border:'#f59e0b', icon:'fa-screwdriver-wrench' },
+        degraded:    { bg:'#ffedd5', ink:'#9a3412', border:'#f97316', icon:'fa-triangle-exclamation' },
+        down:        { bg:'#fee2e2', ink:'#991b1b', border:'#ef4444', icon:'fa-circle-xmark' },
+        resolved:    { bg:'#d1fae5', ink:'#065f46', border:'#10b981', icon:'fa-circle-check' }
+      };
+      var s = styles[status];
+      box.innerHTML =
+        '<div style="background:' + s.bg + ';color:' + s.ink + ';border-bottom:2px solid ' + s.border + ';padding:10px 16px;display:flex;align-items:flex-start;gap:12px;font-size:13px;">' +
+        '<i class="fas ' + s.icon + '" style="margin-top:1px;"></i>' +
+        '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;opacity:0.9;">' + escapeHtml(MaintenancePanel.LABELS[status]) + '</div>' +
+        '<div style="margin-top:2px;font-weight:500;word-break:break-word;">' + escapeHtml(text) + '</div>' +
+        (bits.length ? '<div style="margin-top:3px;font-size:11px;opacity:0.75;">' + bits.join(' &middot; ') + '</div>' : '') +
+        '</div>' +
+        '</div>';
+    },
+    apply: function() {
+      var sel = document.getElementById('maintenanceStatusSelect');
+      var msg = document.getElementById('maintenanceMessage');
+      var notify = document.getElementById('maintenanceNotifyEmail');
+      var btn = document.getElementById('maintenanceApplyBtn');
+      var resultEl = document.getElementById('maintenanceActionResult');
+      if (!sel) return;
+      var status = sel.value;
+      var message = (msg && msg.value || '').trim();
+      var notifyEmail = !!(notify && notify.checked);
+      if (status === 'none') {
+        return this.clear(notifyEmail);
+      }
+      var confirmMsg = 'Set status to "' + MaintenancePanel.LABELS[status] + '"?\n\n' +
+        (notifyEmail ? 'This will SEND AN EMAIL to every active user.' : 'In-app banner only — no email will be sent.');
+      ConfirmModal(confirmMsg, { title: 'Confirm system status', confirmText: notifyEmail ? 'Set & email' : 'Set status', cancelText: 'Cancel' }).then(function(ok) {
+        if (!ok) return;
+        if (btn) btn.disabled = true;
+        if (resultEl) resultEl.textContent = 'Applying...';
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (btn) btn.disabled = false;
+            if (!res || res.success === false) {
+              var err = (res && res.error) || 'Failed to apply status';
+              if (resultEl) resultEl.textContent = '';
+              toast(err, 'error');
+              return;
+            }
+            var emailNote = '';
+            if (res.email && res.email.recipients > 0) {
+              emailNote = ' — emailed ' + res.email.sent + ' of ' + res.email.recipients;
+              if (res.email.skipped) emailNote += ' (' + res.email.skipped + ' failed)';
+            } else if (notifyEmail) {
+              emailNote = ' — no active users to email';
+            }
+            if (resultEl) resultEl.textContent = 'Status applied' + emailNote + '.';
+            toast('Maintenance status updated' + emailNote, 'success');
+            try { MaintenanceBanner.apply(res.status || null); } catch (e) {}
+            MaintenancePanel.refresh();
+          })
+          .withFailureHandler(function(err) {
+            if (btn) btn.disabled = false;
+            if (resultEl) resultEl.textContent = '';
+            toast((err && err.message) || 'Failed to apply status', 'error');
+          })
+          .setMaintenanceStatus({ status: status, message: message, notifyEmail: notifyEmail });
+      });
+    },
+    clear: function(forceNotify) {
+      var notify = document.getElementById('maintenanceNotifyEmail');
+      var btn = document.getElementById('maintenanceClearBtn');
+      var resultEl = document.getElementById('maintenanceActionResult');
+      var notifyEmail = (typeof forceNotify === 'boolean') ? forceNotify : !!(notify && notify.checked);
+      ConfirmModal('Clear the active maintenance banner?' + (notifyEmail ? '\n\nA "service restored" email will go to all active users.' : ''), { title: 'Clear status', confirmText: 'Clear', cancelText: 'Cancel' }).then(function(ok) {
+        if (!ok) return;
+        if (btn) btn.disabled = true;
+        if (resultEl) resultEl.textContent = 'Clearing...';
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (btn) btn.disabled = false;
+            if (!res || res.success === false) {
+              if (resultEl) resultEl.textContent = '';
+              toast((res && res.error) || 'Failed to clear', 'error');
+              return;
+            }
+            if (resultEl) resultEl.textContent = 'Cleared.';
+            toast('Maintenance status cleared', 'success');
+            try { MaintenanceBanner.apply(null); } catch (e) {}
+            MaintenancePanel.refresh();
+          })
+          .withFailureHandler(function(err) {
+            if (btn) btn.disabled = false;
+            if (resultEl) resultEl.textContent = '';
+            toast((err && err.message) || 'Failed to clear', 'error');
+          })
+          .clearMaintenanceStatus(notifyEmail);
+      });
+    }
+  };
+  window.MaintenancePanel = MaintenancePanel;
+
   function loadAccessRequests() {
     if (window.AdminPage && typeof AdminPage.loadAccessRequests === 'function') AdminPage.loadAccessRequests();
   }
@@ -2508,7 +2800,7 @@
 
         setTimeout(function() {
           if (!self._developerKey) {
-            console.warn('DrivePicker: no PICKER_API_KEY script property set. If the picker shows a 403, link this Apps Script to a standard Google Cloud project, enable the Google Picker API, then set script property PICKER_API_KEY to an API key from that project.');
+            console.error('DrivePicker: no PICKER_API_KEY script property set. If the picker shows a 403, link this Apps Script to a standard Google Cloud project, enable the Google Picker API, then set script property PICKER_API_KEY to an API key from that project.');
           }
         }, 0);
       } catch (e) {

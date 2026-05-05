@@ -271,6 +271,11 @@ function clearAllCaches() {
     RequestCache.clear();
     incrementGlobalVersion();
     VersionedCache.resetRequestVersion();
+    try {
+      if (typeof UserCache !== 'undefined' && typeof UserCache.invalidate === 'function') {
+        UserCache.invalidate();
+      }
+    } catch (e) {}
   } catch (error) {
     console.error('clearAllCaches failed:', error);
   }
@@ -473,18 +478,21 @@ function getTasksByIds(taskIds) {
 function getSyncUpdate(sinceVersion) {
   try {
     var changeResult = getChangesSince(sinceVersion);
+    var maintenance = null;
+    try { maintenance = (typeof getMaintenanceStatus === 'function') ? getMaintenanceStatus() : null; } catch (e) {}
     if (changeResult.changedIds.length === 0) {
-      return { version: changeResult.version, changedIds: [], changedTasks: [], changes: changeResult.changes };
+      return { version: changeResult.version, changedIds: [], changedTasks: [], changes: changeResult.changes, maintenance: maintenance };
     }
     var tasks = getTasksByIds(changeResult.changedIds);
     return {
       version: changeResult.version,
       changedIds: changeResult.changedIds,
       changedTasks: tasks,
-      changes: changeResult.changes
+      changes: changeResult.changes,
+      maintenance: maintenance
     };
   } catch (error) {
     console.error('getSyncUpdate failed:', error);
-    return { version: 0, changedIds: [], changedTasks: [], changes: [] };
+    return { version: 0, changedIds: [], changedTasks: [], changes: [], maintenance: null };
   }
 }

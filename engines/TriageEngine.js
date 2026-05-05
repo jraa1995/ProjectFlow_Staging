@@ -258,20 +258,28 @@ const TriageEngine = {
 
   notifySubmitter(email, task, status, reason) {
     try {
+      var _esc = function(v) {
+        return String(v == null ? '' : v)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#x27;');
+      };
       let subject, body;
       if (status === 'assigned' && task) {
         subject = `Your request has been received: ${task.title}`;
         body = `
         <p>Thank you for your submission. Your request has been received and assigned to our team.</p>
-        <p><strong>Reference:</strong> ${task.id}</p>
-        <p><strong>Status:</strong> ${task.status}</p>
+        <p><strong>Reference:</strong> ${_esc(task.id)}</p>
+        <p><strong>Status:</strong> ${_esc(task.status)}</p>
         <p>We will keep you updated on the progress.</p>
         `;
       } else if (status === 'rejected') {
         subject = 'Update on your request';
         body = `
         <p>Thank you for your submission. After review, we are unable to process your request at this time.</p>
-        ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+        ${reason ? `<p><strong>Reason:</strong> ${_esc(reason)}</p>` : ''}
         <p>If you have questions, please contact support.</p>
         `;
       }

@@ -346,6 +346,7 @@ var AdHocPage = {
   _startTickInterval() {
     if (this._timerInterval) clearInterval(this._timerInterval);
     this._timerInterval = setInterval(function() {
+      if (typeof document !== 'undefined' && document.hidden) return;
       var timers = AdHocPage._activeTimers;
       for (var taskId in timers) {
         var el = document.getElementById('adhocTimer_' + taskId);

@@ -303,7 +303,12 @@ async function preloadCache() {
     State.board.config = cachedConfig;
   }
 
-  setInterval(() => CacheService.cleanup(), 5 * 60 * 1000);
+  if (!window._cacheCleanupInterval) {
+    window._cacheCleanupInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      CacheService.cleanup();
+    }, 5 * 60 * 1000);
+  }
 
   return {
     hasCache: !!(cachedTasks || cachedProjects || cachedUsers),

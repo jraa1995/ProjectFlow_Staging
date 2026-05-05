@@ -1,7 +1,77 @@
+function _ps_authorizeProjectWrite_(projectOrId, action) {
+  try {
+    var role = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (role === 'admin') return true;
+    if (action === 'create') return true;
+    var project = projectOrId;
+    if (typeof projectOrId === 'string') {
+      try { project = getProjectById(projectOrId); } catch (e) { project = null; }
+      if (!project) return false;
+    }
+    if (!project || !project.id) return false;
+    if (role === 'manager') return true;
+    if (typeof getManagerContractFromRole === 'function' && getManagerContractFromRole(role)) {
+      var allowed = getManagerAccessibleProjectIds(role, [project]);
+      return !!allowed[project.id];
+    }
+    if (role === 'client') {
+      var email = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+      if (!email) return false;
+      var allowedC = getClientAccessibleProjectIds(email, [project]);
+      return !!allowedC[project.id];
+    }
+    return true;
+  } catch (e) {
+    console.error('_ps_authorizeProjectWrite_ failed:', e);
+    return false;
+  }
+}
+
+function _ps_authorizeContractChange_(currentProject, updates) {
+  try {
+    if (!currentProject || !updates) return true;
+    var newSettings = updates.settings;
+    if (newSettings === undefined || newSettings === null) return true;
+    if (typeof newSettings === 'string') {
+      try { newSettings = JSON.parse(newSettings); } catch (e) { return true; }
+    }
+    if (!newSettings || !Object.prototype.hasOwnProperty.call(newSettings, 'contractCurrent')) return true;
+    var role = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (role === 'admin' || role === 'manager') return true;
+    var contract = (typeof getManagerContractFromRole === 'function') ? getManagerContractFromRole(role) : null;
+    if (!contract) return false;
+    return String(newSettings.contractCurrent || '').toLowerCase() === String(contract).toLowerCase();
+  } catch (e) {
+    console.error('_ps_authorizeContractChange_ failed:', e);
+    return false;
+  }
+}
+
+function _ps_safePayload_(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  var safe = {};
+  Object.keys(payload).slice(0, 30).forEach(function(k) {
+    var v = payload[k];
+    if (v === null || v === undefined) { safe[k] = v; return; }
+    if (typeof v === 'string') { safe[k] = v.length > 200 ? v.slice(0, 200) + '...' : v; }
+    else if (typeof v === 'number' || typeof v === 'boolean') { safe[k] = v; }
+    else { safe[k] = '[object]'; }
+  });
+  return safe;
+}
+
 function saveNewProject(projectData) {
   try {
+    if (!_ps_authorizeProjectWrite_(null, 'create')) {
+      return { success: false, error: 'Permission denied' };
+    }
     const project = createProject(projectData);
     invalidateProjectCache();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.create', 'project', project.id, project.name || '', { projectType: project.projectType });
+      }
+    } catch (e) {}
     return { success: true, project: project };
   } catch (error) {
     console.error('saveNewProject failed:', error);
@@ -119,10 +189,24 @@ function updateProjectDetails(payload) {
   try {
     var projectId = payload.id;
     if (!projectId) return { success: false, error: 'Project ID is required' };
+    var _existingProject = null;
+    try { _existingProject = getProjectById(projectId); } catch (e) {}
+    if (!_existingProject) return { success: false, error: 'Project not found' };
+    if (!_ps_authorizeProjectWrite_(_existingProject, 'update')) {
+      return { success: false, error: 'Permission denied' };
+    }
+    if (!_ps_authorizeContractChange_(_existingProject, payload)) {
+      return { success: false, error: 'Permission denied: cannot change contract scope' };
+    }
     var updates = Object.assign({}, payload);
     delete updates.id;
     const project = updateProject(projectId, updates);
     invalidateProjectCache(projectId);
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.update', 'project', projectId, (project && project.name) || '', _ps_safePayload_(updates));
+      }
+    } catch (e) {}
     return { success: true, project: project };
   } catch (error) {
     console.error('updateProjectDetails failed:', error);
@@ -258,8 +342,16 @@ function getProjectHierarchy(projectId) {
 
 function addProjectReleaseNote(projectId, releaseData) {
   try {
+    if (!_ps_authorizeProjectWrite_(projectId, 'update')) {
+      return { success: false, error: 'Permission denied' };
+    }
     const project = addReleaseNote(projectId, releaseData);
     invalidateProjectCache(projectId);
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.release_note', 'project', projectId, (project && project.name) || '', { version: releaseData && releaseData.version });
+      }
+    } catch (e) {}
     return { success: true, project: project };
   } catch (error) {
     console.error('addProjectReleaseNote failed:', error);
@@ -269,8 +361,16 @@ function addProjectReleaseNote(projectId, releaseData) {
 
 function addProjectChangelogEntry(projectId, entry) {
   try {
+    if (!_ps_authorizeProjectWrite_(projectId, 'update')) {
+      return { success: false, error: 'Permission denied' };
+    }
     const project = addChangelogEntry(projectId, entry);
     invalidateProjectCache(projectId);
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.changelog', 'project', projectId, (project && project.name) || '', _ps_safePayload_(entry));
+      }
+    } catch (e) {}
     return { success: true, project: project };
   } catch (error) {
     console.error('addProjectChangelogEntry failed:', error);
@@ -280,8 +380,16 @@ function addProjectChangelogEntry(projectId, entry) {
 
 function archiveProject(projectId) {
   try {
+    if (!_ps_authorizeProjectWrite_(projectId, 'update')) {
+      return { success: false, error: 'Permission denied' };
+    }
     var result = updateProject(projectId, { status: 'archived' });
     invalidateProjectCache();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.archive', 'project', projectId, (result && result.name) || '', {});
+      }
+    } catch (e) {}
     return { success: true };
   } catch (error) {
     console.error('archiveProject failed:', error);
@@ -291,8 +399,16 @@ function archiveProject(projectId) {
 
 function unarchiveProject(projectId) {
   try {
+    if (!_ps_authorizeProjectWrite_(projectId, 'update')) {
+      return { success: false, error: 'Permission denied' };
+    }
     var result = updateProject(projectId, { status: 'active' });
     invalidateProjectCache();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.unarchive', 'project', projectId, (result && result.name) || '', {});
+      }
+    } catch (e) {}
     return { success: true };
   } catch (error) {
     console.error('unarchiveProject failed:', error);
@@ -302,8 +418,18 @@ function unarchiveProject(projectId) {
 
 function deleteExistingProject(projectId) {
   try {
+    var _existingProject = null;
+    try { _existingProject = getProjectById(projectId); } catch (e) {}
+    if (!_ps_authorizeProjectWrite_(_existingProject || projectId, 'delete')) {
+      return { success: false, error: 'Permission denied' };
+    }
     deleteProject(projectId);
     invalidateProjectCache();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('project.delete', 'project', projectId, (_existingProject && _existingProject.name) || '', {});
+      }
+    } catch (e) {}
     return { success: true };
   } catch (error) {
     console.error('deleteExistingProject failed:', error);

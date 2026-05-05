@@ -239,7 +239,9 @@ function calculateBoardStats(tasks) {
 }
 
 function searchTasks(query, projectId) {
-  const allTasks = getAllTasks();
+  const allTasks = (typeof RequestCache !== 'undefined' && typeof RequestCache.getTasks === 'function')
+    ? RequestCache.getTasks()
+    : getAllTasks();
   const q = query.toLowerCase();
 
   let results = allTasks.filter((task) => {
@@ -262,7 +264,9 @@ function searchTasks(query, projectId) {
 }
 
 function getFilteredTasks(filters) {
-  let tasks = getAllTasks();
+  let tasks = (typeof RequestCache !== 'undefined' && typeof RequestCache.getTasks === 'function')
+    ? RequestCache.getTasks().slice()
+    : getAllTasks();
 
   if (filters.assignee) {
     tasks = tasks.filter((t) => t.assignee === filters.assignee);
@@ -324,7 +328,10 @@ function getFilteredTasks(filters) {
 }
 
 function reorderTasksInColumn(taskId, newPosition, status) {
-  const tasks = getAllTasks().filter((t) => t.status === status);
+  const _all = (typeof RequestCache !== 'undefined' && typeof RequestCache.getTasks === 'function')
+    ? RequestCache.getTasks()
+    : getAllTasks();
+  const tasks = _all.filter((t) => t.status === status);
   const taskIndex = tasks.findIndex((t) => t.id === taskId);
   if (taskIndex === -1) return false;
 
@@ -347,7 +354,9 @@ function reorderTasksInColumn(taskId, newPosition, status) {
 }
 
 function getAllLabels() {
-  const tasks = getAllTasks();
+  const tasks = (typeof RequestCache !== 'undefined' && typeof RequestCache.getTasks === 'function')
+    ? RequestCache.getTasks()
+    : getAllTasks();
   const labelSet = new Set();
 
   tasks.forEach((task) => {
@@ -360,9 +369,15 @@ function getAllLabels() {
 }
 
 function getSubtasks(parentId) {
-  return getAllTasks().filter((t) => t.parentId === parentId);
+  const _all = (typeof RequestCache !== 'undefined' && typeof RequestCache.getTasks === 'function')
+    ? RequestCache.getTasks()
+    : getAllTasks();
+  return _all.filter((t) => t.parentId === parentId);
 }
 
 function getParentTasks() {
-  return getAllTasks().filter((t) => t.type === "Epic" || t.type === "Story");
+  const _all = (typeof RequestCache !== 'undefined' && typeof RequestCache.getTasks === 'function')
+    ? RequestCache.getTasks()
+    : getAllTasks();
+  return _all.filter((t) => t.type === "Epic" || t.type === "Story");
 }

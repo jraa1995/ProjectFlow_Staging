@@ -588,6 +588,10 @@ var NotificationCenter = {
     };
 
     const poll = () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        this.pollingInterval = setTimeout(poll, checkInterval());
+        return;
+      }
       if (this.isOpen) {
         this.loadNotifications();
       } else {

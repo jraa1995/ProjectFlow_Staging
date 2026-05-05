@@ -911,7 +911,10 @@ var TaskTimer = {
     localStorage.setItem('co_timer_taskId', taskId);
     localStorage.setItem('co_timer_start', String(this.startTime));
     this.updateDisplay();
-    this.intervalId = setInterval(() => this.updateDisplay(), 1000);
+    this.intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      this.updateDisplay();
+    }, 1000);
     const btn = document.getElementById('taskTimerBtn');
     const icon = document.getElementById('taskTimerIcon');
     const label = document.getElementById('taskTimerLabel');
@@ -953,7 +956,11 @@ var TaskTimer = {
     if (taskId && start) {
       this.activeTaskId = taskId;
       this.startTime = parseInt(start);
-      this.intervalId = setInterval(() => this.updateDisplay(), 1000);
+      if (this.intervalId) { try { clearInterval(this.intervalId); } catch (e) {} }
+      this.intervalId = setInterval(() => {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        this.updateDisplay();
+      }, 1000);
     }
   },
 

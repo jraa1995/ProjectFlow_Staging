@@ -18,7 +18,7 @@ function _wgRequireAuthor_(targetEmail) {
   var current = getCurrentUserEmailOptimized();
   if (!current) throw new Error('Not authenticated');
   if (String(current).toLowerCase() !== String(targetEmail || '').toLowerCase()) {
-    if (!PermissionGuard.hasPermission('admin:settings', { userEmail: current })) {
+    if (!PermissionGuard.can('admin:settings', { userEmail: current })) {
       throw new Error('Only the author or an admin can perform this action');
     }
   }

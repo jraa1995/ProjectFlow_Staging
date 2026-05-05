@@ -492,6 +492,11 @@
     checkForUpdates() {
       google.script.run
         .withSuccessHandler((result) => {
+          try {
+            if (result && Object.prototype.hasOwnProperty.call(result, 'maintenance') && typeof MaintenanceBanner !== 'undefined') {
+              MaintenanceBanner.apply(result.maintenance || null);
+            }
+          } catch (e) {}
           const hasChanges = result.version > this.lastSyncVersion;
           if (hasChanges) {
             if (result.changedTasks && result.changedTasks.length > 0) {

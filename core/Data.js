@@ -727,12 +727,22 @@ function rowToObject(row, columns) {
   return obj;
 }
 
+function _sanitizeFormulaCell_(value) {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  var ch = value.charAt(0);
+  if (ch === '=' || ch === '+' || ch === '-' || ch === '@') {
+    return "'" + value;
+  }
+  return value;
+}
+
 function objectToRow(obj, columns) {
   const jsonDataIndex = columns.indexOf('jsonData');
   const row = columns.map((col, i) => {
     if (i === jsonDataIndex) return '';
     const value = obj[col];
-    if (Array.isArray(value)) return value.join(', ');
+    if (Array.isArray(value)) return _sanitizeFormulaCell_(value.join(', '));
+    if (typeof value === 'string') return _sanitizeFormulaCell_(value);
     return value !== undefined ? value : '';
   });
   if (jsonDataIndex !== -1) {
@@ -880,6 +890,8 @@ function createTask(taskData) {
     taskData.projectId = 'ADHOC';
   }
   PermissionGuard.requirePermission('task:create', { projectId: taskData.projectId });
+  var _resultTask = null;
+  var _notifSpecs = [];
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -951,56 +963,59 @@ function createTask(taskData) {
         }
       } catch (e) { console.error('createTask metrics failed:', e); }
     }
-    if (typeof NotificationEngine !== 'undefined') {
-      try {
-        var createNotified = {};
-        var creatorEmail = task.reporter ? String(task.reporter).toLowerCase() : '';
-        var assigneeEmail = task.assignee ? String(task.assignee).toLowerCase() : '';
-        if (task.assignee && assigneeEmail !== creatorEmail) {
-          NotificationEngine.createNotification({
-            userId: task.assignee,
-            type: 'task_assigned',
-            title: 'Task Assigned',
-            message: 'You have been assigned to ' + task.id + ': ' + task.title,
+    var creatorEmail = task.reporter ? String(task.reporter).toLowerCase() : '';
+    var assigneeEmail = task.assignee ? String(task.assignee).toLowerCase() : '';
+    var createNotified = {};
+    if (task.assignee && assigneeEmail !== creatorEmail) {
+      _notifSpecs.push({
+        userId: task.assignee,
+        type: 'task_assigned',
+        title: 'Task Assigned',
+        message: 'You have been assigned to ' + task.id + ': ' + task.title,
+        entityType: 'task',
+        entityId: task.id,
+        channels: ['in_app', 'email']
+      });
+      createNotified[assigneeEmail] = true;
+    }
+    if (task.watchers) {
+      var newWatchers = typeof task.watchers === 'string'
+        ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+        : (Array.isArray(task.watchers) ? task.watchers : []);
+      newWatchers.forEach(function(watcherEmail) {
+        var lower = String(watcherEmail).toLowerCase();
+        if (lower === creatorEmail) return;
+        if (!createNotified[lower]) {
+          _notifSpecs.push({
+            userId: watcherEmail,
+            type: 'task_updated',
+            title: 'Added to Task',
+            message: 'You were added as a watcher on ' + task.id + ': ' + task.title,
             entityType: 'task',
             entityId: task.id,
-            channels: ['in_app', 'email']
+            channels: ['in_app', 'email'],
+            reason: 'You were added as a watcher'
           });
-          createNotified[assigneeEmail] = true;
+          createNotified[lower] = true;
         }
-        if (task.watchers) {
-          var newWatchers = typeof task.watchers === 'string'
-            ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
-            : (Array.isArray(task.watchers) ? task.watchers : []);
-          newWatchers.forEach(function(watcherEmail) {
-            var lower = String(watcherEmail).toLowerCase();
-            if (lower === creatorEmail) return;
-            if (!createNotified[lower]) {
-              NotificationEngine.createNotification({
-                userId: watcherEmail,
-                type: 'task_updated',
-                title: 'Added to Task',
-                message: 'You were added as a watcher on ' + task.id + ': ' + task.title,
-                entityType: 'task',
-                entityId: task.id,
-                channels: ['in_app', 'email'],
-                reason: 'You were added as a watcher'
-              });
-              createNotified[lower] = true;
-            }
-          });
-        }
-      } catch (e) {
-        console.error('Failed to send task creation notifications:', e);
-      }
+      });
     }
-    return task;
+    _resultTask = task;
   } finally {
     lock.releaseLock();
   }
+  if (typeof NotificationEngine !== 'undefined' && _notifSpecs.length > 0) {
+    _notifSpecs.forEach(function(spec) {
+      try { NotificationEngine.createNotification(spec); }
+      catch (e) { console.error('Failed to dispatch task creation notification:', e); }
+    });
+  }
+  return _resultTask;
 }
 
 function updateTask(taskId, updates) {
+  var _resultTask = null;
+  var _notifSpecs = [];
   const lock = LockService.getScriptLock();
   lock.waitLock(5000);
   try {
@@ -1078,106 +1093,109 @@ function updateTask(taskId, updates) {
         console.error('recordAssigneeUsed failed:', e);
       }
     }
-    if (Object.keys(changes).length > 0 && typeof NotificationEngine !== 'undefined') {
-      try {
-        var notifiedUsers = {};
+    if (Object.keys(changes).length > 0) {
+      var notifiedUsers = {};
 
-        if (changes.assignee && updates.assignee) {
-          NotificationEngine.createNotification({
-            userId: updates.assignee,
-            type: 'task_assigned',
-            title: 'Task Assigned',
-            message: 'You have been assigned to ' + taskId + ': ' + task.title,
-            entityType: 'task',
-            entityId: taskId,
-            channels: ['in_app', 'email']
-          });
-          notifiedUsers[updates.assignee] = true;
-        }
+      if (changes.assignee && updates.assignee) {
+        _notifSpecs.push({
+          userId: updates.assignee,
+          type: 'task_assigned',
+          title: 'Task Assigned',
+          message: 'You have been assigned to ' + taskId + ': ' + task.title,
+          entityType: 'task',
+          entityId: taskId,
+          channels: ['in_app', 'email']
+        });
+        notifiedUsers[updates.assignee] = true;
+      }
 
-        if (changes.watchers) {
-          var oldWatchers = changes.watchers.from
-            ? String(changes.watchers.from).split(',').map(function(w) { return w.trim(); }).filter(Boolean)
-            : [];
-          var newWatchers = changes.watchers.to
-            ? String(changes.watchers.to).split(',').map(function(w) { return w.trim(); }).filter(Boolean)
-            : [];
-          newWatchers.forEach(function(w) {
-            if (oldWatchers.indexOf(w) === -1 && !notifiedUsers[w]) {
-              NotificationEngine.createNotification({
-                userId: w,
-                type: 'task_updated',
-                title: 'Added to Task',
-                message: 'You were added as a watcher on ' + taskId + ': ' + task.title,
-                entityType: 'task',
-                entityId: taskId,
-                channels: ['in_app', 'email'],
-                reason: 'You were added as a watcher'
-              });
-              notifiedUsers[w] = true;
-            }
-          });
-        }
+      if (changes.watchers) {
+        var oldWatchers = changes.watchers.from
+          ? String(changes.watchers.from).split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+          : [];
+        var newWatchers = changes.watchers.to
+          ? String(changes.watchers.to).split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+          : [];
+        newWatchers.forEach(function(w) {
+          if (oldWatchers.indexOf(w) === -1 && !notifiedUsers[w]) {
+            _notifSpecs.push({
+              userId: w,
+              type: 'task_updated',
+              title: 'Added to Task',
+              message: 'You were added as a watcher on ' + taskId + ': ' + task.title,
+              entityType: 'task',
+              entityId: taskId,
+              channels: ['in_app', 'email'],
+              reason: 'You were added as a watcher'
+            });
+            notifiedUsers[w] = true;
+          }
+        });
+      }
 
-        if (task.watchers) {
-          var watcherList = typeof task.watchers === 'string'
-            ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
-            : (Array.isArray(task.watchers) ? task.watchers : []);
-          var changedFields = Object.keys(changes).join(', ');
-          watcherList.forEach(function(watcherEmail) {
-            if (!notifiedUsers[watcherEmail]) {
-              NotificationEngine.createNotification({
-                userId: watcherEmail,
-                type: 'task_updated',
-                title: 'Task Updated',
-                message: taskId + ': ' + task.title + ' — updated: ' + changedFields,
-                entityType: 'task',
-                entityId: taskId,
-                channels: ['in_app', 'email'],
-                reason: 'You are watching this task'
-              });
-              notifiedUsers[watcherEmail] = true;
-            }
-          });
-        }
+      if (task.watchers) {
+        var watcherList = typeof task.watchers === 'string'
+          ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+          : (Array.isArray(task.watchers) ? task.watchers : []);
+        var changedFields = Object.keys(changes).join(', ');
+        watcherList.forEach(function(watcherEmail) {
+          if (!notifiedUsers[watcherEmail]) {
+            _notifSpecs.push({
+              userId: watcherEmail,
+              type: 'task_updated',
+              title: 'Task Updated',
+              message: taskId + ': ' + task.title + ' — updated: ' + changedFields,
+              entityType: 'task',
+              entityId: taskId,
+              channels: ['in_app', 'email'],
+              reason: 'You are watching this task'
+            });
+            notifiedUsers[watcherEmail] = true;
+          }
+        });
+      }
 
-        if (task.assignee && !notifiedUsers[task.assignee]) {
-          var changedFieldsForAssignee = Object.keys(changes).join(', ');
-          NotificationEngine.createNotification({
-            userId: task.assignee,
-            type: 'task_updated',
-            title: 'Task Updated',
-            message: taskId + ': ' + task.title + ' — updated: ' + changedFieldsForAssignee,
-            entityType: 'task',
-            entityId: taskId,
-            channels: ['in_app', 'email'],
-            reason: 'You are assigned to this task'
-          });
-          notifiedUsers[task.assignee] = true;
-        }
+      if (task.assignee && !notifiedUsers[task.assignee]) {
+        var changedFieldsForAssignee = Object.keys(changes).join(', ');
+        _notifSpecs.push({
+          userId: task.assignee,
+          type: 'task_updated',
+          title: 'Task Updated',
+          message: taskId + ': ' + task.title + ' — updated: ' + changedFieldsForAssignee,
+          entityType: 'task',
+          entityId: taskId,
+          channels: ['in_app', 'email'],
+          reason: 'You are assigned to this task'
+        });
+        notifiedUsers[task.assignee] = true;
+      }
 
-        if (task.reporter && !notifiedUsers[task.reporter]) {
-          var changedFieldsForReporter = Object.keys(changes).join(', ');
-          NotificationEngine.createNotification({
-            userId: task.reporter,
-            type: 'task_updated',
-            title: 'Task Updated',
-            message: taskId + ': ' + task.title + ' — updated: ' + changedFieldsForReporter,
-            entityType: 'task',
-            entityId: taskId,
-            channels: ['in_app', 'email'],
-            reason: 'You reported this task'
-          });
-          notifiedUsers[task.reporter] = true;
-        }
-      } catch (e) {
-        console.error('Failed to send update notifications:', e);
+      if (task.reporter && !notifiedUsers[task.reporter]) {
+        var changedFieldsForReporter = Object.keys(changes).join(', ');
+        _notifSpecs.push({
+          userId: task.reporter,
+          type: 'task_updated',
+          title: 'Task Updated',
+          message: taskId + ': ' + task.title + ' — updated: ' + changedFieldsForReporter,
+          entityType: 'task',
+          entityId: taskId,
+          channels: ['in_app', 'email'],
+          reason: 'You reported this task'
+        });
+        notifiedUsers[task.reporter] = true;
       }
     }
-    return task;
+    _resultTask = task;
   } finally {
     lock.releaseLock();
   }
+  if (typeof NotificationEngine !== 'undefined' && _notifSpecs.length > 0) {
+    _notifSpecs.forEach(function(spec) {
+      try { NotificationEngine.createNotification(spec); }
+      catch (e) { console.error('Failed to dispatch task update notification:', e); }
+    });
+  }
+  return _resultTask;
 }
 
 function moveTask(taskId, newStatus, newPosition) {
@@ -2214,18 +2232,36 @@ function batchUpdateTasks(updatesList) {
   var results = [];
   var rangesToWrite = [];
   var updateMap = {};
+  var perTaskChanges = {};
+  var notifSpecs = [];
+  var currentUser = '';
+  try { currentUser = getCurrentUserEmail() || ''; } catch (e) {}
   updatesList.forEach(function(u) { updateMap[u.taskId] = u.changes; });
 
   for (var i = 1; i < data.length; i++) {
     var rowId = data[i][0];
     if (!updateMap.hasOwnProperty(rowId)) continue;
     var task = rowToObject(data[i], columns);
+    var taskBefore = rowToObject(data[i], columns);
     var changes = updateMap[rowId];
+    var diff = {};
     Object.keys(changes).forEach(function(key) {
-      if (columns.indexOf(key) !== -1) task[key] = changes[key];
+      if (columns.indexOf(key) !== -1) {
+        if (taskBefore[key] !== changes[key]) {
+          diff[key] = { from: taskBefore[key], to: changes[key] };
+        }
+        task[key] = changes[key];
+      }
     });
     task.updatedAt = timestamp;
     if (changes.status === 'Done' && !task.completedAt) task.completedAt = timestamp;
+    if (columns.indexOf('version') !== -1) {
+      task.version = (parseInt(task.version) || 0) + 1;
+    }
+    if (columns.indexOf('lastModifiedBy') !== -1 && currentUser) {
+      task.lastModifiedBy = currentUser;
+    }
+    perTaskChanges[rowId] = { diff: diff, task: task };
     rangesToWrite.push({ rowIndex: i + 1, rowData: objectToRow(task, columns) });
     results.push(task);
     RowIndexCache.set('Tasks', rowId, i + 1);
@@ -2250,6 +2286,79 @@ function batchUpdateTasks(updatesList) {
     batchStart = batchEnd + 1;
   }
   SpreadsheetApp.flush();
+
+  Object.keys(perTaskChanges).forEach(function(taskId) {
+    try {
+      var entry = perTaskChanges[taskId];
+      if (Object.keys(entry.diff).length === 0) return;
+      try { logActivity(currentUser, 'updated', 'task', taskId, entry.diff); } catch (e) {}
+      var task = entry.task;
+      var notifiedUsers = {};
+      var changedFields = Object.keys(entry.diff).join(', ');
+      if (entry.diff.assignee && entry.diff.assignee.to) {
+        notifSpecs.push({
+          userId: entry.diff.assignee.to,
+          type: 'task_assigned',
+          title: 'Task Assigned',
+          message: 'You have been assigned to ' + taskId + ': ' + task.title,
+          entityType: 'task',
+          entityId: taskId,
+          channels: ['in_app', 'email']
+        });
+        notifiedUsers[entry.diff.assignee.to] = true;
+      }
+      if (task.watchers) {
+        var watcherList = typeof task.watchers === 'string'
+          ? task.watchers.split(',').map(function(w) { return w.trim(); }).filter(Boolean)
+          : (Array.isArray(task.watchers) ? task.watchers : []);
+        watcherList.forEach(function(watcherEmail) {
+          if (!notifiedUsers[watcherEmail]) {
+            notifSpecs.push({
+              userId: watcherEmail,
+              type: 'task_updated',
+              title: 'Task Updated',
+              message: taskId + ': ' + task.title + ' — updated: ' + changedFields,
+              entityType: 'task',
+              entityId: taskId,
+              channels: ['in_app', 'email'],
+              reason: 'You are watching this task'
+            });
+            notifiedUsers[watcherEmail] = true;
+          }
+        });
+      }
+      if (task.assignee && !notifiedUsers[task.assignee]) {
+        notifSpecs.push({
+          userId: task.assignee,
+          type: 'task_updated',
+          title: 'Task Updated',
+          message: taskId + ': ' + task.title + ' — updated: ' + changedFields,
+          entityType: 'task',
+          entityId: taskId,
+          channels: ['in_app', 'email'],
+          reason: 'You are assigned to this task'
+        });
+        notifiedUsers[task.assignee] = true;
+      }
+      if (task.reporter && !notifiedUsers[task.reporter]) {
+        notifSpecs.push({
+          userId: task.reporter,
+          type: 'task_updated',
+          title: 'Task Updated',
+          message: taskId + ': ' + task.title + ' — updated: ' + changedFields,
+          entityType: 'task',
+          entityId: taskId,
+          channels: ['in_app', 'email'],
+          reason: 'You reported this task'
+        });
+        notifiedUsers[task.reporter] = true;
+      }
+    } catch (e) {
+      console.error('batchUpdateTasks: failed to build notifications for ' + taskId + ':', e);
+    }
+  });
+
+  results.notificationSpecs = notifSpecs;
   return results;
 }
 

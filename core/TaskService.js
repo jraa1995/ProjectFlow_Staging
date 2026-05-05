@@ -1,3 +1,98 @@
+function _ts_authorizeTaskRead_(task) {
+  if (!task) return false;
+  try {
+    var role = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (role === 'admin' || role === 'manager') return true;
+    if (typeof getManagerContractFromRole === 'function' && getManagerContractFromRole(role)) {
+      var allowed = getManagerAccessibleProjectIds(role);
+      return !!(task.projectId && allowed[task.projectId]);
+    }
+    if (role === 'client') {
+      var email = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+      if (!email) return false;
+      var allowedC = getClientAccessibleProjectIds(email);
+      if (task.projectId && allowedC[task.projectId]) return true;
+      var emailLc = String(email).toLowerCase();
+      if (task.assignee && String(task.assignee).toLowerCase() === emailLc) return true;
+      if (task.reporter && String(task.reporter).toLowerCase() === emailLc) return true;
+      return false;
+    }
+    return PermissionGuard.canReadTask(task);
+  } catch (e) {
+    console.error('_ts_authorizeTaskRead_ failed:', e);
+    return false;
+  }
+}
+
+function _ts_authorizeTaskWrite_(task, action) {
+  if (!task) return false;
+  try {
+    var role = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (role === 'admin') return true;
+    if (typeof getManagerContractFromRole === 'function' && getManagerContractFromRole(role)) {
+      var allowed = getManagerAccessibleProjectIds(role);
+      return !!(task.projectId && allowed[task.projectId]);
+    }
+    if (role === 'client') {
+      var email = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+      if (!email) return false;
+      var allowedC = getClientAccessibleProjectIds(email);
+      if (!task.projectId || !allowedC[task.projectId]) return false;
+      var emailLc = String(email).toLowerCase();
+      if (action === 'delete') {
+        return !!(task.reporter && String(task.reporter).toLowerCase() === emailLc);
+      }
+      return !!(
+        (task.assignee && String(task.assignee).toLowerCase() === emailLc) ||
+        (task.reporter && String(task.reporter).toLowerCase() === emailLc)
+      );
+    }
+    if (action === 'update') return PermissionGuard.canUpdateTask(task);
+    if (action === 'delete') return PermissionGuard.canDeleteTask(task);
+    return PermissionGuard.canReadTask(task);
+  } catch (e) {
+    console.error('_ts_authorizeTaskWrite_ failed:', e);
+    return false;
+  }
+}
+
+function _ts_authorizeProjectCreate_(projectId) {
+  try {
+    if (!projectId) return true;
+    var pidUpper = String(projectId).toUpperCase();
+    if (pidUpper === 'ADHOC' || pidUpper === 'TASK') return true;
+    var role = (typeof getCurrentUserRole === 'function') ? getCurrentUserRole() : null;
+    if (role === 'admin' || role === 'manager') return true;
+    if (typeof getManagerContractFromRole === 'function' && getManagerContractFromRole(role)) {
+      var allowed = getManagerAccessibleProjectIds(role);
+      return !!allowed[projectId];
+    }
+    if (role === 'client') {
+      var email = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+      if (!email) return false;
+      var allowedC = getClientAccessibleProjectIds(email);
+      return !!allowedC[projectId];
+    }
+    return true;
+  } catch (e) {
+    console.error('_ts_authorizeProjectCreate_ failed:', e);
+    return false;
+  }
+}
+
+function _ts_safeUpdates_(updates) {
+  if (!updates || typeof updates !== 'object') return {};
+  var safe = {};
+  Object.keys(updates).slice(0, 30).forEach(function(k) {
+    var v = updates[k];
+    if (v === null || v === undefined) { safe[k] = v; return; }
+    if (typeof v === 'string') { safe[k] = v.length > 200 ? v.slice(0, 200) + '...' : v; }
+    else if (typeof v === 'number' || typeof v === 'boolean') { safe[k] = v; }
+    else { safe[k] = '[object]'; }
+  });
+  return safe;
+}
+
 function loadMyBoard(projectId) {
   return getMyBoardOptimized(projectId || null);
 }
@@ -81,10 +176,18 @@ function saveNewTask(taskData) {
     var projectId = taskData.projectId || '';
     var daId = taskData.dataAssetId || '';
     if (!projectId && !daId) throw new Error('Project is required');
+    if (!_ts_authorizeProjectCreate_(projectId)) {
+      throw new Error('Permission denied: cannot create task in project ' + projectId);
+    }
     taskData.title = title;
     const result = createTask(taskData);
     patchTaskCache(result.id, result, 'create');
     invalidateTaskCache(result.id, 'create');
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('task.create', 'task', result.id, result.title || '', { projectId: result.projectId, assignee: result.assignee });
+      }
+    } catch (e) {}
     return result;
   } catch (error) {
     console.error('saveNewTask failed:', error);
@@ -97,8 +200,18 @@ function saveTaskUpdate(taskId, updates) {
     var resolved = getTaskByUid(taskId);
     if (resolved) taskId = resolved.id;
   }
+  var _existingTask = null;
+  try { _existingTask = getTaskById(taskId); } catch (e) {}
+  if (_existingTask && !_ts_authorizeTaskWrite_(_existingTask, 'update')) {
+    throw new Error('Permission denied: cannot update this task');
+  }
   const result = updateTask(taskId, updates);
   invalidateTaskCache(taskId, 'update');
+  try {
+    if (typeof logAuditEvent === 'function') {
+      logAuditEvent('task.update', 'task', taskId, (result && result.title) || '', _ts_safeUpdates_(updates));
+    }
+  } catch (e) {}
   try {
     if (result.dueDate) {
       const currentUser = getCurrentUserEmail();
@@ -117,9 +230,19 @@ function moveTaskToStatus(taskId, newStatus, newPosition) {
     var resolved = getTaskByUid(taskId);
     if (resolved) taskId = resolved.id;
   }
+  var _existingTask = null;
+  try { _existingTask = getTaskById(taskId); } catch (e) {}
+  if (_existingTask && !_ts_authorizeTaskWrite_(_existingTask, 'update')) {
+    throw new Error('Permission denied: cannot update this task');
+  }
   const status = denormalizeStatusId(newStatus);
   const result = moveTask(taskId, status, newPosition);
   invalidateTaskCache(taskId, 'update');
+  try {
+    if (typeof logAuditEvent === 'function') {
+      logAuditEvent('task.move', 'task', taskId, (result && result.title) || '', { status: status, position: newPosition });
+    }
+  } catch (e) {}
   return result;
 }
 
@@ -128,8 +251,18 @@ function removeTask(taskId) {
     var resolved = getTaskByUid(taskId);
     if (resolved) taskId = resolved.id;
   }
+  var _existingTask = null;
+  try { _existingTask = getTaskById(taskId); } catch (e) {}
+  if (_existingTask && !_ts_authorizeTaskWrite_(_existingTask, 'delete')) {
+    throw new Error('Permission denied: cannot delete this task');
+  }
   const result = deleteTask(taskId);
   invalidateTaskCache(taskId, 'delete');
+  try {
+    if (typeof logAuditEvent === 'function') {
+      logAuditEvent('task.delete', 'task', taskId, (_existingTask && _existingTask.title) || '', { projectId: _existingTask && _existingTask.projectId });
+    }
+  } catch (e) {}
   return result;
 }
 
@@ -139,12 +272,15 @@ function loadTask(taskId) {
       return null;
     }
     var id = taskId.trim();
+    var task;
     if (isValidTaskUid(id)) {
-      var resolved = getTaskByUid(id);
-      return resolved || null;
+      task = getTaskByUid(id);
+    } else {
+      task = getTaskById(id);
     }
-    var task = getTaskById(id);
-    return task || null;
+    if (!task) return null;
+    if (!_ts_authorizeTaskRead_(task)) return null;
+    return task;
   } catch (error) {
     console.error('loadTask error for taskId ' + taskId + ':', error);
     return null;
@@ -162,6 +298,7 @@ function loadTaskDetail(taskId) {
       task = getTaskById(id);
     }
     if (!task) return null;
+    if (!_ts_authorizeTaskRead_(task)) return null;
     var comments = [];
     try { comments = loadComments(task.id); } catch (e) { console.error('loadTaskDetail comments error:', e); }
     var dependencies = [];
@@ -189,6 +326,10 @@ function executeBatchOperations(operations) {
     return { results: [], errors: [] };
   }
 
+  var _batchResults = null;
+  var _batchNotifSpecs = [];
+  var _batchDenied = [];
+  var _batchError = null;
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -212,32 +353,173 @@ function executeBatchOperations(operations) {
           break;
       }
       if (op.params.taskId) {
+        var _opTask = null;
+        try { _opTask = getTaskById(op.params.taskId); } catch (e) {}
+        if (_opTask && !_ts_authorizeTaskWrite_(_opTask, 'update')) {
+          _batchDenied.push({ taskId: op.params.taskId, error: 'Permission denied' });
+          return;
+        }
         updatesList.push({ taskId: op.params.taskId, changes: changes });
       }
     });
-    var results = batchUpdateTasks(updatesList);
+    _batchResults = batchUpdateTasks(updatesList);
+    if (_batchResults && _batchResults.notificationSpecs) {
+      _batchNotifSpecs = _batchResults.notificationSpecs;
+    }
     invalidateTaskCache(null, 'update');
-    return {
-      results: results.map(function(r, i) { return { index: i, success: true, result: r }; }),
-      errors: []
-    };
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('task.batch_update', 'task', '', '', { count: _batchResults.length, denied: _batchDenied.length });
+      }
+    } catch (e) {}
   } catch (e) {
     console.error('executeBatchOperations failed:', e.message);
-    return { results: [], errors: [{ index: 0, success: false, error: e.message }] };
+    _batchError = e.message;
   } finally {
     lock.releaseLock();
+  }
+  if (_batchError) {
+    return { results: [], errors: [{ index: 0, success: false, error: _batchError }] };
+  }
+  if (typeof NotificationEngine !== 'undefined' && _batchNotifSpecs.length > 0) {
+    _batchNotifSpecs.forEach(function(spec) {
+      try { NotificationEngine.createNotification(spec); }
+      catch (e) { console.error('Failed to dispatch batch notification:', e); }
+    });
+  }
+  return {
+    results: (_batchResults || []).map(function(r, i) { return { index: i, success: true, result: r }; }),
+    errors: _batchDenied
+  };
+}
+
+function bulkUpdateStatus(taskIds, newStatus) {
+  try {
+    if (!Array.isArray(taskIds) || taskIds.length === 0) {
+      return { success: false, error: 'No tasks selected' };
+    }
+    var status = denormalizeStatusId(newStatus);
+    var updated = [];
+    var failed = [];
+    taskIds.forEach(function(rawId) {
+      try {
+        var resolvedId = rawId;
+        if (isValidTaskUid(rawId)) {
+          var resolvedTask = getTaskByUid(rawId);
+          if (resolvedTask) resolvedId = resolvedTask.id;
+        }
+        var existingTask = getTaskById(resolvedId);
+        if (!existingTask) { failed.push({ taskId: resolvedId, error: 'Not found' }); return; }
+        if (!_ts_authorizeTaskWrite_(existingTask, 'update')) {
+          failed.push({ taskId: resolvedId, error: 'Permission denied' });
+          return;
+        }
+        moveTask(resolvedId, status);
+        invalidateTaskCache(resolvedId, 'update');
+        updated.push({ taskId: resolvedId, status: status });
+      } catch (e) {
+        failed.push({ taskId: rawId, error: e.message || 'Unknown error' });
+      }
+    });
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('task.bulk_status', 'task', '', '', { count: updated.length, denied: failed.length, status: status });
+      }
+    } catch (e) {}
+    return { success: true, updated: updated, failed: failed };
+  } catch (error) {
+    console.error('bulkUpdateStatus failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function bulkDeleteTasks(taskIds) {
+  try {
+    if (!Array.isArray(taskIds) || taskIds.length === 0) {
+      return { success: false, error: 'No tasks selected' };
+    }
+    var deleted = [];
+    var failed = [];
+    taskIds.forEach(function(rawId) {
+      try {
+        var resolvedId = rawId;
+        if (isValidTaskUid(rawId)) {
+          var resolvedTask = getTaskByUid(rawId);
+          if (resolvedTask) resolvedId = resolvedTask.id;
+        }
+        var existingTask = getTaskById(resolvedId);
+        if (!existingTask) { failed.push({ taskId: resolvedId, error: 'Not found' }); return; }
+        if (!_ts_authorizeTaskWrite_(existingTask, 'delete')) {
+          failed.push({ taskId: resolvedId, error: 'Permission denied' });
+          return;
+        }
+        deleteTask(resolvedId);
+        invalidateTaskCache(resolvedId, 'delete');
+        deleted.push({ taskId: resolvedId });
+      } catch (e) {
+        failed.push({ taskId: rawId, error: e.message || 'Unknown error' });
+      }
+    });
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('task.bulk_delete', 'task', '', '', { count: deleted.length, denied: failed.length });
+      }
+    } catch (e) {}
+    return { success: true, deleted: deleted, failed: failed };
+  } catch (error) {
+    console.error('bulkDeleteTasks failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function updateTaskField(taskId, field, newValue) {
+  try {
+    if (!taskId || !field) return { success: false, error: 'taskId and field required' };
+    var allowedFields = {
+      'title': true, 'description': true, 'status': true, 'priority': true,
+      'assignee': true, 'reporter': true, 'dueDate': true, 'startDate': true,
+      'storyPoints': true, 'estimatedHrs': true, 'actualHrs': true,
+      'sprint': true, 'type': true, 'labels': true, 'parentId': true,
+      'projectId': true, 'milestoneDate': true
+    };
+    if (!allowedFields[field]) {
+      return { success: false, error: 'Field not editable: ' + field };
+    }
+    var updates = {};
+    updates[field] = newValue;
+    var result = saveTaskUpdate(taskId, updates);
+    return { success: true, task: result };
+  } catch (error) {
+    console.error('updateTaskField failed:', error);
+    return { success: false, error: error.message };
   }
 }
 
 function updateTaskWithVersion(taskId, updates, expectedVersion) {
   try {
+    var _existingTask = null;
+    try { _existingTask = getTaskById(taskId); } catch (e) {}
+    if (_existingTask && !_ts_authorizeTaskWrite_(_existingTask, 'update')) {
+      throw new Error('Permission denied: cannot update this task');
+    }
+
     if (typeof LockManager === 'undefined') {
       const task = updateTask(taskId, updates);
+      try {
+        if (typeof logAuditEvent === 'function') {
+          logAuditEvent('task.update', 'task', taskId, (task && task.title) || '', _ts_safeUpdates_(updates));
+        }
+      } catch (e) {}
       return { success: true, task: task };
     }
 
     const task = LockManager.updateTaskWithLocking(taskId, updates, expectedVersion);
     invalidateTaskCache(taskId, 'update');
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('task.update', 'task', taskId, (task && task.title) || '', _ts_safeUpdates_(updates));
+      }
+    } catch (e) {}
     return { success: true, task: task };
   } catch (error) {
     console.error('updateTaskWithVersion failed:', error);
@@ -326,19 +608,19 @@ function auditTaskIntegrity() {
   } catch (e) {
     console.error('auditTaskIntegrity: comments scan failed:', e);
   }
-  console.log('=== TASK INTEGRITY AUDIT ===');
-  console.log('Tasks scanned: ' + totalRows);
-  console.log('Unique IDs: ' + allIds.size);
-  console.log('Duplicate IDs: ' + duplicates.length);
-  console.log('Invalid dependencies: ' + invalidDeps.length);
-  console.log('Orphan comments: ' + orphanComments.length);
-  if (duplicates.length > 0) console.log('Duplicates: ' + JSON.stringify(duplicates));
-  if (invalidDeps.length > 0) console.log('Invalid deps: ' + JSON.stringify(invalidDeps));
-  if (orphanComments.length > 0) console.log('Orphan comments: ' + JSON.stringify(orphanComments));
-  if (duplicates.length === 0 && invalidDeps.length === 0 && orphanComments.length === 0) {
-    console.log('ALL CLEAR — no integrity issues found');
-  }
-  return { duplicates: duplicates, invalidDeps: invalidDeps, orphanComments: orphanComments };
+  return {
+    summary: {
+      tasksScanned: totalRows,
+      uniqueIds: allIds.size,
+      duplicateCount: duplicates.length,
+      invalidDepCount: invalidDeps.length,
+      orphanCommentCount: orphanComments.length,
+      allClear: duplicates.length === 0 && invalidDeps.length === 0 && orphanComments.length === 0
+    },
+    duplicates: duplicates,
+    invalidDeps: invalidDeps,
+    orphanComments: orphanComments
+  };
 }
 
 function backfillTaskUids() {
@@ -359,7 +641,6 @@ function backfillTaskUids() {
     sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
     SpreadsheetApp.flush();
   }
-  console.log('backfillTaskUids: backfilled ' + count + ' of ' + (data.length - 1) + ' tasks');
   return { backfilledCount: count, totalRows: data.length - 1 };
 }
 
@@ -433,7 +714,6 @@ function repairTaskIdentity() {
     });
     try { clearAllCaches(); } catch (e) { console.error('repairTaskIdentity: cache clear failed:', e); }
     try { RowIndexCache.invalidateSheet('Tasks'); } catch (e) {}
-    console.log('repairTaskIdentity: repaired ' + remaps.length + ' duplicates, backfilled ' + uidBackfillCount + ' UIDs');
     return { duplicatesRepaired: remaps.length, uidsBackfilled: uidBackfillCount, remaps: remaps };
   } finally {
     lock.releaseLock();
@@ -587,7 +867,6 @@ function resetTaskSystem() {
       var scriptCache = CacheService.getScriptCache();
       scriptCache.removeAll(['ALL_TASKS_CACHE', 'BATCH_DATA_CACHE', 'BATCH_DATA_DIRTY']);
     } catch (e) {}
-    console.log('resetTaskSystem: processed ' + (data.length - 1) + ' tasks, reset ' + seqResets.length + ' sequences, backfilled ' + uidCount + ' UIDs');
     return { tasksProcessed: data.length - 1, sequencesReset: seqResets, uidsBackfilled: uidCount, cacheCleared: true };
   } finally {
     lock.releaseLock();
@@ -618,7 +897,6 @@ function resetTaskSequences() {
     props.setProperty(key, String(seqMap[prefix]));
     resets.push({ projectId: prefix, oldSeq: parseInt(oldVal), newSeq: seqMap[prefix] });
   }
-  console.log('resetTaskSequences: reset ' + resets.length + ' sequences');
   return { sequencesReset: resets };
 }
 
@@ -639,7 +917,6 @@ function exportTaskSnapshot() {
     if (data.length > 1) {
       backupSheet.getRange(2, 1, data.length - 1, data[0].length).setValues(data.slice(1));
     }
-    console.log('exportTaskSnapshot: created backup sheet "' + backupName + '" with ' + tasks.length + ' tasks');
     return { success: true, backupSheet: backupName, taskCount: tasks.length, tasks: tasks };
   } catch (e) {
     console.error('exportTaskSnapshot: failed to create backup sheet:', e);

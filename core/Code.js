@@ -21,12 +21,34 @@ function doGet(e) {
 }
 
 function getPickerOAuthToken() {
+  try {
+    PermissionGuard.requirePermission('dataasset:create');
+  } catch (e) {
+    console.error('getPickerOAuthToken denied:', e && e.message);
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('oauth.token_denied', 'oauth', 'picker', '', { reason: e && e.message });
+      }
+    } catch (e2) {}
+    throw e;
+  }
+  try {
+    if (typeof logAuditEvent === 'function') {
+      logAuditEvent('oauth.token_issued', 'oauth', 'picker', '', { surface: 'getPickerOAuthToken' });
+    }
+  } catch (e) {}
   return ScriptApp.getOAuthToken();
 }
 
 function getPickerConfig() {
   try {
+    PermissionGuard.requirePermission('dataasset:create');
     var props = PropertiesService.getScriptProperties();
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('oauth.token_issued', 'oauth', 'picker', '', { surface: 'getPickerConfig' });
+      }
+    } catch (e) {}
     return {
       token: ScriptApp.getOAuthToken(),
       developerKey: props.getProperty('PICKER_API_KEY') || '',
@@ -34,6 +56,11 @@ function getPickerConfig() {
     };
   } catch (error) {
     console.error('getPickerConfig failed:', error);
+    try {
+      if (typeof logAuditEvent === 'function') {
+        logAuditEvent('oauth.token_denied', 'oauth', 'picker', '', { reason: error && error.message });
+      }
+    } catch (e2) {}
     return { token: '', developerKey: '', appId: '' };
   }
 }
@@ -166,6 +193,8 @@ const RequestCache = {
   _dependencies: null,
   _taskIndex: null,
   _dataAssets: null,
+  _aclClient: {},
+  _aclManager: {},
 
   getTasks() {
     if (this._tasks === null) {
@@ -238,11 +267,49 @@ const RequestCache = {
     this._dependencies = null;
     this._taskIndex = null;
     this._dataAssets = null;
+    this._aclClient = {};
+    this._aclManager = {};
   }
 };
 
 function loadUsers() {
   return getActiveUsersOptimized();
+}
+
+function _filterUsersForCurrentRole_(users) {
+  try {
+    if (!Array.isArray(users)) return users || [];
+    var currentEmail = (typeof getCurrentUserEmailOptimized === 'function') ? getCurrentUserEmailOptimized() : null;
+    if (!currentEmail) return users;
+    var currentUser = (typeof getUserByEmail === 'function') ? getUserByEmail(currentEmail) : null;
+    if (!currentUser || currentUser.role !== 'client') return users;
+    var allowedSet = getClientAccessibleProjectIds(currentEmail);
+    var visibleEmails = {};
+    visibleEmails[String(currentEmail).toLowerCase()] = true;
+    try {
+      var projects = (typeof getAllProjectsOptimized === 'function') ? getAllProjectsOptimized() : [];
+      projects.forEach(function(p) {
+        if (p && p.id && allowedSet[p.id] && p.ownerId) {
+          visibleEmails[String(p.ownerId).toLowerCase()] = true;
+        }
+      });
+    } catch (e) {}
+    try {
+      var tasks = (typeof getAllTasksOptimized === 'function') ? getAllTasksOptimized() : [];
+      tasks.forEach(function(t) {
+        if (t && t.projectId && allowedSet[t.projectId]) {
+          if (t.assignee) visibleEmails[String(t.assignee).toLowerCase()] = true;
+          if (t.reporter) visibleEmails[String(t.reporter).toLowerCase()] = true;
+        }
+      });
+    } catch (e) {}
+    return users.filter(function(u) {
+      return u && u.email && visibleEmails[String(u.email).toLowerCase()];
+    });
+  } catch (e) {
+    console.error('_filterUsersForCurrentRole_ failed:', e);
+    return users;
+  }
 }
 
 function getAllUsersForMentions(forceRefresh) {
@@ -254,7 +321,7 @@ function getAllUsersForMentions(forceRefresh) {
       const cached = cache.get(cacheKey);
       if (cached) {
         try {
-          return JSON.parse(cached);
+          return _filterUsersForCurrentRole_(JSON.parse(cached));
         } catch (e) {
         }
       }
@@ -270,17 +337,17 @@ function getAllUsersForMentions(forceRefresh) {
       }));
 
     cache.put(cacheKey, JSON.stringify(users), 300);
-    return users;
+    return _filterUsersForCurrentRole_(users);
   } catch (error) {
     console.error('getAllUsersForMentions failed:', error);
     const allUsers = getAllUsers();
-    return allUsers
+    return _filterUsersForCurrentRole_(allUsers
       .filter(u => u.email)
       .map(u => ({
         email: u.email,
         name: u.name || u.email.split('@')[0],
         active: u.active
-      }));
+      })));
   }
 }
 
@@ -341,21 +408,22 @@ function escapeHtml_(str) {
 function formatCommentContent(content, mentionedUserEmails) {
   if (!content) return '';
 
-  let formatted = content;
+  let formatted = escapeHtml_(content);
 
   formatted = formatted.replace(/@\[([^\]]+)\]\([^)]+\)/g, function(match, name) {
-    return '<span class="mention">@' + escapeHtml_(name) + '</span>';
+    return '<span class="mention">@' + name + '</span>';
   });
 
   mentionedUserEmails.forEach(email => {
     const user = getUserByEmail(email);
     const displayName = user ? user.name : email;
-    const regex = new RegExp('@' + email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const safeEmail = escapeHtml_(email);
+    const regex = new RegExp('@' + safeEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
     formatted = formatted.replace(regex, '<span class="mention">@' + escapeHtml_(displayName) + '</span>');
   });
 
   formatted = formatted.replace(/@([A-Za-z][A-Za-z0-9 ]*[A-Za-z0-9])(?![^<]*<\/span>)(?=\s|$|[.,!?])/g, function(match, name) {
-    return '<span class="mention">@' + escapeHtml_(name) + '</span>';
+    return '<span class="mention">@' + name + '</span>';
   });
 
   return formatted;
@@ -443,6 +511,7 @@ function getInitialDataFast() {
 
     var visibleProjects = batchData.projects;
     var visibleAssets = batchData.dataAssets || [];
+    var visibleUsers = batchData.users;
     if (user && user.role === 'client') {
       var allowedSet = getClientAccessibleProjectIds(userEmail, batchData.projects);
       visibleProjects = (batchData.projects || []).filter(function(p) { return p && p.id && allowedSet[p.id]; });
@@ -452,6 +521,20 @@ function getInitialDataFast() {
         for (var i = 0; i < ids.length; i++) { if (allowedSet[ids[i]]) return true; }
         return false;
       });
+      var clientVisibleEmails = {};
+      clientVisibleEmails[String(userEmail).toLowerCase()] = true;
+      visibleProjects.forEach(function(p) {
+        if (p && p.ownerId) clientVisibleEmails[String(p.ownerId).toLowerCase()] = true;
+      });
+      (batchData.tasks || []).forEach(function(t) {
+        if (t && t.projectId && allowedSet[t.projectId]) {
+          if (t.assignee) clientVisibleEmails[String(t.assignee).toLowerCase()] = true;
+          if (t.reporter) clientVisibleEmails[String(t.reporter).toLowerCase()] = true;
+        }
+      });
+      visibleUsers = (batchData.users || []).filter(function(u) {
+        return u && u.email && clientVisibleEmails[String(u.email).toLowerCase()];
+      });
     } else if (user && getManagerContractFromRole && getManagerContractFromRole(user.role)) {
       var mgrAllowedSet = getManagerAccessibleProjectIds(user.role, batchData.projects);
       visibleProjects = (batchData.projects || []).filter(function(p) { return p && p.id && mgrAllowedSet[p.id]; });
@@ -460,12 +543,15 @@ function getInitialDataFast() {
       for (var pi = 0; pi < visibleProjects.length; pi++) _decorateProjectOrigin_(visibleProjects[pi]);
     }
 
+    var maintenance = null;
+    try { maintenance = (typeof getMaintenanceStatus === 'function') ? getMaintenanceStatus() : null; } catch (e) {}
+
     return {
       user: sanitizeUserForClient(user),
       board: {
         columns: columns,
         projects: visibleProjects,
-        users: batchData.users,
+        users: visibleUsers,
         dataAssets: visibleAssets,
         stats: {
           total: total,
@@ -476,7 +562,8 @@ function getInitialDataFast() {
         },
         taskCount: userTasks.length
       },
-      config: batchData.config
+      config: batchData.config,
+      maintenance: maintenance
     };
   } catch (error) {
     console.error('getInitialDataFast failed:', error);
@@ -635,41 +722,57 @@ function logout() {
 }
 
 function getSessionUser() {
+  var maintenance = null;
+  try { maintenance = (typeof getMaintenanceStatus === 'function') ? getMaintenanceStatus() : null; } catch (e) {}
   try {
     var activeUser = Session.getActiveUser();
     if (!activeUser) {
-      return { authenticated: false, reason: 'no_session' };
+      return { authenticated: false, reason: 'no_session', maintenance: maintenance };
     }
     var email = activeUser.getEmail();
     if (!email) {
-      return { authenticated: false, reason: 'no_session' };
+      return { authenticated: false, reason: 'no_session', maintenance: maintenance };
     }
     email = email.toLowerCase().trim();
 
     var user = getUserByEmailOptimized(email);
 
     if (!user) {
-      return { authenticated: false, reason: 'no_account', email: email };
+      return { authenticated: false, reason: 'no_account', email: email, maintenance: maintenance };
     }
 
     var isActive = user.active === true || user.active === 'true' || user.active === 'TRUE'
+      || user.active === 'True'
       || user.active === 'yes' || user.active === 1 || user.active === '1' || user.active === 'active';
     if (!isActive && user.active !== '' && user.active !== undefined) {
-      return { authenticated: false, reason: 'disabled' };
+      return { authenticated: false, reason: 'disabled', maintenance: maintenance };
     }
 
     try {
       var sheet = getUsersSheet();
-      var data = sheet.getDataRange().getValues();
       var columns = CONFIG.USER_COLUMNS;
-      var emailIndex = 0;
       var lastLoginIndex = columns.indexOf('lastLogin');
       if (lastLoginIndex !== -1) {
-        for (var i = 1; i < data.length; i++) {
-          if (data[i][emailIndex] && data[i][emailIndex].toString().toLowerCase() === email) {
-            sheet.getRange(i + 1, lastLoginIndex + 1).setValue(new Date().toISOString());
-            break;
+        var rowIndex = null;
+        try {
+          if (typeof findRowWithCache === 'function') {
+            rowIndex = findRowWithCache(sheet, 'Users', email, 0);
           }
+        } catch (e) {}
+        if (!rowIndex) {
+          var lastRow = sheet.getLastRow();
+          if (lastRow > 1) {
+            var emailColumn = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+            for (var i = 0; i < emailColumn.length; i++) {
+              if (emailColumn[i][0] && emailColumn[i][0].toString().toLowerCase() === email) {
+                rowIndex = i + 2;
+                break;
+              }
+            }
+          }
+        }
+        if (rowIndex) {
+          sheet.getRange(rowIndex, lastLoginIndex + 1).setValue(new Date().toISOString());
         }
       }
     } catch (e) {
@@ -680,10 +783,11 @@ function getSessionUser() {
 
     var payload = buildLoginPayload_(user, email);
     payload.authenticated = true;
+    if (maintenance && !payload.maintenance) payload.maintenance = maintenance;
     return payload;
   } catch (error) {
     console.error('getSessionUser failed:', error);
-    return { authenticated: false, reason: 'error', error: error.message };
+    return { authenticated: false, reason: 'error', error: error.message, maintenance: maintenance };
   }
 }
 
@@ -898,7 +1002,7 @@ function rejectAccessRequest(email, reason) {
           '<h2 style="color: #525252; margin: 0;">COLONY</h2></div>' +
           '<div style="padding: 20px;">' +
           '<p>We need additional verification for your access request.</p>' +
-          (reason ? '<p><strong>Details:</strong> ' + reason + '</p>' : '') +
+          (reason ? '<p><strong>Details:</strong> ' + escapeHtml_(reason) + '</p>' : '') +
           '<p>Please reach out to your administrator if you believe this is an error.</p>' +
           '</div></div>',
         name: 'COLONY'
@@ -1162,6 +1266,39 @@ function bulkApproveAccessRequests(emails, role) {
   }
 }
 
+function bulkRejectAccessRequests(emails, reason) {
+  try {
+    PermissionGuard.requirePermission('admin:settings');
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return { success: false, error: 'At least one email is required' };
+    }
+    var safeReason = String(reason || '').trim();
+    var rejected = [];
+    var failed = [];
+    emails.forEach(function(rawEmail) {
+      try {
+        var result = rejectAccessRequest(rawEmail, safeReason);
+        if (result && result.success) {
+          rejected.push({ email: rawEmail });
+        } else {
+          failed.push({ email: rawEmail, error: (result && result.error) || 'Unknown error' });
+        }
+      } catch (e) {
+        failed.push({ email: rawEmail, error: e.message || 'Unknown error' });
+      }
+    });
+    logAuditEvent('access_request.bulk_reject', 'access_request', '', '', {
+      rejectedCount: rejected.length,
+      failedCount: failed.length,
+      reason: safeReason
+    });
+    return { success: true, rejected: rejected, failed: failed };
+  } catch (error) {
+    console.error('bulkRejectAccessRequests failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function bulkUpdateUsers(emails, updates) {
   try {
     PermissionGuard.requirePermission('admin:settings');
@@ -1203,10 +1340,19 @@ function getAuditLogPage(opts) {
     opts = opts || {};
     var limit = Math.max(1, Math.min(500, parseInt(opts.limit, 10) || 100));
     var sheet = getAuditLogSheet();
-    var data = sheet.getDataRange().getValues();
     var columns = CONFIG.AUDIT_LOG_COLUMNS;
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      return { success: true, entries: [], total: 0, actions: [], actors: [] };
+    }
+    var hasFilter = !!(opts.actor || opts.action);
+    var totalDataRows = lastRow - 1;
+    var sliceRows = hasFilter ? totalDataRows : Math.min(totalDataRows, limit * 10);
+    var startRow = lastRow - sliceRows + 1;
+    if (startRow < 2) startRow = 2;
+    var data = sheet.getRange(startRow, 1, lastRow - startRow + 1, columns.length).getValues();
     var entries = [];
-    for (var i = 1; i < data.length; i++) {
+    for (var i = 0; i < data.length; i++) {
       var row = rowToObject(data[i], columns);
       if (!row.id && !row.timestamp) continue;
       if (opts.actor && String(row.actorEmail || '').toLowerCase() !== String(opts.actor).toLowerCase()) continue;
@@ -1234,6 +1380,8 @@ function getAuditLogPage(opts) {
       success: true,
       entries: entries.slice(0, limit),
       total: entries.length,
+      windowSize: sliceRows,
+      sheetTotal: totalDataRows,
       actions: Object.keys(actions).sort(),
       actors: Object.keys(actors).sort()
     };
