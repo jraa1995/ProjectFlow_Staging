@@ -1,5 +1,13 @@
 <script>
-  let lastAnalyticsDateRange = null;
+  var AnalyticsState = {
+    days: 30,
+    projectId: '',
+    data: null,
+    activeTab: 'overview',
+    usersSort: { key: 'score', dir: 'desc' },
+    projectsSort: { key: 'totalTasks', dir: 'desc' },
+    drill: { type: null, key: null, data: null }
+  };
 
   function _setAnalyticsRefreshBusy(busy) {
     var btn = document.getElementById('analyticsRefreshBtn');
@@ -8,299 +16,805 @@
     if (btn) btn.disabled = !!busy;
   }
 
-  async function loadAnalyticsData() {
+  async function loadAnalyticsData(force) {
     try { await ensureChartJs(); } catch (e) { console.error('Chart.js failed to load:', e); }
-    const dateRange = $("analyticsDateRange")?.value || "30";
-    const isSameContext = (lastAnalyticsDateRange === dateRange);
-    if (State.analyticsData && isSameContext) {
-      handleAnalyticsData(State.analyticsData);
+    var dateRange = parseInt(($("analyticsDateRange") && $("analyticsDateRange").value) || '30', 10) || 30;
+    var projectFilter = ($("analyticsProjectFilter") && $("analyticsProjectFilter").value) || '';
+    AnalyticsState.days = dateRange;
+    AnalyticsState.projectId = projectFilter;
+    var sameContext = AnalyticsState.data && AnalyticsState.data._scope &&
+                      AnalyticsState.data._scope.days === dateRange &&
+                      (AnalyticsState.data._scope.projectId || '') === projectFilter;
+    if (sameContext && !force) {
+      handleAnalyticsData(AnalyticsState.data);
       return;
     }
-    if (State.analyticsData) {
-      handleAnalyticsData(State.analyticsData);
+    if (AnalyticsState.data && !force) {
+      handleAnalyticsData(AnalyticsState.data);
     } else {
-      showLoading(true);
+      _renderTablesLoading_();
     }
     _setAnalyticsRefreshBusy(true);
-    lastAnalyticsDateRange = dateRange;
     google.script.run
-      .withSuccessHandler(handleAnalyticsData)
+      .withSuccessHandler(function(data) {
+        if (data) data._scope = { days: dateRange, projectId: projectFilter };
+        AnalyticsState.data = data;
+        State.analyticsData = data;
+        handleAnalyticsData(data);
+      })
       .withFailureHandler(handleAnalyticsError)
-      .getAnalyticsData(parseInt(dateRange));
+      .getAnalyticsDashboard({ days: dateRange, projectId: projectFilter || null });
+  }
+
+  function refreshAnalytics(force) {
+    loadAnalyticsData(force === true);
+  }
+
+  function handleAnalyticsError(error) {
+    console.error('Analytics error:', error);
+    showLoading(false);
+    _setAnalyticsRefreshBusy(false);
+    var msg = (error && error.message) ? error.message : 'Failed to load analytics data';
+    toast(msg, 'error');
+    var bodies = ['usersPerfTableBody', 'projectsPerfTableBody', 'slaByUserBody'];
+    bodies.forEach(function(id) {
+      var el = $(id);
+      if (el) el.innerHTML = '<tr><td colspan="11" class="p-4 text-center" style="color:#dc2626;">' + escapeHtml(msg) + '</td></tr>';
+    });
   }
 
   function handleAnalyticsData(data) {
     showLoading(false);
     _setAnalyticsRefreshBusy(false);
     if (!data) {
-      toast("No analytics data available", "warning");
+      toast('No analytics data available', 'warning');
       return;
     }
-    State.analyticsData = data;
-    updateAnalyticsMetrics(data.metrics);
-    updateCompletionChart(data.completionTrend);
+    _populateProjectFilter_(data);
+    _renderScopeBadge_(data);
+    updateAnalyticsKpis(data.metrics, data.sla);
+    updateCompletionChart(data.throughput);
     updatePriorityChart(data.priorityDistribution);
-    updateTeamProductivity(data.teamProductivity);
-    updateProjectHealth(data.projectHealth);
-    updateRecentActivity(data.recentActivity);
+    updateStatusChart(data.statusDistribution);
+    updateLeadTimeChart(data.leadTime);
+    renderTopPerformers(data.users);
+    renderProjectHealth(data.projects);
+    renderAgeingWip(data.ageingWip);
+    renderRecentActivity(data.recentActivity);
+    renderUsersTable(data.users);
+    renderProjectsTable(data.projects);
+    renderSlaSection(data.sla);
   }
 
-  function handleAnalyticsError(error) {
-    console.error("Analytics error:", error);
-    showLoading(false);
-    _setAnalyticsRefreshBusy(false);
-    toast("Failed to load analytics data", "error");
+  function _renderScopeBadge_(data) {
+    var badge = $("analyticsScopeBadge");
+    if (!badge) return;
+    if (!data || !data.scope) { badge.classList.add('hidden'); return; }
+    var parts = [];
+    if (data.scope.contract) parts.push(data.scope.contract + ' contract');
+    else if (data.scope.canSeeAll) parts.push('All projects');
+    parts.push('Last ' + (data.scope.days || 30) + ' days');
+    if (data.scope.projectId) parts.push('1 project filter');
+    badge.textContent = parts.join(' · ');
+    badge.classList.remove('hidden');
   }
 
-  function updateAnalyticsMetrics(metrics) {
-    if (!metrics) return;
-    const elements = {
-      analyticsStatTotal: metrics.total,
-      analyticsStatCompleted: metrics.completed,
-      analyticsStatInProgress: metrics.inProgress,
-      analyticsStatOverdue: metrics.overdue,
-      totalTasks: metrics.total,
-      completedTasks: metrics.completed,
-      inProgressTasks: metrics.inProgress,
-      overdueTasks: metrics.overdue,
-    };
-    Object.entries(elements).forEach(([id, value]) => {
-      const el = $(id);
-      if (el) el.textContent = value || 0;
+  function _populateProjectFilter_(data) {
+    var sel = $("analyticsProjectFilter");
+    if (!sel || !data || !data.filters) return;
+    var current = sel.value;
+    var existing = {};
+    Array.prototype.forEach.call(sel.options, function(o) { existing[o.value] = true; });
+    var projects = (data.filters.projects || []).slice().sort(function(a, b) {
+      return String(a.name || '').localeCompare(String(b.name || ''));
     });
+    var html = '<option value="">All Projects</option>' + projects.map(function(p) {
+      return '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name || p.id) + '</option>';
+    }).join('');
+    if (sel.innerHTML !== html) sel.innerHTML = html;
+    if (current && projects.some(function(p) { return p.id === current; })) sel.value = current;
   }
 
-  function updateCompletionChart(data) {
-    const canvas = $("completionTrendCanvas");
-    if (!canvas || !data) {
-      return;
+  function _renderTablesLoading_() {
+    var u = $("usersPerfTableBody");
+    if (u) u.innerHTML = '<tr><td colspan="11" class="p-4 text-center" style="color:var(--co-ink-muted);">Loading...</td></tr>';
+    var p = $("projectsPerfTableBody");
+    if (p) p.innerHTML = '<tr><td colspan="10" class="p-4 text-center" style="color:var(--co-ink-muted);">Loading...</td></tr>';
+  }
+
+  function updateAnalyticsKpis(metrics, sla) {
+    if (!metrics) return;
+    var elTotal = $("analyticsStatTotal"); if (elTotal) elTotal.textContent = _fmtNum_(metrics.total);
+    var elDone = $("analyticsStatCompleted"); if (elDone) elDone.textContent = _fmtNum_(metrics.completed);
+    var elDoneRate = $("analyticsStatCompletedRate"); if (elDoneRate) elDoneRate.textContent = (metrics.completionRate || 0) + '% completion';
+    var elWip = $("analyticsStatInProgress"); if (elWip) elWip.textContent = _fmtNum_(metrics.inProgress);
+    var elOver = $("analyticsStatOverdue"); if (elOver) elOver.textContent = _fmtNum_(metrics.overdue);
+    var slaRate = (sla && sla.overall ? sla.overall.complianceRate : metrics.slaComplianceRate) || 0;
+    var elSla = $("analyticsStatSlaRate");
+    if (elSla) {
+      elSla.textContent = slaRate + '%';
+      elSla.style.color = slaRate >= 90 ? '#16a34a' : (slaRate >= 70 ? '#ca8a04' : '#dc2626');
     }
-    if (!window.Chart) {
-      if (canvas && canvas.parentElement) {
-        canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><div class="text-center"><i class="fas fa-chart-line text-4xl mb-2 text-gray-300"></i><p>Chart library unavailable</p></div></div>';
-      }
-      return;
-    }
+    var slaTracked = (sla && sla.overall ? sla.overall.tracked : metrics.slaTracked) || 0;
+    var elTracked = $("analyticsStatSlaTracked"); if (elTracked) elTracked.textContent = slaTracked + ' tracked';
+    var elBreached = $("analyticsStatSlaBreached"); if (elBreached) elBreached.textContent = _fmtNum_((sla && sla.overall ? sla.overall.breached : metrics.slaBreached) || 0);
+    var elAtRisk = $("analyticsStatSlaAtRisk"); if (elAtRisk) elAtRisk.textContent = ((sla && sla.overall ? sla.overall.atRisk : metrics.slaAtRisk) || 0) + ' at risk';
+    var elOnTime = $("analyticsStatOnTime"); if (elOnTime) elOnTime.textContent = (metrics.onTimeDeliveryRate || 0) + '%';
+    var elLead = $("analyticsStatLeadTime"); if (elLead) elLead.textContent = (metrics.avgLeadTimeDays || 0) + 'd';
+    var elTput = $("analyticsStatThroughput"); if (elTput) elTput.textContent = (metrics.throughputPerWeek || 0) + ' done/wk';
+    var totalLegacy = $("totalTasks"); if (totalLegacy) totalLegacy.textContent = metrics.total || 0;
+    var doneLegacy = $("completedTasks"); if (doneLegacy) doneLegacy.textContent = metrics.completed || 0;
+    var wipLegacy = $("inProgressTasks"); if (wipLegacy) wipLegacy.textContent = metrics.inProgress || 0;
+    var overLegacy = $("overdueTasks"); if (overLegacy) overLegacy.textContent = metrics.overdue || 0;
+  }
+
+  function updateCompletionChart(throughput) {
+    var canvas = $("completionTrendCanvas");
+    if (!canvas || !throughput || !window.Chart) return;
     try {
-      if (window.completionTrendChart) {
-        window.completionTrendChart.destroy();
-      }
-      const ctx = canvas.getContext("2d");
+      if (window.completionTrendChart) window.completionTrendChart.destroy();
+      var weeks = throughput.weeks || [];
+      var ctx = canvas.getContext('2d');
       window.completionTrendChart = new Chart(ctx, {
-        type: "line",
+        type: 'line',
         data: {
-          labels: data.map((item) => item.date),
-          datasets: [{
-            label: "Tasks Completed",
-            data: data.map((item) => item.completed || 0),
-            borderColor: "#525252",
-            backgroundColor: "rgba(82, 82, 82, 0.1)",
-            fill: true,
-            tension: 0.3,
-          }, ],
+          labels: weeks.map(function(w) { return w.date; }),
+          datasets: [
+            { label: 'Completed', data: weeks.map(function(w) { return w.completed || 0; }), borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.12)', tension: 0.3, fill: true },
+            { label: 'Created', data: weeks.map(function(w) { return w.created || 0; }), borderColor: '#525252', backgroundColor: 'rgba(82,82,82,0.08)', tension: 0.3, fill: false, borderDash: [4, 3] }
+          ]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: false
-            },
-          },
-          scales: {
-            y: {
-              beginAtZero: true
-            },
-          },
-        },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
       });
-    } catch (error) {
-      console.error('❌ Failed to render completion chart:', error);
-      if (canvas && canvas.parentElement) {
-        canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-red-500"><div class="text-center"><i class="fas fa-exclamation-triangle text-4xl mb-2"></i><p>Chart failed to render</p></div></div>';
-      }
+    } catch (e) {
+      console.error('updateCompletionChart failed:', e);
     }
   }
 
   function updatePriorityChart(data) {
-    const canvas = $("priorityChartCanvas");
-    if (!canvas || !data) {
-      return;
-    }
-    if (!window.Chart) {
-      if (canvas && canvas.parentElement) {
-        canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><div class="text-center"><i class="fas fa-chart-pie text-4xl mb-2 text-gray-300"></i><p>Chart library unavailable</p></div></div>';
-      }
-      return;
-    }
+    var canvas = $("priorityChartCanvas");
+    if (!canvas || !data || !window.Chart) return;
     try {
-      if (window.priorityChart) {
-        window.priorityChart.destroy();
-      }
-      const colors = {
-        Critical: "#dc2626",
-        High: "#f97316",
-        Medium: "#eab308",
-        Low: "#22c55e",
-      };
-      const ctx = canvas.getContext("2d");
+      if (window.priorityChart) window.priorityChart.destroy();
+      var colors = { Critical: '#991b1b', Highest: '#dc2626', High: '#f97316', Medium: '#eab308', Low: '#22c55e', Lowest: '#3b82f6' };
+      var ctx = canvas.getContext('2d');
       window.priorityChart = new Chart(ctx, {
-        type: "doughnut",
+        type: 'doughnut',
         data: {
-          labels: data.map((item) => item.priority),
-          datasets: [{
-            data: data.map((item) => item.count),
-            backgroundColor: data.map(
-              (item) => colors[item.priority] || "#6b7280"
-            ),
-          }, ],
+          labels: data.map(function(it) { return it.priority; }),
+          datasets: [{ data: data.map(function(it) { return it.count; }), backgroundColor: data.map(function(it) { return colors[it.priority] || '#6b7280'; }) }]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: "bottom"
-            },
-          },
-        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } } }
       });
-    } catch (error) {
-      console.error('❌ Failed to render priority chart:', error);
-      if (canvas && canvas.parentElement) {
-        canvas.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-red-500"><div class="text-center"><i class="fas fa-exclamation-triangle text-4xl mb-2"></i><p>Chart failed to render</p></div></div>';
-      }
+    } catch (e) {
+      console.error('updatePriorityChart failed:', e);
     }
   }
 
-  function updateTeamProductivity(data) {
-    const container = $("teamProductivityList");
-    if (!container || !data) return;
-    if (data.length === 0) {
-      container.innerHTML =
-        '<div class="p-4 text-center text-gray-500">No team data available</div>';
-      return;
+  function updateStatusChart(data) {
+    var canvas = $("statusChartCanvas");
+    if (!canvas || !data || !window.Chart) return;
+    try {
+      if (window.statusChart) window.statusChart.destroy();
+      var colors = { Backlog: '#6b7280', 'To Do': '#3b82f6', 'In Progress': '#525252', Review: '#8b5cf6', Testing: '#06b6d4', Done: '#10b981' };
+      var ctx = canvas.getContext('2d');
+      window.statusChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: data.map(function(it) { return it.status; }), datasets: [{ data: data.map(function(it) { return it.count; }), backgroundColor: data.map(function(it) { return colors[it.status] || '#6b7280'; }) }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+      });
+    } catch (e) {
+      console.error('updateStatusChart failed:', e);
     }
-    container.innerHTML = data
-      .slice(0, 10)
-      .map(
-        (member) => `
-  <div class="flex items-center justify-between p-3 hover:bg-gray-50">
-  <div class="flex items-center gap-3">
-  <div class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white text-sm font-medium">
-  ${getInitials(member.name)}
-  </div>
-  <div>
-  <div class="font-medium text-gray-900">${escapeHtml(
-    member.name
-    )}</div>
-  <div class="text-xs text-gray-500">${member.tasksCompleted}/${
-    member.totalTasks
-  } completed</div>
-  </div>
-  </div>
-  <div class="flex items-center gap-2">
-  <div class="w-24 bg-gray-200 rounded-full h-2">
-  <div class="bg-primary-500 h-2 rounded-full" style="width: ${
-    member.productivity
-  }%"></div>
-  </div>
-  <span class="text-sm font-medium text-gray-600">${
-    member.productivity
-  }%</span>
-  </div>
-  </div>
-  `
-      )
-      .join("");
   }
 
-  function updateProjectHealth(data) {
-    const container = $("projectHealthList");
-    if (!container || !data) return;
-    if (data.length === 0) {
-      container.innerHTML =
-        '<div class="p-4 text-center text-gray-500">No projects found</div>';
-      return;
+  function updateLeadTimeChart(leadTime) {
+    var canvas = $("leadTimeChartCanvas");
+    if (!canvas || !leadTime || !window.Chart) return;
+    try {
+      if (window.leadTimeChart) window.leadTimeChart.destroy();
+      var byPrio = leadTime.byPriority || {};
+      var order = ['Critical', 'Highest', 'High', 'Medium', 'Low', 'Lowest'];
+      var labels = order.filter(function(p) { return byPrio[p] && byPrio[p].sampleSize > 0; });
+      var avgs = labels.map(function(p) { return byPrio[p].avgDays || 0; });
+      var p90s = labels.map(function(p) { return byPrio[p].p90Days || 0; });
+      var ctx = canvas.getContext('2d');
+      window.leadTimeChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: labels, datasets: [
+          { label: 'Avg', data: avgs, backgroundColor: '#525252' },
+          { label: 'P90', data: p90s, backgroundColor: '#dc2626' }
+        ] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+      });
+    } catch (e) {
+      console.error('updateLeadTimeChart failed:', e);
     }
-    const healthColors = {
-      excellent: "bg-green-100 text-green-800",
-      good: "bg-blue-100 text-blue-800",
-      "at-risk": "bg-gray-100 text-gray-800",
-      poor: "bg-red-100 text-red-800",
-    };
-    container.innerHTML = data
-      .map(
-        (project) => `
-  <div class="p-4 border-b border-gray-100 last:border-0">
-  <div class="flex items-center justify-between mb-2">
-  <span class="font-medium text-gray-900">${escapeHtml(
-    project.name
-    )}</span>
-  <span class="px-2 py-1 rounded text-xs font-medium ${
-    healthColors[project.health] || "bg-gray-100"
-  }">${project.health}</span>
-  </div>
-  <div class="flex items-center gap-2">
-  <div class="flex-1 bg-gray-200 rounded-full h-2">
-  <div class="bg-primary-500 h-2 rounded-full" style="width: ${
-    project.progress
-  }%"></div>
-  </div>
-  <span class="text-sm text-gray-500">${project.progress}%</span>
-  </div>
-  <div class="text-xs text-gray-500 mt-1">${project.tasksCompleted}/${
-    project.totalTasks
-  } tasks completed</div>
-  </div>
-  `
-      )
-      .join("");
   }
 
-  function updateRecentActivity(data) {
-    const container = $("recentActivity") || $("recentActivityList");
-    if (!container || !data) return;
-    if (data.length === 0) {
-      container.innerHTML =
-        '<div class="p-4 text-center text-gray-500">No recent activity</div>';
-      return;
-    }
-    container.innerHTML = data
-      .slice(0, 10)
-      .map(
-        (activity) => `
-  <div class="flex items-start gap-3 p-3 hover:bg-gray-50">
-  <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm">
-  <i class="fas ${getActivityIcon(activity.type)}"></i>
-  </div>
-  <div class="flex-1">
-  <div class="text-sm text-gray-900">${escapeHtml(
-    activity.description
-    )}</div>
-  <div class="text-xs text-gray-500">${escapeHtml(
-    activity.user
-    )} • ${formatRelativeTime(activity.timestamp)}</div>
-  </div>
-  </div>
-  `
-      )
-      .join("");
+  function renderTopPerformers(users) {
+    var container = $("topPerformersList");
+    if (!container) return;
+    if (!users || !users.length) { container.innerHTML = '<div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">No data</div>'; return; }
+    var top = users.slice(0, 8);
+    container.innerHTML = top.map(function(u) {
+      var initials = getInitials(u.name || u.email);
+      return '<div class="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 cursor-pointer" onclick="openUserDrill(\'' + escapeHtml(u.email) + '\')">' +
+        '<div class="flex items-center gap-2.5 min-w-0">' +
+        '<div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0" style="background:var(--co-accent-500);">' + escapeHtml(initials) + '</div>' +
+        '<div class="min-w-0">' +
+        '<div class="font-medium text-[12px] truncate" style="color:var(--co-ink);">' + escapeHtml(u.name || u.email) + '</div>' +
+        '<div class="text-[10px]" style="color:var(--co-ink-muted);">' + u.tasksCompleted + '/' + u.totalTasks + ' done · ' + (u.slaRate || 0) + '% SLA</div>' +
+        '</div>' +
+        '</div>' +
+        '<div class="text-right flex-shrink-0">' +
+        '<div class="font-semibold text-[13px]" style="color:' + _scoreColor_(u.score) + ';">' + (u.score || 0) + '</div>' +
+        '<div class="text-[10px]" style="color:var(--co-ink-muted);">score</div>' +
+        '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderProjectHealth(projects) {
+    var container = $("projectHealthList");
+    if (!container) return;
+    if (!projects || !projects.length) { container.innerHTML = '<div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">No projects</div>'; return; }
+    var top = projects.slice(0, 8);
+    var healthBg = { excellent: '#dcfce7', good: '#dbeafe', 'at-risk': '#fef3c7', poor: '#fee2e2' };
+    var healthFg = { excellent: '#166534', good: '#1e40af', 'at-risk': '#92400e', poor: '#991b1b' };
+    container.innerHTML = top.map(function(p) {
+      var bg = healthBg[p.health] || '#f1f5f9';
+      var fg = healthFg[p.health] || '#475569';
+      return '<div class="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b last:border-0" style="border-color:var(--co-border-subtle);" onclick="openProjectDrill(\'' + escapeHtml(p.id) + '\')">' +
+        '<div class="flex items-center justify-between mb-1.5">' +
+        '<span class="font-medium text-[12px] truncate flex-1 min-w-0" style="color:var(--co-ink);">' + escapeHtml(p.name) + '</span>' +
+        '<span class="ml-2 px-2 py-0.5 rounded text-[10px] font-semibold uppercase" style="background:' + bg + ';color:' + fg + ';">' + escapeHtml(p.health) + '</span>' +
+        '</div>' +
+        '<div class="flex items-center gap-2">' +
+        '<div class="flex-1 rounded-full h-1.5 overflow-hidden" style="background:var(--co-surface);"><div class="h-full" style="width:' + (p.progress || 0) + '%;background:var(--co-accent-500);"></div></div>' +
+        '<span class="text-[11px]" style="color:var(--co-ink-muted);">' + (p.progress || 0) + '%</span>' +
+        '</div>' +
+        '<div class="text-[10px] mt-1" style="color:var(--co-ink-muted);">' + p.tasksCompleted + '/' + p.totalTasks + ' tasks · SLA ' + (p.slaRate || 0) + '%</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderAgeingWip(rows) {
+    var container = $("ageingWipList");
+    if (!container) return;
+    if (!rows || !rows.length) { container.innerHTML = '<div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">No stale tasks</div>'; return; }
+    container.innerHTML = rows.slice(0, 10).map(function(r) {
+      return '<div class="px-4 py-2 border-b last:border-0" style="border-color:var(--co-border-subtle);">' +
+        '<div class="flex items-center justify-between gap-2">' +
+        '<span class="font-medium text-[12px] truncate flex-1 min-w-0" style="color:var(--co-ink);">' + escapeHtml(r.title || r.taskId) + '</span>' +
+        '<span class="text-[11px] flex-shrink-0" style="color:#dc2626;">' + r.ageDays + 'd</span>' +
+        '</div>' +
+        '<div class="text-[10px] mt-0.5" style="color:var(--co-ink-muted);">' + escapeHtml(r.status || '') + ' · ' + escapeHtml(r.assignee || 'unassigned') + ' · ' + escapeHtml(r.priority || '') + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderRecentActivity(items) {
+    var container = $("recentActivity");
+    if (!container) return;
+    if (!items || !items.length) { container.innerHTML = '<div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">No recent activity</div>'; return; }
+    container.innerHTML = items.slice(0, 12).map(function(a) {
+      return '<div class="flex items-start gap-3 px-4 py-2.5">' +
+        '<div class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] flex-shrink-0" style="background:var(--co-surface);color:var(--co-ink-muted);"><i class="fas ' + getActivityIcon(a.type) + '"></i></div>' +
+        '<div class="min-w-0 flex-1">' +
+        '<div class="text-[12px] truncate" style="color:var(--co-ink);">' + escapeHtml(a.description || '') + '</div>' +
+        '<div class="text-[10px]" style="color:var(--co-ink-muted);">' + escapeHtml(a.user || '') + ' · ' + formatRelativeTime(a.timestamp) + '</div>' +
+        '</div>' +
+        '</div>';
+    }).join('');
   }
 
   function getActivityIcon(type) {
-    const icons = {
-      created: "fa-plus",
-      updated: "fa-edit",
-      moved: "fa-arrows-alt",
-      completed: "fa-check",
-      comment: "fa-comment",
-      assigned: "fa-user-plus",
-    };
-    return icons[type] || "fa-circle";
+    var icons = { created: 'fa-plus', updated: 'fa-edit', moved: 'fa-arrows-alt', completed: 'fa-check', comment: 'fa-comment', assigned: 'fa-user-plus' };
+    return icons[type] || 'fa-circle';
   }
 
-  function refreshAnalytics() {
-    loadAnalyticsData();
+  function renderUsersTable(users) {
+    var body = $("usersPerfTableBody");
+    if (!body) return;
+    var sorted = _sortUsers_(users || []);
+    var filter = (($("usersSearchInput") && $("usersSearchInput").value) || '').toLowerCase();
+    if (filter) sorted = sorted.filter(function(u) { return (u.name || '').toLowerCase().indexOf(filter) !== -1 || (u.email || '').toLowerCase().indexOf(filter) !== -1; });
+    if (!sorted.length) { body.innerHTML = '<tr><td colspan="11" class="p-4 text-center" style="color:var(--co-ink-muted);">No users in scope</td></tr>'; return; }
+    body.innerHTML = sorted.map(function(u) {
+      var initials = getInitials(u.name || u.email);
+      return '<tr class="cursor-pointer hover:bg-gray-50" style="border-top:1px solid var(--co-border-subtle);" onclick="openUserDrill(\'' + escapeHtml(u.email) + '\')">' +
+        '<td class="px-3 py-2"><div class="flex items-center gap-2 min-w-0">' +
+        '<div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-semibold flex-shrink-0" style="background:var(--co-accent-500);">' + escapeHtml(initials) + '</div>' +
+        '<div class="min-w-0"><div class="font-medium truncate" style="color:var(--co-ink);">' + escapeHtml(u.name || u.email) + '</div>' +
+        '<div class="text-[10px] truncate" style="color:var(--co-ink-muted);">' + escapeHtml(u.email || '') + (u.role ? ' · ' + escapeHtml(u.role) : '') + '</div></div>' +
+        '</div></td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtNum_(u.totalTasks) + '</td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtNum_(u.tasksCompleted) + '</td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtNum_(u.tasksInProgress) + '</td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtBadge_(u.tasksOverdue, u.tasksOverdue > 0 ? '#dc2626' : '') + '</td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtPct_(u.completionRate) + '</td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtPct_(u.onTimeRate) + '</td>' +
+        '<td class="px-3 py-2 text-right" style="color:' + _scoreColor_(u.slaRate) + ';">' + _fmtPct_(u.slaRate) + '</td>' +
+        '<td class="px-3 py-2 text-right">' + (u.avgLeadTimeDays || 0) + '</td>' +
+        '<td class="px-3 py-2 text-right">' + (u.throughputPerWeek || 0) + '</td>' +
+        '<td class="px-3 py-2 text-right font-semibold" style="color:' + _scoreColor_(u.score) + ';">' + (u.score || 0) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function _sortUsers_(users) {
+    var key = AnalyticsState.usersSort.key;
+    var dir = AnalyticsState.usersSort.dir === 'asc' ? 1 : -1;
+    return users.slice().sort(function(a, b) {
+      var av = a[key]; var bv = b[key];
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av === undefined || av === null) av = key === 'name' ? '' : 0;
+      if (bv === undefined || bv === null) bv = key === 'name' ? '' : 0;
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+  }
+
+  function sortUsersTable(key) {
+    if (AnalyticsState.usersSort.key === key) {
+      AnalyticsState.usersSort.dir = AnalyticsState.usersSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      AnalyticsState.usersSort.key = key;
+      AnalyticsState.usersSort.dir = (key === 'name') ? 'asc' : 'desc';
+    }
+    renderUsersTable(AnalyticsState.data && AnalyticsState.data.users);
+  }
+
+  function filterUsersTable() {
+    renderUsersTable(AnalyticsState.data && AnalyticsState.data.users);
+  }
+
+  function renderProjectsTable(projects) {
+    var body = $("projectsPerfTableBody");
+    if (!body) return;
+    var sorted = _sortProjects_(projects || []);
+    var filter = (($("projectsSearchInput") && $("projectsSearchInput").value) || '').toLowerCase();
+    if (filter) sorted = sorted.filter(function(p) { return (p.name || '').toLowerCase().indexOf(filter) !== -1 || (p.id || '').toLowerCase().indexOf(filter) !== -1; });
+    if (!sorted.length) { body.innerHTML = '<tr><td colspan="10" class="p-4 text-center" style="color:var(--co-ink-muted);">No projects in scope</td></tr>'; return; }
+    var healthBg = { excellent: '#dcfce7', good: '#dbeafe', 'at-risk': '#fef3c7', poor: '#fee2e2' };
+    var healthFg = { excellent: '#166534', good: '#1e40af', 'at-risk': '#92400e', poor: '#991b1b' };
+    body.innerHTML = sorted.map(function(p) {
+      var bg = healthBg[p.health] || '#f1f5f9';
+      var fg = healthFg[p.health] || '#475569';
+      return '<tr class="cursor-pointer hover:bg-gray-50" style="border-top:1px solid var(--co-border-subtle);" onclick="openProjectDrill(\'' + escapeHtml(p.id) + '\')">' +
+        '<td class="px-3 py-2"><div class="font-medium truncate" style="color:var(--co-ink);">' + escapeHtml(p.name || p.id) + '</div><div class="text-[10px]" style="color:var(--co-ink-muted);">' + escapeHtml(p.id) + '</div></td>' +
+        '<td class="px-3 py-2 truncate text-[11px]" style="color:var(--co-ink-muted);">' + escapeHtml(p.ownerName || p.ownerId || '') + '</td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtNum_(p.totalTasks) + '</td>' +
+        '<td class="px-3 py-2 text-right">' +
+        '<div class="flex items-center justify-end gap-2">' +
+        '<div class="w-16 rounded-full h-1.5 overflow-hidden" style="background:var(--co-surface);"><div class="h-full" style="width:' + (p.progress || 0) + '%;background:var(--co-accent-500);"></div></div>' +
+        '<span class="text-[11px]">' + (p.progress || 0) + '%</span>' +
+        '</div></td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtBadge_(p.tasksOverdue, p.tasksOverdue > 0 ? '#dc2626' : '') + '</td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtPct_(p.onTimeRate) + '</td>' +
+        '<td class="px-3 py-2 text-right" style="color:' + _scoreColor_(p.slaRate) + ';">' + _fmtPct_(p.slaRate) + '</td>' +
+        '<td class="px-3 py-2 text-right">' + (p.avgLeadTimeDays || 0) + '</td>' +
+        '<td class="px-3 py-2 text-right">' + _fmtBadge_(p.slaBreached, p.slaBreached > 0 ? '#dc2626' : '') + '</td>' +
+        '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase" style="background:' + bg + ';color:' + fg + ';">' + escapeHtml(p.health || '') + '</span></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function _sortProjects_(projects) {
+    var key = AnalyticsState.projectsSort.key;
+    var dir = AnalyticsState.projectsSort.dir === 'asc' ? 1 : -1;
+    return projects.slice().sort(function(a, b) {
+      var av = a[key]; var bv = b[key];
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av === undefined || av === null) av = key === 'name' ? '' : 0;
+      if (bv === undefined || bv === null) bv = key === 'name' ? '' : 0;
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+  }
+
+  function sortProjectsTable(key) {
+    if (AnalyticsState.projectsSort.key === key) {
+      AnalyticsState.projectsSort.dir = AnalyticsState.projectsSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      AnalyticsState.projectsSort.key = key;
+      AnalyticsState.projectsSort.dir = (key === 'name') ? 'asc' : 'desc';
+    }
+    renderProjectsTable(AnalyticsState.data && AnalyticsState.data.projects);
+  }
+
+  function filterProjectsTable() {
+    renderProjectsTable(AnalyticsState.data && AnalyticsState.data.projects);
+  }
+
+  function renderSlaSection(sla) {
+    if (!sla) return;
+    var byPrio = $("slaByPriorityList");
+    if (byPrio) {
+      var order = ['Critical', 'Highest', 'High', 'Medium', 'Low', 'Lowest'];
+      var rows = order.filter(function(p) { return sla.byPriority && sla.byPriority[p] && sla.byPriority[p].total > 0; });
+      if (!rows.length) {
+        byPrio.innerHTML = '<div class="text-sm text-center" style="color:var(--co-ink-muted);">No SLA data</div>';
+      } else {
+        byPrio.innerHTML = rows.map(function(p) {
+          var d = sla.byPriority[p];
+          var rate = d.complianceRate || 0;
+          return '<div>' +
+            '<div class="flex items-center justify-between text-[12px] mb-1">' +
+            '<span class="font-medium" style="color:var(--co-ink);">' + escapeHtml(p) + '</span>' +
+            '<span style="color:' + _scoreColor_(rate) + ';">' + rate + '%</span>' +
+            '</div>' +
+            '<div class="rounded-full h-1.5 overflow-hidden" style="background:var(--co-surface);"><div class="h-full" style="width:' + rate + '%;background:' + _scoreColor_(rate) + ';"></div></div>' +
+            '<div class="text-[10px] mt-0.5 flex items-center gap-3" style="color:var(--co-ink-muted);">' +
+            '<span>' + (d.onTrack || 0) + ' on-track</span>' +
+            '<span>' + (d.atRisk || 0) + ' at-risk</span>' +
+            '<span style="color:#dc2626;">' + (d.breached || 0) + ' breached</span>' +
+            '</div>' +
+            '</div>';
+        }).join('');
+      }
+    }
+    var byUserBody = $("slaByUserBody");
+    if (byUserBody) {
+      var users = (sla.byUser || []).filter(function(u) { return u.total > 0; });
+      if (!users.length) {
+        byUserBody.innerHTML = '<tr><td colspan="6" class="p-4 text-center" style="color:var(--co-ink-muted);">No SLA-tracked tasks</td></tr>';
+      } else {
+        byUserBody.innerHTML = users.map(function(u) {
+          return '<tr style="border-top:1px solid var(--co-border-subtle);">' +
+            '<td class="px-3 py-2 truncate cursor-pointer hover:underline" onclick="openUserDrill(\'' + escapeHtml(u.email) + '\')">' + escapeHtml(u.name) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + u.total + '</td>' +
+            '<td class="px-3 py-2 text-right" style="color:#16a34a;">' + u.onTrack + '</td>' +
+            '<td class="px-3 py-2 text-right" style="color:#d97706;">' + u.atRisk + '</td>' +
+            '<td class="px-3 py-2 text-right" style="color:#dc2626;">' + u.breached + '</td>' +
+            '<td class="px-3 py-2 text-right" style="color:' + _scoreColor_(u.complianceRate) + ';">' + u.complianceRate + '%</td>' +
+            '</tr>';
+        }).join('');
+      }
+    }
+    var breachList = sla.breachList || [];
+    var atRiskList = sla.atRiskList || [];
+    var breachContainer = $("slaBreachList");
+    if (breachContainer) {
+      if (!breachList.length) breachContainer.innerHTML = '<div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">No breached SLAs</div>';
+      else breachContainer.innerHTML = breachList.map(_renderSlaItem_).join('');
+    }
+    var atRiskContainer = $("slaAtRiskList");
+    if (atRiskContainer) {
+      if (!atRiskList.length) atRiskContainer.innerHTML = '<div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">No at-risk SLAs</div>';
+      else atRiskContainer.innerHTML = atRiskList.map(_renderSlaItem_).join('');
+    }
+    var bc = $("slaBreachCount"); if (bc) bc.textContent = breachList.length;
+    var ac = $("slaAtRiskCount"); if (ac) ac.textContent = atRiskList.length;
+  }
+
+  function _renderSlaItem_(item) {
+    var prog = item.resolutionProgress != null ? item.resolutionProgress : 100;
+    var color = item.responseBreached || item.resolutionBreached ? '#dc2626' : '#d97706';
+    return '<div class="px-4 py-3 border-b last:border-0 cursor-pointer hover:bg-gray-50" style="border-color:var(--co-border-subtle);" onclick="openTaskFromAnalytics(\'' + escapeHtml(item.taskId) + '\')">' +
+      '<div class="flex items-start justify-between gap-2">' +
+      '<div class="min-w-0 flex-1">' +
+      '<div class="font-medium text-[12px] truncate" style="color:var(--co-ink);">' + escapeHtml(item.title || item.taskId) + '</div>' +
+      '<div class="text-[10px] mt-0.5" style="color:var(--co-ink-muted);">' + escapeHtml(item.priority || '') + ' · ' + escapeHtml(item.assigneeName || item.assignee || 'unassigned') + ' · ' + escapeHtml(item.projectName || item.projectId || '') + '</div>' +
+      '</div>' +
+      '<div class="text-right flex-shrink-0">' +
+      (item.ageDays != null ? '<div class="text-[12px] font-semibold" style="color:' + color + ';">' + item.ageDays + 'd old</div>' : '<div class="text-[12px] font-semibold" style="color:' + color + ';">' + prog + '%</div>') +
+      '<div class="text-[10px]" style="color:var(--co-ink-muted);">' + escapeHtml(item.status || '') + '</div>' +
+      '</div>' +
+      '</div>' +
+      '<div class="mt-1.5 rounded-full h-1 overflow-hidden" style="background:var(--co-surface);"><div class="h-full" style="width:' + Math.min(100, prog) + '%;background:' + color + ';"></div></div>' +
+      '</div>';
+  }
+
+  function switchAnalyticsTab(tab) {
+    AnalyticsState.activeTab = tab;
+    ['overview', 'users', 'projects', 'sla'].forEach(function(t) {
+      var pane = $("analyticsTab_" + t);
+      if (pane) pane.classList.toggle('hidden', t !== tab);
+      var btn = document.querySelector('[data-anatab="' + t + '"]');
+      if (btn) btn.classList.toggle('co-tab-active', t === tab);
+    });
+  }
+
+  function openUserDrill(email) {
+    if (!email) return;
+    AnalyticsState.drill = { type: 'user', key: email, data: null };
+    _showDrillPanel_('Loading user...', '');
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data) { _renderDrillError_('No data returned'); return; }
+        AnalyticsState.drill.data = data;
+        _renderUserDrill_(data);
+      })
+      .withFailureHandler(function(err) { _renderDrillError_(err && err.message ? err.message : 'Failed to load user'); })
+      .getUserPerformanceDetail(email, AnalyticsState.days || 30);
+  }
+
+  function openProjectDrill(projectId) {
+    if (!projectId) return;
+    AnalyticsState.drill = { type: 'project', key: projectId, data: null };
+    _showDrillPanel_('Loading project...', '');
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (!data) { _renderDrillError_('No data returned'); return; }
+        AnalyticsState.drill.data = data;
+        _renderProjectDrill_(data);
+      })
+      .withFailureHandler(function(err) { _renderDrillError_(err && err.message ? err.message : 'Failed to load project'); })
+      .getProjectPerformanceDetail(projectId, AnalyticsState.days || 30);
+  }
+
+  function openTaskFromAnalytics(taskId) {
+    if (!taskId) return;
+    if (typeof TaskDetailPanel !== 'undefined' && TaskDetailPanel.open) {
+      TaskDetailPanel.open(taskId);
+    } else if (typeof openTaskDetailById === 'function') {
+      openTaskDetailById(taskId);
+    } else {
+      toast('Task viewer not available', 'warning');
+    }
+  }
+
+  function _showDrillPanel_(title, subtitle) {
+    var panel = $("analyticsDrillPanel");
+    var backdrop = $("analyticsDrillBackdrop");
+    var titleEl = $("analyticsDrillTitle");
+    var subEl = $("analyticsDrillSubtitle");
+    var body = $("analyticsDrillBody");
+    if (titleEl) titleEl.textContent = title;
+    if (subEl) subEl.textContent = subtitle || '';
+    if (body) body.innerHTML = '<div class="text-sm text-center" style="color:var(--co-ink-muted);">Loading...</div>';
+    if (backdrop) backdrop.classList.remove('hidden');
+    if (panel) {
+      panel.style.transform = 'translateX(0)';
+      panel.style.transition = 'transform 0.18s ease-out';
+    }
+  }
+
+  function closeAnalyticsDrill() {
+    var panel = $("analyticsDrillPanel");
+    var backdrop = $("analyticsDrillBackdrop");
+    if (panel) panel.style.transform = 'translateX(100%)';
+    if (backdrop) backdrop.classList.add('hidden');
+    AnalyticsState.drill = { type: null, key: null, data: null };
+  }
+
+  function _renderDrillError_(msg) {
+    var body = $("analyticsDrillBody");
+    if (body) body.innerHTML = '<div class="text-sm" style="color:#dc2626;">' + escapeHtml(msg) + '</div>';
+  }
+
+  function _renderUserDrill_(d) {
+    var titleEl = $("analyticsDrillTitle");
+    var subEl = $("analyticsDrillSubtitle");
+    if (titleEl) titleEl.textContent = (d.user && d.user.name) || (d.user && d.user.email) || 'User';
+    if (subEl) subEl.textContent = (d.user && d.user.email) + (d.user && d.user.role ? ' · ' + d.user.role : '');
+    var m = d.metrics || {};
+    var sla = (d.sla && d.sla.overall) || {};
+    var lt = d.leadTime || {};
+    var html = '';
+    html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">' +
+      _kpiCell_('Tasks', m.total) +
+      _kpiCell_('Completed', m.completed, m.completionRate + '%') +
+      _kpiCell_('In Progress', m.inProgress) +
+      _kpiCell_('Overdue', m.overdue, '', '#dc2626') +
+      _kpiCell_('SLA Compliance', (sla.complianceRate || 0) + '%', sla.tracked + ' tracked', _scoreColor_(sla.complianceRate)) +
+      _kpiCell_('Breached', sla.breached || 0, '', '#dc2626') +
+      _kpiCell_('On-Time Delivery', (m.onTimeDeliveryRate || 0) + '%') +
+      _kpiCell_('Throughput', (m.throughputPerWeek || 0), 'done/week') +
+      '</div>';
+    html += '<div class="grid grid-cols-2 gap-2 mb-4">' +
+      _kpiCell_('Avg Lead Time', (lt.avgDays || 0) + 'd', lt.sampleSize + ' samples') +
+      _kpiCell_('Median Lead', (lt.medianDays || 0) + 'd', 'P90 ' + (lt.p90Days || 0) + 'd') +
+      '</div>';
+    if (d.serverMetrics) {
+      var sm = d.serverMetrics;
+      html += '<div class="rounded-lg p-3 mb-4 grid grid-cols-2 md:grid-cols-3 gap-2 text-[12px]" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">';
+      html += _miniStat_('Logins (streak)', (sm.currentLoginStreak || 0) + 'd', 'Longest ' + (sm.longestLoginStreak || 0) + 'd');
+      html += _miniStat_('Comments', sm.commentsPosted || 0, '');
+      html += _miniStat_('Projects created', sm.projectsCreated || 0, '');
+      html += _miniStat_('Assignees touched', sm.uniqueAssigneesCount || 0, '');
+      html += _miniStat_('Done streak', (sm.currentCompletionStreak || 0) + 'd', 'Longest ' + (sm.longestCompletionStreak || 0) + 'd');
+      html += _miniStat_('Badges', sm.totalBadges || 0, '');
+      html += '</div>';
+    }
+    var byPrio = (d.sla && d.sla.byPriority) || {};
+    var prioOrder = ['Critical', 'Highest', 'High', 'Medium', 'Low', 'Lowest'];
+    var prioRows = prioOrder.filter(function(p) { return byPrio[p] && byPrio[p].total > 0; });
+    if (prioRows.length) {
+      html += '<div class="rounded-lg mb-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">' +
+        '<div class="px-3 py-2 text-[12px] font-semibold" style="border-bottom:1px solid var(--co-border-subtle);color:var(--co-ink);">SLA by Priority</div>' +
+        '<div class="p-3 space-y-2">';
+      prioRows.forEach(function(p) {
+        var pd = byPrio[p];
+        html += '<div>' +
+          '<div class="flex items-center justify-between text-[11px] mb-1"><span>' + escapeHtml(p) + '</span><span style="color:' + _scoreColor_(pd.complianceRate) + ';">' + pd.complianceRate + '%</span></div>' +
+          '<div class="rounded-full h-1 overflow-hidden" style="background:var(--co-surface);"><div class="h-full" style="width:' + pd.complianceRate + '%;background:' + _scoreColor_(pd.complianceRate) + ';"></div></div>' +
+          '<div class="text-[10px]" style="color:var(--co-ink-muted);">' + (pd.onTrack || 0) + ' on-track · ' + (pd.atRisk || 0) + ' at-risk · ' + (pd.breached || 0) + ' breached</div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    }
+    var open = d.openTasks || [];
+    if (open.length) {
+      html += '<div class="rounded-lg mb-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">' +
+        '<div class="px-3 py-2 text-[12px] font-semibold flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);color:var(--co-ink);"><span>Open Tasks</span><span class="text-[10px]" style="color:var(--co-ink-muted);">Top ' + open.length + '</span></div>' +
+        '<div class="max-h-80 overflow-auto">';
+      open.forEach(function(t) {
+        var slaColor = t.slaStatus === 'breached' ? '#dc2626' : (t.slaStatus === 'at_risk' ? '#d97706' : 'var(--co-ink-muted)');
+        html += '<div class="px-3 py-2 cursor-pointer hover:bg-gray-50 border-b last:border-0" style="border-color:var(--co-border-subtle);" onclick="openTaskFromAnalytics(\'' + escapeHtml(t.id) + '\')">' +
+          '<div class="flex items-center justify-between gap-2">' +
+          '<span class="text-[12px] truncate flex-1 min-w-0" style="color:var(--co-ink);">' + escapeHtml(t.title || t.id) + '</span>' +
+          '<span class="text-[10px] flex-shrink-0" style="color:' + slaColor + ';">' + (t.slaStatus || '') + '</span>' +
+          '</div>' +
+          '<div class="text-[10px]" style="color:var(--co-ink-muted);">' + escapeHtml(t.status || '') + ' · ' + escapeHtml(t.priority || '') + ' · ' + (t.ageDays || 0) + 'd · ' + escapeHtml(t.projectId || '') + '</div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    }
+    if ((d.projects || []).length) {
+      html += '<div class="rounded-lg" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">' +
+        '<div class="px-3 py-2 text-[12px] font-semibold" style="border-bottom:1px solid var(--co-border-subtle);color:var(--co-ink);">Projects (' + d.projects.length + ')</div>' +
+        '<div class="max-h-60 overflow-auto">';
+      d.projects.forEach(function(p) {
+        html += '<div class="px-3 py-2 cursor-pointer hover:bg-gray-50 border-b last:border-0" style="border-color:var(--co-border-subtle);" onclick="openProjectDrill(\'' + escapeHtml(p.id) + '\')">' +
+          '<div class="flex items-center justify-between gap-2 text-[12px]"><span class="truncate flex-1 min-w-0" style="color:var(--co-ink);">' + escapeHtml(p.name || p.id) + '</span><span style="color:var(--co-ink-muted);">' + p.totalTasks + ' / ' + p.tasksCompleted + ' done</span></div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    }
+    var body = $("analyticsDrillBody");
+    if (body) body.innerHTML = html;
+  }
+
+  function _renderProjectDrill_(d) {
+    var titleEl = $("analyticsDrillTitle");
+    var subEl = $("analyticsDrillSubtitle");
+    if (titleEl) titleEl.textContent = (d.project && d.project.name) || 'Project';
+    if (subEl) subEl.textContent = (d.project && d.project.id) + (d.project && d.project.status ? ' · ' + d.project.status : '');
+    var m = d.metrics || {};
+    var sla = (d.sla && d.sla.overall) || {};
+    var lt = d.leadTime || {};
+    var html = '';
+    html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">' +
+      _kpiCell_('Tasks', m.total) +
+      _kpiCell_('Completed', m.completed, m.completionRate + '%') +
+      _kpiCell_('In Progress', m.inProgress) +
+      _kpiCell_('Overdue', m.overdue, '', '#dc2626') +
+      _kpiCell_('SLA Compliance', (sla.complianceRate || 0) + '%', sla.tracked + ' tracked', _scoreColor_(sla.complianceRate)) +
+      _kpiCell_('Breached', sla.breached || 0, '', '#dc2626') +
+      _kpiCell_('On-Time', (m.onTimeDeliveryRate || 0) + '%') +
+      _kpiCell_('Avg Lead', (lt.avgDays || 0) + 'd', 'P90 ' + (lt.p90Days || 0) + 'd') +
+      '</div>';
+    var contributors = d.contributors || [];
+    if (contributors.length) {
+      html += '<div class="rounded-lg mb-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">' +
+        '<div class="px-3 py-2 text-[12px] font-semibold" style="border-bottom:1px solid var(--co-border-subtle);color:var(--co-ink);">Contributors (' + contributors.length + ')</div>' +
+        '<div class="max-h-72 overflow-auto">';
+      contributors.forEach(function(u) {
+        html += '<div class="px-3 py-2 cursor-pointer hover:bg-gray-50 border-b last:border-0 flex items-center justify-between gap-2" style="border-color:var(--co-border-subtle);" onclick="openUserDrill(\'' + escapeHtml(u.email) + '\')">' +
+          '<div class="min-w-0 flex-1 text-[12px]"><div class="truncate" style="color:var(--co-ink);">' + escapeHtml(u.name || u.email) + '</div><div class="text-[10px]" style="color:var(--co-ink-muted);">' + u.totalTasks + ' tasks · ' + u.tasksCompleted + ' done · SLA ' + (u.slaRate || 0) + '%</div></div>' +
+          '<div class="text-right text-[12px] flex-shrink-0"><div style="color:' + _scoreColor_(u.score) + ';font-weight:600;">' + (u.score || 0) + '</div><div class="text-[10px]" style="color:var(--co-ink-muted);">score</div></div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    }
+    var ageing = d.ageingWip || [];
+    if (ageing.length) {
+      html += '<div class="rounded-lg mb-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">' +
+        '<div class="px-3 py-2 text-[12px] font-semibold" style="border-bottom:1px solid var(--co-border-subtle);color:var(--co-ink);">Ageing WIP (top ' + Math.min(ageing.length, 10) + ')</div>' +
+        '<div class="max-h-60 overflow-auto">';
+      ageing.slice(0, 10).forEach(function(t) {
+        html += '<div class="px-3 py-2 cursor-pointer hover:bg-gray-50 border-b last:border-0" style="border-color:var(--co-border-subtle);" onclick="openTaskFromAnalytics(\'' + escapeHtml(t.taskId) + '\')">' +
+          '<div class="flex items-center justify-between gap-2 text-[12px]"><span class="truncate flex-1 min-w-0" style="color:var(--co-ink);">' + escapeHtml(t.title || t.taskId) + '</span><span style="color:#dc2626;">' + t.ageDays + 'd</span></div>' +
+          '<div class="text-[10px]" style="color:var(--co-ink-muted);">' + escapeHtml(t.status || '') + ' · ' + escapeHtml(t.assignee || 'unassigned') + '</div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    }
+    var body = $("analyticsDrillBody");
+    if (body) body.innerHTML = html;
+  }
+
+  function _kpiCell_(label, value, sub, color) {
+    return '<div class="rounded-md p-2.5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">' +
+      '<div class="text-[10px] uppercase tracking-wide" style="color:var(--co-ink-muted);">' + escapeHtml(label) + '</div>' +
+      '<div class="text-[16px] font-semibold mt-0.5"' + (color ? ' style="color:' + color + ';"' : ' style="color:var(--co-ink);"') + '>' + escapeHtml(String(value != null ? value : '-')) + '</div>' +
+      (sub ? '<div class="text-[10px]" style="color:var(--co-ink-muted);">' + escapeHtml(sub) + '</div>' : '') +
+      '</div>';
+  }
+
+  function _miniStat_(label, value, sub) {
+    return '<div><div class="text-[10px] uppercase" style="color:var(--co-ink-muted);">' + escapeHtml(label) + '</div>' +
+      '<div class="font-semibold" style="color:var(--co-ink);">' + escapeHtml(String(value != null ? value : '-')) + '</div>' +
+      (sub ? '<div class="text-[10px]" style="color:var(--co-ink-muted);">' + escapeHtml(sub) + '</div>' : '') +
+      '</div>';
+  }
+
+  function _scoreColor_(score) {
+    if (score == null) return 'var(--co-ink)';
+    if (score >= 90) return '#16a34a';
+    if (score >= 75) return '#65a30d';
+    if (score >= 60) return '#ca8a04';
+    if (score >= 40) return '#ea580c';
+    return '#dc2626';
+  }
+
+  function _fmtNum_(n) {
+    if (n == null) return '0';
+    return String(n);
+  }
+
+  function _fmtPct_(n) {
+    if (n == null) return '0%';
+    return n + '%';
+  }
+
+  function _fmtBadge_(n, color) {
+    if (n == null || n === 0) return '<span style="color:var(--co-ink-muted);">0</span>';
+    return '<span style="color:' + (color || 'var(--co-ink)') + ';font-weight:600;">' + n + '</span>';
+  }
+
+  function exportAnalyticsCsv() {
+    var data = AnalyticsState.data;
+    if (!data) { toast('No data to export', 'warning'); return; }
+    var tab = AnalyticsState.activeTab || 'overview';
+    var rows = [];
+    var filename = 'colony-analytics';
+    if (tab === 'users' || tab === 'overview') {
+      rows.push(['email', 'name', 'role', 'total', 'completed', 'in_progress', 'overdue', 'completion_pct', 'on_time_pct', 'sla_pct', 'avg_lead_days', 'p90_lead_days', 'throughput_per_week', 'score']);
+      (data.users || []).forEach(function(u) {
+        rows.push([u.email, u.name, u.role || '', u.totalTasks, u.tasksCompleted, u.tasksInProgress, u.tasksOverdue, u.completionRate, u.onTimeRate, u.slaRate, u.avgLeadTimeDays, u.p90LeadTimeDays, u.throughputPerWeek, u.score]);
+      });
+      filename = 'colony-users-performance';
+    } else if (tab === 'projects') {
+      rows.push(['id', 'name', 'owner', 'total', 'completed', 'overdue', 'progress_pct', 'on_time_pct', 'sla_pct', 'avg_lead_days', 'breached', 'health']);
+      (data.projects || []).forEach(function(p) {
+        rows.push([p.id, p.name, p.ownerName || p.ownerId || '', p.totalTasks, p.tasksCompleted, p.tasksOverdue, p.progress, p.onTimeRate, p.slaRate, p.avgLeadTimeDays, p.slaBreached, p.health]);
+      });
+      filename = 'colony-projects-performance';
+    } else if (tab === 'sla') {
+      rows.push(['email', 'name', 'tracked', 'on_track', 'at_risk', 'breached', 'compliance_pct']);
+      (data.sla && data.sla.byUser ? data.sla.byUser : []).forEach(function(u) {
+        rows.push([u.email, u.name, u.total, u.onTrack, u.atRisk, u.breached, u.complianceRate]);
+      });
+      filename = 'colony-sla-by-user';
+    }
+    var csv = rows.map(function(r) {
+      return r.map(function(c) {
+        if (c == null) return '';
+        var s = String(c);
+        if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) s = '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      }).join(',');
+    }).join('\n');
+    var blob = new Blob([csv], { type: 'text/csv' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename + '-' + (new Date().toISOString().slice(0, 10)) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function updateTeamProductivity(data) {
+    renderTopPerformers(data || []);
+  }
+  function updateProjectHealth(data) {
+    renderProjectHealth(data || []);
+  }
+  function updateRecentActivity(data) {
+    renderRecentActivity(data || []);
+  }
+  function updateAnalyticsMetrics(metrics) {
+    if (!metrics) return;
+    updateAnalyticsKpis(metrics, AnalyticsState.data && AnalyticsState.data.sla);
   }
 </script>

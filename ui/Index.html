@@ -36,6 +36,59 @@ window.__COLONY_DEEP_LINK__ = <?!= JSON.stringify(deepLink || {}) ?>;
 </script>
 </head>
 <body class="h-screen overflow-hidden" style="background:var(--co-page-bg);">
+<style>
+  #maintenanceBanner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10100;
+    display: none;
+    padding: 10px 16px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+  }
+  #maintenanceBanner.show { display: flex; align-items: flex-start; gap: 12px; }
+  #maintenanceBanner .mb-icon { flex-shrink: 0; padding-top: 1px; font-size: 14px; }
+  #maintenanceBanner .mb-body { flex: 1; min-width: 0; }
+  #maintenanceBanner .mb-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; opacity: 0.9; }
+  #maintenanceBanner .mb-message { margin-top: 2px; font-weight: 500; word-break: break-word; }
+  #maintenanceBanner .mb-meta { margin-top: 3px; font-size: 11px; opacity: 0.75; }
+  #maintenanceBanner .mb-dismiss {
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.85;
+  }
+  #maintenanceBanner .mb-dismiss:hover { opacity: 1; }
+  #maintenanceBanner[data-status="maintenance"] { background:#fef3c7; color:#92400e; border-bottom-color:#f59e0b; }
+  #maintenanceBanner[data-status="degraded"]    { background:#ffedd5; color:#9a3412; border-bottom-color:#f97316; }
+  #maintenanceBanner[data-status="down"]        { background:#fee2e2; color:#991b1b; border-bottom-color:#ef4444; }
+  #maintenanceBanner[data-status="resolved"]    { background:#d1fae5; color:#065f46; border-bottom-color:#10b981; }
+  body.has-maintenance-banner #app {
+    height: calc(100% - var(--maintenance-banner-height, 56px));
+    margin-top: var(--maintenance-banner-height, 56px);
+  }
+  body.has-maintenance-banner #loginPage { top: var(--maintenance-banner-height, 56px); }
+</style>
+<div id="maintenanceBanner" role="status" aria-live="polite">
+  <i class="fas fa-triangle-exclamation mb-icon"></i>
+  <div class="mb-body">
+    <div class="mb-label" id="maintenanceBannerLabel">System Notice</div>
+    <div class="mb-message" id="maintenanceBannerMessage"></div>
+    <div class="mb-meta" id="maintenanceBannerMeta"></div>
+  </div>
+  <button type="button" class="mb-dismiss" id="maintenanceBannerDismiss" onclick="MaintenanceBanner.dismiss()">Dismiss</button>
+</div>
 <script>
 (function() {
   try {
@@ -402,6 +455,10 @@ aria-label="Sign out"
 <button class="co-tab" data-admin-tab="audit" onclick="AdminPage.switchTab('audit')">
 <i class="fas fa-history text-[11px] mr-1.5"></i>Audit Log
 </button>
+<button class="co-tab" data-admin-tab="system" onclick="AdminPage.switchTab('system')">
+<i class="fas fa-server text-[11px] mr-1.5"></i>System Status
+<span id="adminMaintenanceDot" class="hidden ml-1.5 w-2 h-2 rounded-full inline-block align-middle" style="background:var(--co-warning);"></span>
+</button>
 </div>
 <div id="adminTab_access" class="space-y-3">
 <div id="accessBulkBar" class="hidden rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style="background:var(--co-ink);color:#fff;border:1px solid var(--co-border-subtle);">
@@ -564,6 +621,60 @@ aria-label="Sign out"
 </div>
 </div>
 </div>
+<div id="adminTab_system" class="hidden space-y-5">
+<div class="rounded-xl p-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="flex items-start justify-between gap-3 mb-3 flex-wrap">
+<div>
+<h3 class="text-[14px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);"><i class="fas fa-bullhorn text-[12px]" style="color:var(--co-gray-400);"></i>Maintenance Notification</h3>
+<p class="text-[12px] mt-1.5" style="color:var(--co-ink-muted);">Posts a banner to every COLONY user (and the login screen). Optionally fires a one-time email blast — leave that off for minor issues.</p>
+</div>
+<button onclick="MaintenancePanel.refresh()" class="co-btn-outline"><i id="maintenanceRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh</button>
+</div>
+<div id="maintenanceCurrent" class="rounded-lg px-4 py-3 mb-4 text-[13px]" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);color:var(--co-ink-muted);">
+<i class="fas fa-spinner fa-spin mr-2"></i>Loading current status...
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+<div class="md:col-span-1">
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Status</label>
+<select id="maintenanceStatusSelect" class="co-filter-select w-full" onchange="MaintenancePanel.previewSelection()">
+<option value="none">— No banner (operational) —</option>
+<option value="maintenance">Scheduled Maintenance (yellow)</option>
+<option value="degraded">Degraded Service (orange, not dismissible)</option>
+<option value="down">Service Outage (red, not dismissible)</option>
+<option value="resolved">Service Restored (green)</option>
+</select>
+<p id="maintenanceStatusHint" class="text-[11px] mt-1.5" style="color:var(--co-gray-500);">Pick "No banner" to clear an active notice.</p>
+</div>
+<div class="md:col-span-2">
+<label class="block text-[11px] font-medium uppercase tracking-wide mb-1.5" style="color:var(--co-gray-400);">Message <span class="normal-case font-normal" style="color:var(--co-gray-500);">(visible to all users)</span></label>
+<textarea id="maintenanceMessage" rows="3" maxlength="1000" placeholder="e.g. We're investigating a bug affecting task creation. Estimated fix: 30 minutes." class="co-search-input w-full" style="resize:vertical;min-height:78px;"></textarea>
+<div class="flex items-center justify-between mt-1.5">
+<span class="text-[11px]" style="color:var(--co-gray-500);">Plain text only. Leave blank to use the default for the chosen status.</span>
+<span id="maintenanceMessageCount" class="text-[11px] font-mono" style="color:var(--co-gray-500);">0 / 1000</span>
+</div>
+</div>
+</div>
+<label class="flex items-start gap-2.5 px-3 py-2.5 rounded-lg mb-4 cursor-pointer" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<input type="checkbox" id="maintenanceNotifyEmail" class="mt-0.5" />
+<div class="text-[12px]" style="color:var(--co-ink);">
+<div class="font-medium">Notify all active users by email</div>
+<div class="text-[11px] mt-0.5" style="color:var(--co-ink-muted);">One BCC blast to every active account. Leave unchecked for the in-app banner only — recommended for minor or short outages to avoid mass-email noise.</div>
+</div>
+</label>
+<div class="flex items-center gap-2 flex-wrap">
+<button id="maintenanceApplyBtn" onclick="MaintenancePanel.apply()" class="co-btn-solid"><i class="fas fa-paper-plane text-[11px]"></i> Apply Status</button>
+<button id="maintenanceClearBtn" onclick="MaintenancePanel.clear()" class="co-btn-outline"><i class="fas fa-circle-xmark text-[11px]"></i> Clear (Operational)</button>
+<span id="maintenanceActionResult" class="text-[12px] ml-2" style="color:var(--co-ink-muted);"></span>
+</div>
+</div>
+<div class="rounded-xl p-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<h3 class="text-[14px] font-semibold tracking-tight flex items-center gap-2 mb-2" style="color:var(--co-ink);"><i class="fas fa-eye text-[12px]" style="color:var(--co-gray-400);"></i>Banner Preview</h3>
+<p class="text-[12px] mb-3" style="color:var(--co-ink-muted);">Live preview of what users will see at the top of every page.</p>
+<div id="maintenancePreview" class="rounded-lg overflow-hidden" style="border:1px solid var(--co-border-subtle);">
+<div class="px-4 py-6 text-center text-[12px]" style="color:var(--co-gray-500);background:var(--co-surface-sunken);">Pick a status above to preview.</div>
+</div>
+</div>
+</div>
 </div>
 </div>
 <div id="approveRequestModal" class="fixed inset-0 flex items-center justify-center z-[10050] hidden" style="background:rgba(24,24,20,0.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);" onclick="AdminPage.closeApproveModal(event)">
@@ -683,105 +794,243 @@ Enter a name to preview project linkage.
 </div>
 </div>
 </div>
-<!-- Analytics View -->
 <div id="analyticsView" class="flex-1 overflow-auto p-6 hidden">
 <div class="rounded-xl p-5 mb-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
 <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+<div class="flex items-center gap-3 min-w-0">
 <h2 class="text-[18px] font-semibold tracking-tight flex items-center gap-2" style="color:var(--co-ink);letter-spacing:-0.015em;">
-<i class="fas fa-chart-bar" style="color:var(--co-accent-500);font-size:14px;"></i>Analytics Dashboard
+<i class="fas fa-chart-bar" style="color:var(--co-accent-500);font-size:14px;"></i>Analytics &amp; SLA Performance
 </h2>
-<div class="flex items-center gap-2">
+<span id="analyticsScopeBadge" class="hidden text-[11px] px-2 py-0.5 rounded-full" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);color:var(--co-ink-muted);"></span>
+</div>
+<div class="flex flex-wrap items-center gap-2">
+<select id="analyticsProjectFilter" onchange="refreshAnalytics()" class="co-filter-select" style="min-width:160px;">
+<option value="">All Projects</option>
+</select>
 <select id="analyticsDateRange" onchange="refreshAnalytics()" class="co-filter-select">
 <option value="7">Last 7 days</option>
 <option value="30" selected>Last 30 days</option>
 <option value="90">Last 90 days</option>
+<option value="180">Last 180 days</option>
 <option value="365">Last year</option>
 </select>
-<button id="analyticsRefreshBtn" onclick="refreshAnalytics()" class="co-btn-outline disabled:opacity-60 disabled:cursor-not-allowed">
+<button id="analyticsRefreshBtn" onclick="refreshAnalytics(true)" class="co-btn-outline disabled:opacity-60 disabled:cursor-not-allowed">
 <i id="analyticsRefreshIcon" class="fas fa-sync-alt text-[11px]"></i> Refresh
+</button>
+<button id="analyticsExportBtn" onclick="exportAnalyticsCsv()" class="co-btn-outline" title="Export current view as CSV">
+<i class="fas fa-download text-[11px]"></i> Export
 </button>
 </div>
 </div>
-<!-- Key Metrics -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-<div class="bg-blue-50 p-4 rounded-lg">
-<div class="text-2xl font-bold text-blue-600" id="analyticsStatTotal">
--
+<div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3" id="analyticsKpiStrip">
+<div class="rounded-lg p-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="text-[11px] uppercase tracking-wide" style="color:var(--co-ink-muted);">Total</div>
+<div class="text-2xl font-bold mt-1" style="color:var(--co-ink);" id="analyticsStatTotal">-</div>
 </div>
-<div class="text-blue-800 text-sm">Total Tasks</div>
+<div class="rounded-lg p-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="text-[11px] uppercase tracking-wide" style="color:var(--co-ink-muted);">Completed</div>
+<div class="text-2xl font-bold mt-1" style="color:#16a34a;" id="analyticsStatCompleted">-</div>
+<div class="text-[10px] mt-0.5" style="color:var(--co-ink-muted);" id="analyticsStatCompletedRate"></div>
 </div>
-<div class="bg-green-50 p-4 rounded-lg">
-<div class="text-2xl font-bold text-green-600" id="analyticsStatCompleted">
--
+<div class="rounded-lg p-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="text-[11px] uppercase tracking-wide" style="color:var(--co-ink-muted);">In Progress</div>
+<div class="text-2xl font-bold mt-1" style="color:var(--co-ink);" id="analyticsStatInProgress">-</div>
 </div>
-<div class="text-green-800 text-sm">Completed</div>
+<div class="rounded-lg p-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="text-[11px] uppercase tracking-wide" style="color:var(--co-ink-muted);">Overdue</div>
+<div class="text-2xl font-bold mt-1" style="color:#dc2626;" id="analyticsStatOverdue">-</div>
 </div>
-<div class="bg-gray-100 p-4 rounded-lg">
-<div class="text-2xl font-bold text-gray-700" id="analyticsStatInProgress">
--
+<div class="rounded-lg p-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="text-[11px] uppercase tracking-wide" style="color:var(--co-ink-muted);">SLA Compliance</div>
+<div class="text-2xl font-bold mt-1" id="analyticsStatSlaRate">-</div>
+<div class="text-[10px] mt-0.5" style="color:var(--co-ink-muted);" id="analyticsStatSlaTracked"></div>
 </div>
-<div class="text-gray-800 text-sm">In Progress</div>
+<div class="rounded-lg p-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="text-[11px] uppercase tracking-wide" style="color:var(--co-ink-muted);">Breached</div>
+<div class="text-2xl font-bold mt-1" style="color:#dc2626;" id="analyticsStatSlaBreached">-</div>
+<div class="text-[10px] mt-0.5" style="color:var(--co-ink-muted);" id="analyticsStatSlaAtRisk"></div>
 </div>
-<div class="bg-red-50 p-4 rounded-lg">
-<div class="text-2xl font-bold text-red-600" id="analyticsStatOverdue">
--
+<div class="rounded-lg p-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="text-[11px] uppercase tracking-wide" style="color:var(--co-ink-muted);">On-Time Delivery</div>
+<div class="text-2xl font-bold mt-1" style="color:var(--co-ink);" id="analyticsStatOnTime">-</div>
+<div class="text-[10px] mt-0.5" style="color:var(--co-ink-muted);">vs due date</div>
 </div>
-<div class="text-red-800 text-sm">Overdue</div>
-</div>
-</div>
-</div>
-<!-- Charts Row -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-<!-- Completion Trend Chart -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-<h3 class="text-md font-semibold text-gray-900 mb-4">
-Completion Trend
-</h3>
-<div class="h-64">
-<canvas id="completionTrendCanvas"></canvas>
-</div>
-</div>
-<!-- Priority Distribution Chart -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-<h3 class="text-md font-semibold text-gray-900 mb-4">
-Priority Distribution
-</h3>
-<div class="h-64">
-<canvas id="priorityChartCanvas"></canvas>
+<div class="rounded-lg p-3" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="text-[11px] uppercase tracking-wide" style="color:var(--co-ink-muted);">Avg Lead Time</div>
+<div class="text-2xl font-bold mt-1" style="color:var(--co-ink);" id="analyticsStatLeadTime">-</div>
+<div class="text-[10px] mt-0.5" style="color:var(--co-ink-muted);" id="analyticsStatThroughput"></div>
 </div>
 </div>
 </div>
-<!-- Team & Project Row -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-<!-- Team Productivity -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200">
-<div class="p-4 border-b border-gray-200">
-<h3 class="font-semibold text-gray-900">Team Productivity</h3>
+<div class="rounded-xl mb-5" style="background:var(--co-surface);border:1px solid var(--co-border-subtle);">
+<div class="flex items-center gap-1 px-4 overflow-x-auto" style="border-bottom:1px solid var(--co-border-subtle);">
+<button onclick="switchAnalyticsTab('overview')" data-anatab="overview" class="co-tab co-tab-active">Overview</button>
+<button onclick="switchAnalyticsTab('users')" data-anatab="users" class="co-tab">User Performance</button>
+<button onclick="switchAnalyticsTab('projects')" data-anatab="projects" class="co-tab">Project Performance</button>
+<button onclick="switchAnalyticsTab('sla')" data-anatab="sla" class="co-tab">SLA Tracking</button>
 </div>
-<div id="teamProductivityList" class="divide-y divide-gray-100 max-h-80 overflow-auto">
-<div class="p-4 text-center text-gray-500">Loading...</div>
+<div id="analyticsTab_overview" class="p-5">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+<div class="rounded-lg p-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold mb-3" style="color:var(--co-ink);">Throughput (Created vs Completed)</h3>
+<div class="h-64"><canvas id="completionTrendCanvas"></canvas></div>
 </div>
-</div>
-<!-- Project Health -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200">
-<div class="p-4 border-b border-gray-200">
-<h3 class="font-semibold text-gray-900">Project Health</h3>
-</div>
-<div id="projectHealthList" class="max-h-80 overflow-auto">
-<div class="p-4 text-center text-gray-500">Loading...</div>
+<div class="rounded-lg p-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold mb-3" style="color:var(--co-ink);">Priority Distribution</h3>
+<div class="h-64"><canvas id="priorityChartCanvas"></canvas></div>
 </div>
 </div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+<div class="rounded-lg p-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold mb-3" style="color:var(--co-ink);">Status Distribution</h3>
+<div class="h-56"><canvas id="statusChartCanvas"></canvas></div>
 </div>
-<!-- Recent Activity -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 mt-6">
-<div class="p-4 border-b border-gray-200">
-<h3 class="font-semibold text-gray-900">Recent Activity</h3>
-</div>
-<div id="recentActivity" class="divide-y divide-gray-100 max-h-80 overflow-auto">
-<div class="p-4 text-center text-gray-500">Loading...</div>
+<div class="rounded-lg p-4" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold mb-3" style="color:var(--co-ink);">Lead Time by Priority (avg days)</h3>
+<div class="h-56"><canvas id="leadTimeChartCanvas"></canvas></div>
 </div>
 </div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
+<div class="rounded-lg" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold" style="color:var(--co-ink);">Top Performers</h3>
+<button onclick="switchAnalyticsTab('users')" class="text-[11px]" style="color:var(--co-accent-500);">View all</button>
 </div>
+<div id="topPerformersList" class="max-h-80 overflow-auto"><div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">Loading...</div></div>
+</div>
+<div class="rounded-lg" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold" style="color:var(--co-ink);">Project Health</h3>
+<button onclick="switchAnalyticsTab('projects')" class="text-[11px]" style="color:var(--co-accent-500);">View all</button>
+</div>
+<div id="projectHealthList" class="max-h-80 overflow-auto"><div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">Loading...</div></div>
+</div>
+<div class="rounded-lg" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold" style="color:var(--co-ink);">Ageing WIP (oldest)</h3>
+<span class="text-[11px]" style="color:var(--co-ink-muted);">Stale work in flight</span>
+</div>
+<div id="ageingWipList" class="max-h-80 overflow-auto"><div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">Loading...</div></div>
+</div>
+</div>
+<div class="rounded-lg mt-5" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="px-4 py-3" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold" style="color:var(--co-ink);">Recent Activity</h3>
+</div>
+<div id="recentActivity" class="divide-y max-h-80 overflow-auto" style="border-color:var(--co-border-subtle);"><div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">Loading...</div></div>
+</div>
+<div id="teamProductivityList" class="hidden"></div>
+</div>
+<div id="analyticsTab_users" class="p-5 hidden">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+<div class="flex items-center gap-2 flex-1 min-w-[220px]">
+<i class="fas fa-search text-[12px]" style="color:var(--co-ink-muted);"></i>
+<input id="usersSearchInput" type="text" placeholder="Search users by name or email..." oninput="filterUsersTable()" class="co-search-input w-full max-w-md" />
+</div>
+<div class="text-[11px]" style="color:var(--co-ink-muted);">Click a row to drill in</div>
+</div>
+<div class="rounded-lg overflow-hidden" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="overflow-x-auto">
+<table class="w-full text-left text-[12px]" id="usersPerfTable">
+<thead style="background:var(--co-surface);">
+<tr style="color:var(--co-ink-muted);">
+<th class="px-3 py-2 font-semibold cursor-pointer select-none" onclick="sortUsersTable('name')">User</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('totalTasks')">Total</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('tasksCompleted')">Done</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('tasksInProgress')">WIP</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('tasksOverdue')">Overdue</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('completionRate')">Comp %</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('onTimeRate')">On-Time</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('slaRate')">SLA %</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('avgLeadTimeDays')">Lead (d)</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('throughputPerWeek')">Tput/wk</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortUsersTable('score')">Score</th>
+</tr>
+</thead>
+<tbody id="usersPerfTableBody"><tr><td colspan="11" class="p-4 text-center" style="color:var(--co-ink-muted);">Loading...</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+<div id="analyticsTab_projects" class="p-5 hidden">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+<div class="flex items-center gap-2 flex-1 min-w-[220px]">
+<i class="fas fa-search text-[12px]" style="color:var(--co-ink-muted);"></i>
+<input id="projectsSearchInput" type="text" placeholder="Search projects..." oninput="filterProjectsTable()" class="co-search-input w-full max-w-md" />
+</div>
+<div class="text-[11px]" style="color:var(--co-ink-muted);">Click a row to drill in</div>
+</div>
+<div class="rounded-lg overflow-hidden" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="overflow-x-auto">
+<table class="w-full text-left text-[12px]" id="projectsPerfTable">
+<thead style="background:var(--co-surface);">
+<tr style="color:var(--co-ink-muted);">
+<th class="px-3 py-2 font-semibold cursor-pointer select-none" onclick="sortProjectsTable('name')">Project</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none">Owner</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortProjectsTable('totalTasks')">Tasks</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortProjectsTable('progress')">Progress</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortProjectsTable('tasksOverdue')">Overdue</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortProjectsTable('onTimeRate')">On-Time</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortProjectsTable('slaRate')">SLA %</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortProjectsTable('avgLeadTimeDays')">Lead (d)</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none text-right" onclick="sortProjectsTable('slaBreached')">Breach</th>
+<th class="px-3 py-2 font-semibold cursor-pointer select-none">Health</th>
+</tr>
+</thead>
+<tbody id="projectsPerfTableBody"><tr><td colspan="10" class="p-4 text-center" style="color:var(--co-ink-muted);">Loading...</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+<div id="analyticsTab_sla" class="p-5 hidden">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+<div class="rounded-lg p-4 lg:col-span-1" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold mb-3" style="color:var(--co-ink);">SLA Compliance by Priority</h3>
+<div id="slaByPriorityList" class="space-y-2"><div class="text-sm text-center" style="color:var(--co-ink-muted);">Loading...</div></div>
+</div>
+<div class="rounded-lg p-4 lg:col-span-2" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold mb-3" style="color:var(--co-ink);">Compliance Rate by User</h3>
+<div class="overflow-x-auto max-h-72">
+<table class="w-full text-left text-[12px]">
+<thead style="background:var(--co-surface);position:sticky;top:0;">
+<tr style="color:var(--co-ink-muted);"><th class="px-3 py-2 font-semibold">User</th><th class="px-3 py-2 font-semibold text-right">Tracked</th><th class="px-3 py-2 font-semibold text-right">On Track</th><th class="px-3 py-2 font-semibold text-right">At Risk</th><th class="px-3 py-2 font-semibold text-right">Breached</th><th class="px-3 py-2 font-semibold text-right">Rate</th></tr>
+</thead>
+<tbody id="slaByUserBody"><tr><td colspan="6" class="p-4 text-center" style="color:var(--co-ink-muted);">Loading...</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+<div class="rounded-lg" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold" style="color:var(--co-ink);"><i class="fas fa-circle-exclamation mr-1.5" style="color:#dc2626;"></i>Breached SLAs</h3>
+<span id="slaBreachCount" class="text-[11px] px-2 py-0.5 rounded-full" style="background:#fee2e2;color:#991b1b;">0</span>
+</div>
+<div id="slaBreachList" class="max-h-96 overflow-auto"><div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">Loading...</div></div>
+</div>
+<div class="rounded-lg" style="background:var(--co-surface-sunken);border:1px solid var(--co-border-subtle);">
+<div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--co-border-subtle);">
+<h3 class="text-sm font-semibold" style="color:var(--co-ink);"><i class="fas fa-triangle-exclamation mr-1.5" style="color:#d97706;"></i>At Risk SLAs</h3>
+<span id="slaAtRiskCount" class="text-[11px] px-2 py-0.5 rounded-full" style="background:#fef3c7;color:#92400e;">0</span>
+</div>
+<div id="slaAtRiskList" class="max-h-96 overflow-auto"><div class="p-4 text-center text-sm" style="color:var(--co-ink-muted);">Loading...</div></div>
+</div>
+</div>
+</div>
+</div>
+<div id="analyticsDrillPanel" class="fixed inset-y-0 right-0 z-[60] w-full max-w-2xl shadow-2xl transform translate-x-full transition-transform" style="background:var(--co-surface);border-left:1px solid var(--co-border-subtle);">
+<div class="flex items-center justify-between px-5 py-4" style="border-bottom:1px solid var(--co-border-subtle);">
+<div class="min-w-0">
+<div id="analyticsDrillTitle" class="text-[15px] font-semibold truncate" style="color:var(--co-ink);">-</div>
+<div id="analyticsDrillSubtitle" class="text-[11px] truncate" style="color:var(--co-ink-muted);"></div>
+</div>
+<button onclick="closeAnalyticsDrill()" class="co-icon-btn" aria-label="Close"><i class="fas fa-times"></i></button>
+</div>
+<div id="analyticsDrillBody" class="overflow-y-auto h-[calc(100vh-64px)] p-5">
+<div class="text-sm text-center" style="color:var(--co-ink-muted);">Loading...</div>
+</div>
+</div>
+<div id="analyticsDrillBackdrop" class="fixed inset-0 z-[55] hidden" style="background:rgba(0,0,0,0.32);" onclick="closeAnalyticsDrill()"></div>
 </main>
 </div>
 <!-- Loading Overlay -->
